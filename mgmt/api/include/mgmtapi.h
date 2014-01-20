@@ -152,7 +152,6 @@ extern "C"
 
   typedef enum
   {
-    TS_ACTION_SHUTDOWN,        /* change requires user to stop then start the Traffic Server and Manager (restart Traffic Cop) */
     TS_ACTION_RESTART,         /* change requires restart Traffic Server and Traffic Manager */
     TS_ACTION_DYNAMIC,         /* change is already made in function call */
     TS_ACTION_RECONFIGURE,     /* change requires TS to reread configuration files */
@@ -1006,13 +1005,6 @@ extern "C"
  * Output: TSError
  */
   tsapi TSError TSRestart(bool cluster);
-
-/* TSHardRestart: stops and then starts Traffic Server
- * Input:  <none>
- * Output: TSError
- * Note: only for remote API clients
- */
-  tsapi TSError TSHardRestart();
 
 /* TSActionDo: based on TSActionNeedT, will take appropriate action
  * Input: action - action that needs to be taken
