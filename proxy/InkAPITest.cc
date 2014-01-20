@@ -5137,6 +5137,52 @@ REGRESSION_TEST(SDK_API_TSMimeHdrParse) (RegressionTest * test, int /* atype ATS
 // Unit Test for API: TSUrlParse
 //////////////////////////////////////////////
 
+static bool
+parse_url_helper(RegressionTest *test, const char* url) {
+
+  TSMBuffer bufp;
+  TSMLoc url_loc = (TSMLoc)NULL;
+  const char *start;
+  const char *end;
+  char *temp;
+
+  int retval;
+  int length;
+  bool status = false;
+
+  bufp = TSMBufferCreate();
+
+  if (TSUrlCreate(bufp, &url_loc) != TS_SUCCESS) {
+    SDK_RPRINT(test, "TSUrlParse", url, TC_FAIL, "Cannot create Url for parsing the url");
+    if (TSMBufferDestroy(bufp) == TS_ERROR) {
+      SDK_RPRINT(test, "TSUrlParse", url, TC_FAIL, "Error in Destroying MBuffer");
+    }
+  } else {
+    start = url;
+    end = url + strlen(url) + 1;
+    if ((retval = TSUrlParse(bufp, url_loc, &start, end)) == TS_PARSE_ERROR) {
+      SDK_RPRINT(test, "TSUrlParse", url, TC_FAIL, "TSUrlParse returns TS_PARSE_ERROR");
+    } else {
+      if (retval == TS_PARSE_DONE) {
+        temp = TSUrlStringGet(bufp, url_loc, &length);
+        if (strncmp(url, temp, length) == 0) {
+          SDK_RPRINT(test, "TSUrlParse", url, TC_PASS, "ok");
+          status = true;
+        } else {
+          SDK_RPRINT(test, "TSUrlParse", url, TC_FAIL, "Value's Mismatch");
+        }
+        TSfree(temp);
+      } else {
+        SDK_RPRINT(test, "TSUrlParse", url, TC_FAIL, "Parsing Error");
+      }
+    }
+  }
+
+  TSHandleMLocRelease(bufp, TS_NULL_MLOC, url_loc);
+  TSMBufferDestroy(bufp);
+  return status;
+}
+
 REGRESSION_TEST(SDK_API_TSUrlParse) (RegressionTest * test, int /* atype ATS_UNUSED */, int *pstatus)
 {
   static char const * const urls[] = {
@@ -5155,67 +5201,45 @@ REGRESSION_TEST(SDK_API_TSUrlParse) (RegressionTest * test, int /* atype ATS_UNU
       "foo://bar.com/baz/",
       "http://a.b.com/xx.jpg?newpath=http://b.c.com" // https://issues.apache.org/jira/browse/TS-1635
   };
+  static char const * const fail_urls[] = {
+      "http://www.example.com:8083xyz",
+      "https:://www.example.com/",
+  };
 
-  static int const num_urls = sizeof(urls) / sizeof(urls[0]);
-  bool test_passed[num_urls] = {false};
+  static int const num_urls      = sizeof(urls) / sizeof(urls[0]);
+  static int const num_fail_urls = sizeof(fail_urls) / sizeof(fail_urls[0]);
 
-
-  const char *start;
-  const char *end;
-  char *temp;
-
-  int retval;
-
-  TSMBuffer bufp;
-  TSMLoc url_loc = (TSMLoc)NULL;
-  int length;
+  bool test_passed[num_urls]      = {false};
+  bool test_failed[num_fail_urls] = {false};
 
   *pstatus = REGRESSION_TEST_INPROGRESS;
 
 
-  int idx;
-  for (idx = 0; idx < num_urls; idx++) {
-    char const *url = urls[idx];
-
-    bufp = TSMBufferCreate();
-    if (TSUrlCreate(bufp, &url_loc) != TS_SUCCESS) {
-      SDK_RPRINT(test, "TSUrlParse", url, TC_FAIL, "Cannot create Url for parsing the url");
-      if (TSMBufferDestroy(bufp) == TS_ERROR) {
-        SDK_RPRINT(test, "TSUrlParse", url, TC_FAIL, "Error in Destroying MBuffer");
-      }
-    } else {
-      start = url;
-      end = url + strlen(url) + 1;
-      if ((retval = TSUrlParse(bufp, url_loc, &start, end)) == TS_PARSE_ERROR) {
-        SDK_RPRINT(test, "TSUrlParse", url, TC_FAIL, "TSUrlParse returns TS_PARSE_ERROR");
-      } else {
-        if (retval == TS_PARSE_DONE) {
-          temp = TSUrlStringGet(bufp, url_loc, &length);
-          if (strncmp(url, temp, length) == 0) {
-            SDK_RPRINT(test, "TSUrlParse", url, TC_PASS, "ok");
-            test_passed[idx] = true;
-          } else {
-            SDK_RPRINT(test, "TSUrlParse", url, TC_FAIL, "Value's Mismatch");
-          }
-          TSfree(temp);
-        } else {
-          SDK_RPRINT(test, "TSUrlParse", url, TC_FAIL, "Parsing Error");
-        }
-      }
-    }
-
-    TSHandleMLocRelease(bufp, TS_NULL_MLOC, url_loc);
-    TSMBufferDestroy(bufp);
+  int idx_pass;
+  int idx_fail;
+  for (idx_pass = 0; idx_pass < num_urls; idx_pass++) {
+    char const *url = urls[idx_pass];
+    test_passed[idx_pass] = parse_url_helper(test, url);
+  }
+  for (idx_fail = 0; idx_fail < num_fail_urls; idx_fail++) {
+    char const *url = fail_urls[idx_fail];
+    test_failed[idx_fail] = parse_url_helper(test, url);
   }
 
-  for (idx = 0; idx < num_urls; idx++) {
-    if (test_passed[idx] != true) {
+  for (idx_pass = 0; idx_pass < num_urls; idx_pass++) {
+    if (test_passed[idx_pass] != true) {
+      *pstatus = REGRESSION_TEST_FAILED;
+      break;
+    }
+  }
+  for (idx_fail = 0; idx_fail < num_fail_urls; idx_fail++) {
+    if (test_failed[idx_fail] != false) {
       *pstatus = REGRESSION_TEST_FAILED;
       break;
     }
   }
 
-  if (idx >= num_urls) {
+  if (idx_pass >= num_urls && idx_fail >= num_fail_urls) {
     *pstatus = REGRESSION_TEST_PASSED;
   }
 
