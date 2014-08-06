@@ -211,6 +211,12 @@ Vec<C,A,S>::add() {
   return *ret;
 }
 
+template <class C, class A, int S> incline void
+Vec<C,A,S>::drop() {
+  if (n && 0 == --n)
+    clear();
+}
+
 template <class C, class A, int S> inline C
 Vec<C,A,S>::pop() {
   if (!n)

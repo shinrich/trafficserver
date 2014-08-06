@@ -362,6 +362,10 @@ tsapi int TS_HTTP_LEN_PUSH;
 /* MLoc Constants */
 tsapi const TSMLoc TS_NULL_MLOC = (TSMLoc)NULL;
 
+/* SSL related constants */
+tsapi int const TS_SSL_HOOK_OP_NONE = SSLNetVConnection::HOOK_OP_NONE;
+tsapi int const TS_SSL_HOOK_OP_TERMINATE = SSLNetVConnection::HOOK_OP_TERMINATE;
+
 HttpAPIHooks *http_global_hooks = NULL;
 LifecycleAPIHooks* lifecycle_hooks = NULL;
 ConfigUpdateCbTable *global_config_cbs = NULL;

@@ -384,7 +384,9 @@ write_to_net_io(NetHandler *nh, UnixNetVConnection *vc, EThread *thread)
       nh->read_ready_list.remove(vc);
       vc->write.triggered = 0;
       nh->write_ready_list.remove(vc);
-      if (!(ret == SSL_HANDSHAKE_WANT_READ || ret == SSL_HANDSHAKE_WANT_ACCEPT))
+      if (ret == SSL_HANDSHAKE_WANT_READ || ret == SSL_HANDSHAKE_WANT_ACCEPT)
+        read_reschedule(nh, vc);
+      else
         write_reschedule(nh, vc);
     } else if (ret == EVENT_DONE) {
       vc->write.triggered = 1;
@@ -454,9 +456,16 @@ write_to_net_io(NetHandler *nh, UnixNetVConnection *vc, EThread *thread)
     if (r == -EAGAIN || r == -ENOTCONN) {
       NET_DEBUG_COUNT_DYN_STAT(net_calls_to_write_nodata_stat, 1);
       if((needs & EVENTIO_WRITE) == EVENTIO_WRITE) {
-        vc->write.triggered = 0;
-        nh->write_ready_list.remove(vc);
-        write_reschedule(nh, vc);
+        if ((needs & EVENTIO_WRITE) == EVENTIO_WRITE) {
+          vc->write.triggered = 0;
+          nh->write_ready_list.remove(vc);
+          write_reschedule(nh, vc);
+        }
+        if ((needs & EVENTIO_READ) == EVENTIO_READ) {
+          vc->read.triggered = 0;
+          nh->read_read_list.remove(vc);
+          read_reschedule(nh, vc);
+        }
       }
       if((needs & EVENTIO_READ) == EVENTIO_READ) {
         vc->read.triggered = 0;
@@ -1187,6 +1196,7 @@ UnixNetVConnection::free(EThread *t)
   action_.mutex.clear();
   got_remote_addr = 0;
   got_local_addr = 0;
+  attributes = 0;
   read.vio.mutex.clear();
   write.vio.mutex.clear();
   flags = 0;

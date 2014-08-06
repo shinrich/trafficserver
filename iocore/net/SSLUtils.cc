@@ -57,6 +57,8 @@
 #define SSL_CERT_TAG          "ssl_cert_name"
 #define SSL_PRIVATE_KEY_TAG   "ssl_key_name"
 #define SSL_CA_TAG            "ssl_ca_name"
+#define SSL_ACTION_TAG        "action"
+#define SSL_ACTION_TUNNEL_TAG "tunnel"
 #define SSL_SESSION_TICKET_ENABLED "ssl_ticket_enabled"
 #define SSL_SESSION_TICKET_KEY_FILE_TAG "ticket_key_name"
 #define SSL_KEY_DIALOG        "ssl_key_dialog"
@@ -176,9 +178,11 @@ static int
 ssl_servername_callback(SSL * ssl, int * ad, void * arg)
 {
   SSL_CTX *           ctx = NULL;
+  SSLCertContext *    cc = NULL;
   SSLCertLookup *     lookup = (SSLCertLookup *) arg;
   const char *        servername = SSL_get_servername(ssl, TLSEXT_NAMETYPE_host_name);
   SSLNetVConnection * netvc = (SSLNetVConnection *)SSL_get_app_data(ssl);
+  bool found = true;
 
   Debug("ssl", "ssl_servername_callback ssl=%p ad=%d lookup=%p server=%s handshake_complete=%d", ssl, *ad, lookup, servername,
     netvc->getSSLHandShakeComplete());
@@ -193,7 +197,7 @@ ssl_servername_callback(SSL * ssl, int * ad, void * arg)
   // don't find a name-based match at this point, we *do not* want to mess with the context because we've
   // already made a best effort to find the best match.
   if (likely(servername)) {
-    ctx = lookup->findInfoInHash((char *)servername);
+    cc = lookup->find((char *)servername);
   }
 
   // If there's no match on the server name, try to match on the peer address.
@@ -202,15 +206,18 @@ ssl_servername_callback(SSL * ssl, int * ad, void * arg)
     int namelen = sizeof(ip);
 
     safe_getsockname(netvc->get_socket(), &ip.sa, &namelen);
-    ctx = lookup->findInfoInHash(ip);
+    cc = lookup->find(ip);
   }
 
-  if (ctx != NULL) {
-    SSL_set_SSL_CTX(ssl, ctx);
+  if (cc != NULL && cc->ctx != NULL) {
+    SSL_set_SSL_CTX(ssl, cc->ctx);
+  }
+  else {
+    found = false;
   }
 
   ctx = SSL_get_SSL_CTX(ssl);
-  Debug("ssl", "ssl_servername_callback found SSL context %p for requested name '%s'", ctx, servername);
+  Debug("ssl", "ssl_servername_callback %s SSL context %p for requested name '%s'", found ? "found" : "using", ctx, servername);
 
   if (ctx == NULL) {
     return SSL_TLSEXT_ERR_NOACK;

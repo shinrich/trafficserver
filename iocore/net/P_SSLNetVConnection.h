@@ -120,6 +120,22 @@ public:
     sslClientRenegotiationAbort = state;
   };
 
+  /// Reeanable the VC after a pre-accept hook is called.
+  virtual void preAcceptReenable(NetHandler* nh);
+  /// Set the SSL context.
+  /// @note This must be called after the SSL endpoint has been created.
+  virtual bool sslContextSet(void* ctx);
+
+  /// Operation requested by asynchronous hooks.
+  enum HookOp {
+    HOOK_OP_NONE, ///< Null / initialization value. Do nothing.
+    HOOK_OP_TUNNEL, ///< Switch to blind tunnel
+    HOOK_OP_TERMINATE, ///< Termination connection / transaction.
+    HOOK_OP_LAST = HOOK_OP_TERMINATE ///< End marker value.
+  };
+  /// Set by asynchronous hooks to request a specific operation.
+  HookOp hookOpRequested;
+
 private:
   SSLNetVConnection(const SSLNetVConnection &);
   SSLNetVConnection & operator =(const SSLNetVConnection &);
@@ -127,6 +143,17 @@ private:
   bool sslHandShakeComplete;
   bool sslClientConnection;
   bool sslClientRenegotiationAbort;
+
+  enum {
+    SSL_HOOKS_INIT,   ///< Initial state, no hooks called yet.
+    SSL_HOOKS_INVOKE, ///< Waiting to invoke hook.
+    SSL_HOOKS_ACTIVE, ///< Hook invoked, waiting for it to complete.
+    SSL_HOOKS_DONE    ///< All hooks have been called and completed
+  } sslPreAcceptHookState;
+  /// The current hook.
+  /// @note For @C SSL_HOOKS_INVOKE, this is the hook to invoke.
+  Continuation* curHook;
+
   const SSLNextProtocolSet * npnSet;
   Continuation * npnEndpoint;
 };

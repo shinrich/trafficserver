@@ -21,6 +21,7 @@
   limitations under the License.
  */
 #include "ink_config.h"
+#include "records/I_RecHttp.h"
 #include "P_Net.h"
 #include "P_SSLNextProtocolSet.h"
 #include "P_SSLUtils.h"
@@ -36,8 +37,123 @@
 #define SSL_HANDSHAKE_WANT_ACCEPT 8
 #define SSL_HANDSHAKE_WANT_CONNECT 9
 #define SSL_WRITE_WOULD_BLOCK     10
+#define SSL_WAIT_FOR_HOOK         11
 
 ClassAllocator<SSLNetVConnection> sslNetVCAllocator("sslNetVCAllocator");
+
+/// A collection of hooks.
+/// @internal Because of dependency ordering, we can't use the HTTP stuff.
+class SSLPreAcceptHookGroup {
+private:
+  typedef SSLPreAcceptHookGroup self; ///< Self reference type
+  typedef DLL<Continuation> Group; ///< Storage type.
+public:
+  /// Default constructor.
+  SSLPreAcceptHookGroup() {}
+  /// Destructor.
+  ~SSLPreAcceptHookGroup() {}
+
+  /// Prepend continuation @a contp to the list of hooks.
+  bool add(Continuation* contp);
+  /// Remove continuation @a contp from the list of hooks.
+  bool remove(Continuation* contp);
+
+  /// Get first hook.
+  Continuation* head() {
+    return m_group.head;
+  }
+  /// Get next hook after @a spot.
+  Continuation* next(Continuation* spot) {
+    return m_group.next(spot);
+  }
+
+private:
+  /// Forbid copying
+  SSLPreAcceptHookGroup(self const&);
+  /// Forbid copying
+  SSLPreAcceptHookGroup& operator=(self const&);
+
+  Group m_group; ///< The hooks.
+};
+
+/// Single global instance.
+static SSLPreAcceptHookGroup SSLPreAcceptHooks;
+/// Event to use.
+/// @internal We do this to avoid build time dependencies. The main
+/// code sets this during startup to the value exported to plugins.
+int SSLPreAcceptEventId = 0;
+
+namespace {
+  /// Callback to get two locks.
+  /// The lock for this continuation, and for the target continuation.
+  class ContWrapper : public Continuation
+  {
+  public:
+    /** Constructor.
+        This takes the secondary @a mutex and the @a target continuation
+        to invoke, along with the arguments for that invocation.
+    */
+    ContWrapper(
+      ProxyMutex* mutex ///< Mutex for this continuation (primary lock).
+      , Continuation* target ///< "Real" continuation we want to call.
+      , int eventId = EVENT_IMMEDIATE ///< Event ID for invocation of @a target.
+      , void* edata = 0 ///< Data for invocation of @a target.
+      )
+      : Continuation(mutex)
+      , _target(target)
+      , _eventId(eventId)
+      , _edata(edata)
+    {
+      SET_HANDLER(&ContWrapper::event_handler);
+      Debug("amc", "Continuation wrapper created");
+    }
+
+    /// Required event handler method.
+    int event_handler(int, void*)
+    {
+      EThread* eth = this_ethread();
+
+      MUTEX_TRY_LOCK(lock, _target->mutex, eth);
+      if (lock) { // got the target lock, we can proceed.
+        _target->handleEvent(_eventId, _edata);
+        delete this;
+      } else { // can't get both locks, try again.
+        eventProcessor.schedule_imm(this, ET_NET);
+      }
+      return 0;
+    }
+
+    /** Convenience static method.
+
+        This lets a client make one call and not have to (accurately)
+        copy the invocation logic embedded here. We duplicate it near
+        by textually so it is easier to keep in sync.
+
+        This takes the same arguments as the constructor but, if the
+        lock can be obtained immediately, does not construct an
+        instance but simply calls the @a target.
+    */
+    static void wrap(
+      ProxyMutex* mutex ///< Mutex for this continuation (primary lock).
+      , Continuation* target ///< "Real" continuation we want to call.
+      , int eventId = EVENT_IMMEDIATE ///< Event ID for invocation of @a target.
+      , void* edata = 0 ///< Data for invocation of @a target.
+      ) {
+      EThread* eth = this_ethread();
+      MUTEX_TRY_LOCK(lock, target->mutex, eth);
+      if (lock) {
+        target->handleEvent(eventId, edata);
+      } else {
+        eventProcessor.schedule_imm(NEW(new ContWrapper(mutex, target, eventId, edata)), ET_NET);
+      }
+    }
+
+  private:
+    Continuation* _target; ///< Continuation to invoke.
+    int _eventId; ///< with this event
+    void* _edata; ///< and this data
+  };
+}
 
 //
 // Private
@@ -220,6 +336,10 @@ SSLNetVConnection::net_read_io(NetHandler *nh, EThread *lthread)
   MIOBufferAccessor &buf = s->vio.buffer;
   int64_t ntodo = s->vio.ntodo();
 
+  if (HttpProxyPort::TRANSPORT_BLIND_TUNNEL == this->attributes) {
+    return this->super::net_read_io(nh, lthread);
+  }
+
   if (sslClientRenegotiationAbort == true) {
     this->read.triggered = 0;
     readSignalError(nh, (int)r);
@@ -275,8 +395,17 @@ SSLNetVConnection::net_read_io(NetHandler *nh, EThread *lthread)
         if (read.enabled)
           nh->read_ready_list.in_or_enqueue(this);
       }
+    } else if (ret == SSL_WAIT_FOR_HOOK) {
+      // avoid readReschedule - done when the plugin calls us back to reenable
     } else
       readReschedule(nh);
+    return;
+  }
+
+  // Shutdown if requested by hook
+  if (HOOK_OP_TERMINATE == hookOpRequested) {
+    this->read.triggered = 0;
+    this->readSignalDone(VC_EVENT_EOS, nh);
     return;
   }
 
@@ -369,6 +498,10 @@ SSLNetVConnection::load_buffer_and_write(int64_t towrite, int64_t &wattempted, i
   // XXX Rather than dealing with the block directly, we should use the IOBufferReader API.
   int64_t offset = buf.reader()->start_offset;
   IOBufferBlock *b = buf.reader()->block;
+
+  if (HttpProxyPort::TRANSPORT_BLIND_TUNNEL == this->attributes) {
+    return this->super::load_buffer_and_write(towrite, wattempted, total_wrote, buf, needs);
+  }
 
   do {
     // check if we have done this block
@@ -476,9 +609,11 @@ SSLNetVConnection::load_buffer_and_write(int64_t towrite, int64_t &wattempted, i
 }
 
 SSLNetVConnection::SSLNetVConnection():
+  hookOpRequested(HOOK_OP_NONE),
   sslHandShakeComplete(false),
   sslClientConnection(false),
   sslClientRenegotiationAbort(false),
+  sslPreAcceptHookState(SSL_HOOKS_INIT),
   npnSet(NULL),
   npnEndpoint(NULL)
 {
@@ -511,6 +646,12 @@ SSLNetVConnection::free(EThread * t) {
   sslHandShakeComplete = false;
   sslClientConnection = false;
   sslClientRenegotiationAbort = false;
+  if (SSL_HOOKS_ACTIVE == sslPreAcceptHookState) {
+    Error("SSLNetVconnection freed with outstanding hook");
+  }
+  sslPreAcceptHookState = SSL_HOOKS_INIT;
+  cur_hook = 0;
+  hookOpRequested = HOOK_OP_NONE;
   npnSet = NULL;
   npnEndpoint= NULL;
 
@@ -565,7 +706,54 @@ SSLNetVConnection::sslStartHandShake(int event, int &err)
 int
 SSLNetVConnection::sslServerHandShakeEvent(int &err)
 {
-  int ret = SSL_accept(ssl);
+  int ret;
+
+  if (SSL_HOOKS_DONE != sslPreAcceptHookState) {
+    Debug("amc", "Handle pre accept hooks");
+    // Get the first hook if we haven't started invoking yet.
+    if (SSL_HOOKS_INIT == sslPreAcceptHookState) {
+      curHook = SSLPreAcceptHooks.head();
+      sslPreAcceptHookState = SSL_HOOKS_INVOKE;
+    } else if (SSL_HOOKS_INVOKE == sslPreAcceptHookState) {
+      // if the state is anything else, we haven't finished
+      // the previous hook yet.
+      curHook = SSLPreAcceptHooks.next(curHook);
+    }
+    if (SSL_HOOKS_INVOKE == sslPreAcceptHookState) {
+      if (0 == curHook) { // no hooks left, we're done
+        sslPreAcceptHookState = SSL_HOOKS_DONE;
+        Debug("amc", "Finished pre accept hooks");
+      } else {
+        Debug("amc", "Invoking pre accept hook");
+        sslPreAcceptHookState = SSL_HOOKS_ACTIVE;
+        ContWrapper::wrap(mutex, curHook, SSLPreAcceptEventId, this);
+        return SSL_WAIT_FOR_HOOK;
+      }
+    } else { // waiting for hook to complete
+      /* A note on waiting for the hook. I believe that because this logic
+         cannot proceed as long as a hook is outstanding, the underlying VC
+         can't go stale. If that can happen for some reason, we'll need to be
+         more clever and provide some sort of cancel mechanism. I have a trap
+         in SSLNetVConnection::free to check for this.
+      */
+      Debug("amc", "SSL wait for hook return (active hook)");
+      return SSL_WAIT_FOR_HOOK;
+    }
+  }
+
+  // If a tunnel was requested, convert. Note we can't arrive here if a hook is active.
+  if (HOOK_OP_TUNNEL == hookOpRequested) {
+    this->attributes = HttpProxyPort::TRANSPORT_BLIND_TUNNEL;
+    sslHandShakeComplete = 1;
+    return EVENT_DONE;
+  } else if (HOOK_OP_TERMINATE == hookOpRequested) {
+    sslHandShakeComplete = 1;
+    return EVENT_DONE;
+  }
+
+  // All the pre-accept hooks have completed, proceed with the actual accept.
+
+  ret = SSL_accept(ssl);
   int ssl_error = SSL_get_error(ssl, ret);
 
   if (ssl_error != SSL_ERROR_NONE) {
@@ -794,3 +982,54 @@ SSLNetVConnection::select_next_protocol(SSL * ssl, const unsigned char ** out, u
   *outlen = 0;
   return SSL_TLSEXT_ERR_NOACK;
 }
+
+void
+SSLNetVConnection::preAcceptReenable(NetHandler* nh) {
+  Debug("amc", "Pre Accept reenable - %s",
+        mutex->thread_holding == this_ethread() ? "locked" :
+        mutex->thread_holding ? "bad lock" : "unlocked"
+    );
+  sslPreAcceptHookState = SSL_HOOKS_INVOKE;
+  this->readReschedule(nh);
+}
+
+bool
+SSLNetVConnection::sslContextSet(void* ctx) {
+  bool zret = true;
+  if (ssl)
+    SSL_set_SSL_CTX(ssl, static_cast<SSL_CTX*>(ctx));
+  else
+    zret = false;
+  Debug("amc", "sslContext %s", zret ? "set" : "not set");
+  return zret;
+}
+
+bool
+SSLPreAcceptHookGroup::add(Continuation* contp) {
+  bool zret = true;
+  if (!m_group.in(contp)) m_group.push(contp);
+  else zret = false;
+  Debug("amc", "%s pre accept hooked", zret ? "Added" : "Failed to add");
+  return zret;
+}
+
+bool
+SSLPreAcceptHookGroup::remove(Continuation* contp) {
+  bool zret = true;
+  if (m_group.in(contp)) m_group.remove(contp);
+  else zret = false;
+  return zret;
+}
+
+/// Now some global wrappers for the hooks.
+
+bool
+SSLPreAcceptHookRegister(Continuation* contp) {
+  return SSLPreAcceptHooks.add(contp);
+}
+
+bool
+SSLPreAcceptHookUnregister(Continuation* contp) {
+  return SSLPreAcceptHooks.remove(contp);
+}
+
