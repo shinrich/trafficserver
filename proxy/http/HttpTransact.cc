@@ -596,6 +596,11 @@ HttpTransact::BadRequest(State* s)
 void
 HttpTransact::HandleBlindTunnel(State* s)
 {
+  bool inbound_transparent_p = s->state_machine->ua_session->get_netvc()->get_is_transparent();
+  URL u;
+  IpEndpoint dest_addr;
+  ip_text_buffer new_host;
+
   DebugTxn("http_trans", "[HttpTransact::HandleBlindTunnel]");
 
   // We've received a request on a port which we blind forward
@@ -617,7 +622,7 @@ HttpTransact::HandleBlindTunnel(State* s)
   ats_ip_ntop(s->state_machine->ua_session->get_netvc()->get_local_addr(), new_host, sizeof(new_host));
 
   s->hdr_info.client_request.url_get()->host_set(new_host, strlen(new_host));
-  s->hdr_info.client_request.url_get()->port_set(s->state_machine->ua_session->get_netvc()->get_local_port());
+  s->hdr_info.client_request.url_get()->port_set(ntohs(dest_addr.port());
 
   // Initialize the state vars necessary to sending error responses
   bootstrap_state_variables_from_request(s, &s->hdr_info.client_request);
@@ -647,7 +652,7 @@ HttpTransact::HandleBlindTunnel(State* s)
   //    request was addressed to us to begin with.  Remap directs
   //    are something used in the normal reverse proxy and if we
   //    get them here they indicate a very bad misconfiguration!
-  if (url_remap_success == false || remap_redirect != NULL) {
+  if (!(inbound_transparent_p || url_remap_success) || remap_redirect != NULL) {
     // The error message we send back will be suppressed so
     //  the only important thing in selecting the error is what
     //  status code it gets logged as

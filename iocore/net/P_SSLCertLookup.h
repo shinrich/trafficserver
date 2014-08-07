@@ -65,8 +65,8 @@ struct SSLCertLookup : public ConfigInfo
   SSLContextStorage * ssl_storage;
   SSL_CTX *           ssl_default;
 
-  bool insert(SSL_CTX * ctx, const char * name);
-  bool insert(SSL_CTX * ctx, const IpEndpoint& address);
+  int insert(const char *name, SSLCertContext const &cc);
+  int insert(const IpEndpoint& address, SSLCertContext const &cc);
 
   /** Find certificate context by IP address.
       The IP addresses are taken from the socket @a s.
@@ -87,7 +87,7 @@ struct SSLCertLookup : public ConfigInfo
   SSL_CTX * defaultContext() const { return ssl_default; }
 
   unsigned count() const;
-  SSL_CTX * get(unsigned i) const;
+  SSLCertContext * get(unsigned i) const;
 
   SSLCertLookup();
   virtual ~SSLCertLookup();

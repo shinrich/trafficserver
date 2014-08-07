@@ -85,8 +85,8 @@ public:
   int insert(const char * name, int idx);
   SSLCertContext* lookup(const char * name) const;
   // SKH Commenting out for now
-  //unsigned count() const { return this->references.count(); }
-  //SSL_CTX * get(unsigned i) const { return this->references[i]; }
+  unsigned count() const { return this->ctx_store.count(); }
+  SSLCertContext* get(unsigned i) const { return &this->ctx_store[i]; }
 
 private:
   /** A struct that can stored a @c Trie.
@@ -164,7 +164,7 @@ int
 SSLCertLookup::insert(const IpEndpoint& address, SSLCertContext const &cc)
 {
   SSLAddressLookupKey key(address);
-  return this->ssl_storage->insert(cc, key.get());
+  return this->ssl_storage->insert(key.get(), cc);
 }
 
 unsigned
@@ -173,7 +173,7 @@ SSLCertLookup::count() const
   return ssl_storage->count();
 }
 
-SSL_CTX *
+SSLCertContext *
 SSLCertLookup::get(unsigned i) const
 {
   return ssl_storage->get(i);
@@ -236,8 +236,8 @@ SSLContextStorage::SSLContextStorage()
 
 SSLContextStorage::~SSLContextStorage()
 {
-  for (unsigned i = 0; i < this->references.count(); ++i) {
-    SSLReleaseContext(this->references[i]);
+  for (unsigned i = 0; i < this->ctx_store.count(); ++i) {
+    SSLReleaseContext(this->ctx_store[i].ctx);
   }
 
   ink_hash_table_destroy(this->hostnames);
@@ -286,15 +286,15 @@ SSLContextStorage::insert(const char* name, int idx)
     }
 
     ref = new ContextRef(idx);
-    inserted = this->wildcards.Insert(reversed, entry, 0 /* rank */, -1 /* keylen */);
+    inserted = this->wildcards.Insert(reversed, ref, 0 /* rank */, -1 /* keylen */);
     if (!inserted) {
-      SSLEntry * found;
+      ContextRef * found;
 
       // We fail to insert, so the longest wildcard match search should return the full match value.
       found = this->wildcards.Search(reversed);
-      if (found != NULL && found->ctx != ctx) {
-        Warning("previously indexed wildcard certificate for '%s' as '%s', cannot index it with SSL_CTX %p now",
-            name, reversed, ctx);
+      if (found != NULL && found->idx != idx) {
+        Warning("previously indexed wildcard certificate for '%s' as '%s', cannot index it with SSL_CTX #%d now",
+            name, reversed, idx);
       }
       idx = -1;
     }
@@ -305,13 +305,13 @@ SSLContextStorage::insert(const char* name, int idx)
   } else {
     InkHashTableValue value;
 
-    if (ink_hash_table_lookup(this->hostnames, name, &value) && (void *)ctx != value) {
-      Warning("previously indexed '%s' with SSL_CTX %p, cannot index it with SSL_CTX %p now", name, value, ctx);
+    if (ink_hash_table_lookup(this->hostnames, name, &value) && (void *)idx != value) {
+      Warning("previously indexed '%s' with SSL_CTX %p, cannot index it with SSL_CTX #%d now", name, value, idx);
     } else {
       inserted = true;
       ink_hash_table_insert(this->hostnames, name, reinterpret_cast<void*>(static_cast<intptr_t>(idx)));
       Debug("ssl", "indexed '%s' with SSL_CTX %p [%d]", 
-        name, this->ctx_Store[idx].ctx, idx);
+        name, this->ctx_store[idx].ctx, idx);
     }
   }
   return idx;
@@ -322,8 +322,8 @@ SSLContextStorage::lookup(const char * name) const
 {
   InkHashTableValue value;
 
-  if (ink_hash_table_lookup(const_cast<InkHashTable *>(this->hostnames), name, &value) {
-    return &(this->ctx_store[reinterpret_cast<intptr_t>(value)];
+  if (ink_hash_table_lookup(const_cast<InkHashTable *>(this->hostnames), name, &value)) {
+    return &(this->ctx_store[reinterpret_cast<intptr_t>(value)]);
   }
 
   if (!this->wildcards.Empty()) {

@@ -476,6 +476,8 @@ HttpDebugNames::get_api_hook_name(TSHttpHookID t)
     return "TS_HTTP_PRE_REMAP_HOOK";
   case TS_HTTP_POST_REMAP_HOOK:
     return "TS_HTTP_POST_REMAP_HOOK";
+  case TS_SSL_PRE_ACCEPT_HOOK:
+    return "TS_SSL_PRE_ACCEPT_HOOK";
   case TS_HTTP_RESPONSE_CLIENT_HOOK:
     return "TS_HTTP_RESPONSE_CLIENT_HOOK";
   case TS_HTTP_LAST_HOOK:
