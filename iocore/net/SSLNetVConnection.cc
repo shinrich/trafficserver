@@ -144,7 +144,7 @@ namespace {
       if (lock) {
         target->handleEvent(eventId, edata);
       } else {
-        eventProcessor.schedule_imm(NEW(new ContWrapper(mutex, target, eventId, edata)), ET_NET);
+        eventProcessor.schedule_imm(new ContWrapper(mutex, target, eventId, edata), ET_NET);
       }
     }
 
@@ -337,7 +337,8 @@ SSLNetVConnection::net_read_io(NetHandler *nh, EThread *lthread)
   int64_t ntodo = s->vio.ntodo();
 
   if (HttpProxyPort::TRANSPORT_BLIND_TUNNEL == this->attributes) {
-    return this->super::net_read_io(nh, lthread);
+    this->super::net_read_io(nh, lthread);
+    return;
   }
 
   if (sslClientRenegotiationAbort == true) {
@@ -650,7 +651,7 @@ SSLNetVConnection::free(EThread * t) {
     Error("SSLNetVconnection freed with outstanding hook");
   }
   sslPreAcceptHookState = SSL_HOOKS_INIT;
-  cur_hook = 0;
+  curHook = 0;
   hookOpRequested = HOOK_OP_NONE;
   npnSet = NULL;
   npnEndpoint= NULL;

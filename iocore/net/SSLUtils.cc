@@ -494,12 +494,13 @@ SSLRecRawStatSyncCount(const char *name, RecDataT data_type, RecData *data, RecR
   if (certLookup) {
     const unsigned ctxCount = certLookup->count();
     for (size_t i = 0; i < ctxCount; i++) {
-      SSL_CTX * ctx = certLookup->get(i);
-
-      sessions += SSL_CTX_sess_accept_good(ctx);
-      hits += SSL_CTX_sess_hits(ctx);
-      misses += SSL_CTX_sess_misses(ctx);
-      timeouts += SSL_CTX_sess_timeouts(ctx);
+      SSLCertContext *cc = certLookup->get(i);
+      if (cc && cc->ctx) {
+        sessions += SSL_CTX_sess_accept_good(cc->ctx);
+        hits += SSL_CTX_sess_hits(cc->ctx);
+        misses += SSL_CTX_sess_misses(cc->ctx);
+        timeouts += SSL_CTX_sess_timeouts(cc->ctx);
+      }
     }
   }
 
@@ -1257,7 +1258,7 @@ ssl_index_certificate(SSLCertLookup * lookup, SSL_CTX * ctx, const char * certfi
       ats_scoped_str name(asn1_strdup(cn));
 
       Debug("ssl", "mapping '%s' to certificate %s", (const char *) name, certfile);
-      lookup->insert(ctx, name);
+      lookup->insert(name, SSLCertContext(ctx));
     }
   }
 
@@ -1273,7 +1274,7 @@ ssl_index_certificate(SSLCertLookup * lookup, SSL_CTX * ctx, const char * certfi
       if (name->type == GEN_DNS) {
         ats_scoped_str dns(asn1_strdup(name->d.dNSName));
         Debug("ssl", "mapping '%s' to certificate %s", (const char *) dns, certfile);
-        lookup->insert(ctx, dns);
+        lookup->insert(dns, SSLCertContext(ctx));
       }
     }
 
@@ -1346,13 +1347,13 @@ ssl_store_ssl_context(
   if (sslMultCertSettings.addr) {
     if (strcmp(sslMultCertSettings.addr, "*") == 0) {
       lookup->ssl_default = ctx;
-      lookup->insert(ctx, sslMultCertSettings.addr);
+      lookup->insert(sslMultCertSettings.addr, SSLCertContext(ctx));
     } else {
       IpEndpoint ep;
 
       if (ats_ip_pton(sslMultCertSettings.addr, &ep) == 0) {
         Debug("ssl", "mapping '%s' to certificate %s", (const char *)sslMultCertSettings.addr, (const char *)certpath);
-        lookup->insert(ctx, ep);
+        lookup->insert(ep, SSLCertContext(ctx));
       } else {
         Error("'%s' is not a valid IPv4 or IPv6 address", (const char *)sslMultCertSettings.addr);
       }

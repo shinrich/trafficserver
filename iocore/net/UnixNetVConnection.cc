@@ -463,7 +463,7 @@ write_to_net_io(NetHandler *nh, UnixNetVConnection *vc, EThread *thread)
         }
         if ((needs & EVENTIO_READ) == EVENTIO_READ) {
           vc->read.triggered = 0;
-          nh->read_read_list.remove(vc);
+          nh->read_ready_list.remove(vc);
           read_reschedule(nh, vc);
         }
       }

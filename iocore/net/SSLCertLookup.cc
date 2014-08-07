@@ -85,7 +85,7 @@ public:
   int insert(const char * name, int idx);
   SSLCertContext* lookup(const char * name) const;
   // SKH Commenting out for now
-  unsigned count() const { return this->ctx_store.count(); }
+  unsigned count() const { return this->ctx_store.length(); }
   SSLCertContext* get(unsigned i) const { return &this->ctx_store[i]; }
 
 private:
@@ -236,7 +236,7 @@ SSLContextStorage::SSLContextStorage()
 
 SSLContextStorage::~SSLContextStorage()
 {
-  for (unsigned i = 0; i < this->ctx_store.count(); ++i) {
+  for (unsigned i = 0; i < this->ctx_store.length(); ++i) {
     SSLReleaseContext(this->ctx_store[i].ctx);
   }
 

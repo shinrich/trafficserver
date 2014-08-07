@@ -62,6 +62,7 @@ class SSLNextProtocolSet;
 //////////////////////////////////////////////////////////////////
 class SSLNetVConnection:public UnixNetVConnection
 {
+  typedef UnixNetVConnection super; ///< Parent type.
 public:
   virtual int sslStartHandShake(int event, int &err);
   virtual void free(EThread * t);

@@ -8708,7 +8708,7 @@ TSSslVConnReenable(TSSslVConn sslp)
   // deadlock or it ends up interacting with the wrong NetHandler).
   MUTEX_TRY_LOCK(trylock, vc->mutex, eth);
   if (!trylock) {
-    vc->thread->schedule_imm(NEW(new TSSslCallback(vc)));
+    vc->thread->schedule_imm(new TSSslCallback(vc));
   } else {
     vc->preAcceptReenable(vc->nh);
   }
