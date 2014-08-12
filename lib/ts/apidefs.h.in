@@ -225,6 +225,7 @@ extern "C"
        - TS_HTTP_SELECT_ALT_HOOK
        - TS_HTTP_SSN_START_HOOK
        - TS_HTTP_SSN_CLOSE_HOOK
+       - TS_SSL_CLIENT_PRE_HANDSHAKE_HOOK
 
       TSHttpSsnHookAdd: adds a transaction hook to each transaction
       within a session. You can only use transaction hooks with this call:
@@ -278,6 +279,7 @@ extern "C"
     TS_HTTP_PRE_REMAP_HOOK,
     TS_HTTP_POST_REMAP_HOOK,
     TS_HTTP_RESPONSE_CLIENT_HOOK,
+    TS_SSL_CLIENT_PRE_HANDSHAKE_HOOK,
     TS_HTTP_LAST_HOOK
   } TSHttpHookID;
   #define TS_HTTP_READ_REQUEST_PRE_REMAP_HOOK TS_HTTP_PRE_REMAP_HOOK  /* backwards compat */
@@ -437,6 +439,7 @@ extern "C"
     TS_EVENT_LIFECYCLE_CACHE_READY = 60020,
     TS_EVENT_LIFECYCLE_SERVER_SSL_CTX_INITIALIZED = 60021,
     TS_EVENT_LIFECYCLE_CLIENT_SSL_CTX_INITIALIZED = 60022,
+    TS_EVENT_SSL_CLIENT_PRE_HANDSHAKE = 60023,
     TS_EVENT_MGMT_UPDATE = 60100,
 
     /* EVENTS 60200 - 60202 for internal use */
@@ -796,6 +799,7 @@ extern "C"
   typedef struct tsapi_mbuffer* TSMBuffer;
   typedef struct tsapi_httpssn* TSHttpSsn;
   typedef struct tsapi_httptxn* TSHttpTxn;
+  typedef struct tsapi_ssl_vc* TSSslVConn;
   typedef struct tsapi_httpaltinfo* TSHttpAltInfo;
   typedef struct tsapi_mimeparser* TSMimeParser;
   typedef struct tsapi_httpparser* TSHttpParser;

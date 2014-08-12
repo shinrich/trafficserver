@@ -78,10 +78,6 @@ private:
 
 /// Single global instance.
 static SSLPreAcceptHookGroup SSLPreAcceptHooks;
-/// Event to use.
-/// @internal We do this to avoid build time dependencies. The main
-/// code sets this during startup to the value exported to plugins.
-int SSLPreAcceptEventId = 0;
 
 namespace {
   /// Callback to get two locks.
@@ -671,6 +667,30 @@ SSLNetVConnection::sslStartHandShake(int event, int &err)
   case SSL_EVENT_SERVER:
     if (this->ssl == NULL) {
       SSLCertificateConfig::scoped_config lookup;
+      IpEndpoint ip;
+      int namelen = sizeof(ip);
+      safe_getsockname(this->get_socket(), &ip.sa, &namelen);
+      SSLCertContext *cc = lookup->find(ip);
+      if (is_debug_tag_set("ssl")) {
+        IpEndpoint src, dst;
+        ip_port_text_buffer ipb1, ipb2;
+        int ip_len;
+        
+        safe_getsockname(this->get_socket(), &dst.sa, &(ip_len = sizeof ip));
+        safe_getpeername(this->get_socket(), &src.sa, &(ip_len = sizeof ip));
+        ats_ip_nptop(&dst, ipb1, sizeof(ipb1));
+        ats_ip_nptop(&src, ipb2, sizeof(ipb2));
+        Debug("ssl", "IP context is %p for [%s] -> [%s], default context %p", cc, ipb2, ipb1, lookup->defaultContext());
+      }
+
+      // Escape if this is marked to be a tunnel.
+      if (cc && SSLCertContext::OPT_TUNNEL == cc->opt && this->is_transparent) {
+        Debug("amc", "Converting to blind tunnel");
+        this->attributes = HttpProxyPort::TRANSPORT_BLIND_TUNNEL;
+        sslHandShakeComplete = 1;
+        return EVENT_DONE;
+      }
+ 
 
       // Attach the default SSL_CTX to this SSL session. The default context is never going to be able
       // to negotiate a SSL session, but it's enough to trampoline us into the SNI callback where we
@@ -727,7 +747,7 @@ SSLNetVConnection::sslServerHandShakeEvent(int &err)
       } else {
         Debug("amc", "Invoking pre accept hook");
         sslPreAcceptHookState = SSL_HOOKS_ACTIVE;
-        ContWrapper::wrap(mutex, curHook, SSLPreAcceptEventId, this);
+        ContWrapper::wrap(mutex, curHook, TS_EVENT_SSL_CLIENT_PRE_HANDSHAKE, this);
         return SSL_WAIT_FOR_HOOK;
       }
     } else { // waiting for hook to complete

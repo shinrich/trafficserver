@@ -364,6 +364,7 @@ tsapi const TSMLoc TS_NULL_MLOC = (TSMLoc)NULL;
 
 /* SSL related constants */
 tsapi int const TS_SSL_HOOK_OP_NONE = SSLNetVConnection::HOOK_OP_NONE;
+tsapi int const TS_SSL_HOOK_OP_TUNNEL = SSLNetVConnection::HOOK_OP_TUNNEL;
 tsapi int const TS_SSL_HOOK_OP_TERMINATE = SSLNetVConnection::HOOK_OP_TERMINATE;
 
 HttpAPIHooks *http_global_hooks = NULL;
@@ -4382,28 +4383,27 @@ TSContMutexGet(TSCont contp)
 void
 TSHttpHookAdd(TSHttpHookID id, TSCont contp)
 {
+  INKContInternal *icontp;
   sdk_assert(sdk_sanity_check_continuation(contp) == TS_SUCCESS);
   sdk_assert(sdk_sanity_check_hook_id(id) == TS_SUCCESS);
+  extern bool SSLPreAcceptHookRegister(Continuation*);
 
-  http_global_hooks->append(id, (INKContInternal *)contp);
+  icontp = reinterpret_cast<INKContInternal*>(contp);
+  if (TS_SSL_CLIENT_PRE_HANDSHAKE_HOOK == id) {
+    SSLPreAcceptHookRegister(icontp);
+  }
+  else {
+    http_global_hooks->append(id, icontp);
+  }
 }
 
 void
 TSLifecycleHookAdd(TSLifecycleHookID id, TSCont contp)
 {
-  extern bool SSLPreAcceptHookRegister(Continuation*);
-  INKContInternal *icontp;
-
   sdk_assert(sdk_sanity_check_continuation(contp) == TS_SUCCESS);
   sdk_assert(sdk_sanity_check_lifecycle_hook_id(id) == TS_SUCCESS);
 
-  icontp = reinterpret_cast<INKContInternal*>(contp);
-  if (TS_SSL_PRE_ACCEPT_HOOK == id) {
-    SSLPreAcceptHookRegister(icontp);
-  }
-  else {
-    lifecycle_hooks->append(id, icontp);
-  }
+  lifecycle_hooks->append(id, (INKContInternal *)contp);
 }
 
 void
@@ -9948,7 +9948,7 @@ extern "C"
   /// This must be called exactly once before the SSL connection will resume.
   tsapi void TSSslVConnReenable(TSSslVConn sslvcp);
   /// Set the SSL Context to @a ctx for @a sslp.
-  /// This can only be usefully called from the TS_SSL_PRE_ACCEPT_HOOK.
+  /// This can only be usefully called from the TS_SSL_CLIENT_PRE_HANDSHAKE_HOOK.
   tsapi TSReturnCode TSSslVConnContextSet(TSSslVConn sslp, void* ctx);
   /// Set the hook operation request field.
   tsapi TSReturnCode TSSslVConnRequestSet(TSSslVConn sslp, int op);

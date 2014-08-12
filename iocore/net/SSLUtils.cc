@@ -86,7 +86,7 @@ typedef SSL_METHOD * ink_ssl_method_t;
 // gather user provided settings from ssl_multicert.config in to a single struct
 struct ssl_user_config
 {
-  ssl_user_config () : session_ticket_enabled(1) {
+  ssl_user_config () : session_ticket_enabled(1), opt(SSLCertContext::OPT_NONE) {
   }
 
   int session_ticket_enabled;  // ssl_ticket_enabled - session ticket enabled
@@ -97,6 +97,7 @@ struct ssl_user_config
   ats_scoped_str key;    // ssl_key_name - Private key
   ats_scoped_str ticket_key_filename; // ticket_key_name - session key file. [key_name (16Byte) + HMAC_secret (16Byte) + AES_key (16Byte)]
   ats_scoped_str dialog; // ssl_key_dialog - Private key dialog
+  SSLCertContext::Option opt;
 };
 
 // Check if the ticket_key callback #define is available, and if so, enable session tickets.
@@ -198,6 +199,7 @@ ssl_servername_callback(SSL * ssl, int * ad, void * arg)
   // already made a best effort to find the best match.
   if (likely(servername)) {
     cc = lookup->find((char *)servername);
+    if (cc && cc->ctx) ctx = cc->ctx;
   }
 
   // If there's no match on the server name, try to match on the peer address.
@@ -207,10 +209,11 @@ ssl_servername_callback(SSL * ssl, int * ad, void * arg)
 
     safe_getsockname(netvc->get_socket(), &ip.sa, &namelen);
     cc = lookup->find(ip);
+    if (cc && cc->ctx) ctx = cc->ctx;
   }
 
-  if (cc != NULL && cc->ctx != NULL) {
-    SSL_set_SSL_CTX(ssl, cc->ctx);
+  if (ctx != NULL) {
+    SSL_set_SSL_CTX(ssl, ctx);
   }
   else {
     found = false;
@@ -1232,7 +1235,7 @@ asn1_strdup(ASN1_STRING * s)
 // table aliases for subject CN and subjectAltNames DNS without wildcard,
 // insert trie aliases for those with wildcard.
 static void
-ssl_index_certificate(SSLCertLookup * lookup, SSL_CTX * ctx, const char * certfile)
+ssl_index_certificate(SSLCertLookup * lookup, SSLCertContext const& cc, const char * certfile)
 {
   X509_NAME *   subject = NULL;
   X509 *        cert;
@@ -1258,7 +1261,7 @@ ssl_index_certificate(SSLCertLookup * lookup, SSL_CTX * ctx, const char * certfi
       ats_scoped_str name(asn1_strdup(cn));
 
       Debug("ssl", "mapping '%s' to certificate %s", (const char *) name, certfile);
-      lookup->insert(name, SSLCertContext(ctx));
+      lookup->insert(name, cc);
     }
   }
 
@@ -1274,7 +1277,7 @@ ssl_index_certificate(SSLCertLookup * lookup, SSL_CTX * ctx, const char * certfi
       if (name->type == GEN_DNS) {
         ats_scoped_str dns(asn1_strdup(name->d.dNSName));
         Debug("ssl", "mapping '%s' to certificate %s", (const char *) dns, certfile);
-        lookup->insert(dns, SSLCertContext(ctx));
+        lookup->insert(dns, cc);
       }
     }
 
@@ -1347,13 +1350,13 @@ ssl_store_ssl_context(
   if (sslMultCertSettings.addr) {
     if (strcmp(sslMultCertSettings.addr, "*") == 0) {
       lookup->ssl_default = ctx;
-      lookup->insert(sslMultCertSettings.addr, SSLCertContext(ctx));
+      lookup->insert(sslMultCertSettings.addr, SSLCertContext(ctx, sslMultCertSettings.opt));
     } else {
       IpEndpoint ep;
 
       if (ats_ip_pton(sslMultCertSettings.addr, &ep) == 0) {
         Debug("ssl", "mapping '%s' to certificate %s", (const char *)sslMultCertSettings.addr, (const char *)certpath);
-        lookup->insert(ep, SSLCertContext(ctx));
+        lookup->insert(ep, SSLCertContext(ctx, sslMultCertSettings.opt));
       } else {
         Error("'%s' is not a valid IPv4 or IPv6 address", (const char *)sslMultCertSettings.addr);
       }
@@ -1394,7 +1397,7 @@ ssl_store_ssl_context(
   // this code is updated to reconfigure the SSL certificates, it will need some sort of
   // refcounting or alternate way of avoiding double frees.
   Debug("ssl", "importing SNI names from %s", (const char *)certpath);
-  ssl_index_certificate(lookup, ctx, certpath);
+  ssl_index_certificate(lookup, SSLCertContext(ctx, sslMultCertSettings.opt), certpath);
 
   if (SSLConfigParams::init_ssl_ctx_cb) {
     SSLConfigParams::init_ssl_ctx_cb(ctx, true);
@@ -1446,6 +1449,15 @@ ssl_extract_certificate(
 
     if (strcasecmp(label, SSL_KEY_DIALOG) == 0) {
       sslMultCertSettings.dialog = ats_strdup(value);
+    }
+    if (strcasecmp(label, SSL_ACTION_TAG) == 0) {
+      if (strcasecmp(SSL_ACTION_TUNNEL_TAG, value) == 0) {
+        sslMultCertSettings.opt = SSLCertContext::OPT_TUNNEL;
+      }
+      else {
+        Error("Unrecognized action for " SSL_ACTION_TAG);
+        return false;
+      }
     }
   }
   if (!sslMultCertSettings.cert) {

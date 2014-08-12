@@ -272,12 +272,14 @@ SSLContextStorage::insert(const char* name, int idx)
   ats_wildcard_matcher wildcard;
   bool inserted = false;
 
+  Debug("skh", "Try to add %s to wildcard table", name);
   if (wildcard.match(name)) {
     // We turn wildcards into the reverse DNS form, then insert them into the trie
     // so that we can do a longest match lookup.
     char namebuf[TS_MAX_HOST_NAME_LEN + 1];
     char * reversed;
     ats_scoped_obj<ContextRef> ref;
+    Debug("skh", "Add %s to wildcard table", name);
 
     reversed = reverse_dns_name(name + 1, namebuf);
     if (!reversed) {
@@ -298,10 +300,10 @@ SSLContextStorage::insert(const char* name, int idx)
       }
       idx = -1;
     }
-    
 
     Debug("ssl", "%s wildcard certificate for '%s' as '%s' with SSL_CTX %p [%d]", 
       idx >= 0 ? "index" : "failed to index", name, reversed, this->ctx_store[(*ref).idx].ctx, (*ref).idx);
+    ref.release();
   } else {
     InkHashTableValue value;
 
