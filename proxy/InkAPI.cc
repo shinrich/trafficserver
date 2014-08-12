@@ -362,11 +362,6 @@ tsapi int TS_HTTP_LEN_PUSH;
 /* MLoc Constants */
 tsapi const TSMLoc TS_NULL_MLOC = (TSMLoc)NULL;
 
-/* SSL related constants */
-tsapi int const TS_SSL_HOOK_OP_NONE = SSLNetVConnection::HOOK_OP_NONE;
-tsapi int const TS_SSL_HOOK_OP_TUNNEL = SSLNetVConnection::HOOK_OP_TUNNEL;
-tsapi int const TS_SSL_HOOK_OP_TERMINATE = SSLNetVConnection::HOOK_OP_TERMINATE;
-
 HttpAPIHooks *http_global_hooks = NULL;
 LifecycleAPIHooks* lifecycle_hooks = NULL;
 ConfigUpdateCbTable *global_config_cbs = NULL;
@@ -8682,11 +8677,11 @@ TSSslVConnContextSet(TSSslVConn sslp, void* ctx)
 }
 
 TSReturnCode
-TSSslVConnRequestSet(TSSslVConn sslp, int op)
+TSSslVConnOpSet(TSSslVConn sslp, TSSslVConnOp op)
 {
   TSReturnCode zret = TS_SUCCESS;
-  if (0 != sslp && SSLNetVConnection::HOOK_OP_NONE <= op && op <= SSLNetVConnection::HOOK_OP_LAST) {
-    reinterpret_cast<SSLNetVConnection*>(sslp)->hookOpRequested = static_cast<SSLNetVConnection::HookOp>(op);
+  if (0 != sslp && TS_SSL_HOOK_OP_NONE <= op && op <= TS_SSL_HOOK_OP_LAST) {
+    reinterpret_cast<SSLNetVConnection*>(sslp)->hookOpRequested = static_cast<TSSslVConnOp>(op);
   } else {
     zret = TS_ERROR;
   }
@@ -9952,9 +9947,7 @@ extern "C"
   tsapi TSReturnCode TSSslVConnContextSet(TSSslVConn sslp, void* ctx);
   /// Set the hook operation request field.
   tsapi TSReturnCode TSSslVConnRequestSet(TSSslVConn sslp, int op);
-  /// Hook operation codes
-  extern tsapi int const TS_SSL_HOOK_OP_NONE;
-  extern tsapi int const TS_SSL_HOOK_OP_TERMINATE;
+
   /* --------------------------------------------------------------------------
 
      HTTP transactions */

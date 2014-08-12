@@ -400,7 +400,7 @@ SSLNetVConnection::net_read_io(NetHandler *nh, EThread *lthread)
   }
 
   // Shutdown if requested by hook
-  if (HOOK_OP_TERMINATE == hookOpRequested) {
+  if (TS_SSL_HOOK_OP_TERMINATE == hookOpRequested) {
     this->read.triggered = 0;
     this->readSignalDone(VC_EVENT_EOS, nh);
     return;
@@ -606,7 +606,7 @@ SSLNetVConnection::load_buffer_and_write(int64_t towrite, int64_t &wattempted, i
 }
 
 SSLNetVConnection::SSLNetVConnection():
-  hookOpRequested(HOOK_OP_NONE),
+  hookOpRequested(TS_SSL_HOOK_OP_NONE),
   sslHandShakeComplete(false),
   sslClientConnection(false),
   sslClientRenegotiationAbort(false),
@@ -648,7 +648,7 @@ SSLNetVConnection::free(EThread * t) {
   }
   sslPreAcceptHookState = SSL_HOOKS_INIT;
   curHook = 0;
-  hookOpRequested = HOOK_OP_NONE;
+  hookOpRequested = TS_SSL_HOOK_OP_NONE;
   npnSet = NULL;
   npnEndpoint= NULL;
 
@@ -763,11 +763,11 @@ SSLNetVConnection::sslServerHandShakeEvent(int &err)
   }
 
   // If a tunnel was requested, convert. Note we can't arrive here if a hook is active.
-  if (HOOK_OP_TUNNEL == hookOpRequested) {
+  if (TS_SSL_HOOK_OP_TUNNEL == hookOpRequested) {
     this->attributes = HttpProxyPort::TRANSPORT_BLIND_TUNNEL;
     sslHandShakeComplete = 1;
     return EVENT_DONE;
-  } else if (HOOK_OP_TERMINATE == hookOpRequested) {
+  } else if (TS_SSL_HOOK_OP_TERMINATE == hookOpRequested) {
     sslHandShakeComplete = 1;
     return EVENT_DONE;
   }

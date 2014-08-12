@@ -1231,11 +1231,8 @@ extern "C"
   /// This can only be usefully called from the TS_SSL_CLIENT_PRE_HANDSHAKE_HOOK.
   tsapi TSReturnCode TSSslVConnContextSet(TSSslVConn sslp, void* ctx);
   /// Set the hook operation request field.
-  tsapi TSReturnCode TSSslVConnRequestSet(TSSslVConn sslp, int op);
-  /// Hook operation codes
-  extern tsapi int const TS_SSL_HOOK_OP_NONE;
-  extern tsapi int const TS_SSL_HOOK_OP_TUNNEL;
-  extern tsapi int const TS_SSL_HOOK_OP_TERMINATE;
+  tsapi TSReturnCode TSSslVConnOpSet(TSSslVConn sslp, TSSslVConnOp op);
+
   /* --------------------------------------------------------------------------
      HTTP transactions */
   tsapi void TSHttpTxnHookAdd(TSHttpTxn txnp, TSHttpHookID id, TSCont contp);
