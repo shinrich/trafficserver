@@ -131,6 +131,22 @@ public:
   /// Set by asynchronous hooks to request a specific operation.
   TSSslVConnOp hookOpRequested;
 
+  int64_t read_raw_data();
+  void initialize_handshake_buffers() {
+    this->handShakeBuffer = new_MIOBuffer();
+    this->handShakeReader = this->handShakeBuffer->alloc_reader();
+    this->handShakeHolder = this->handShakeReader->clone();
+  }
+  void free_handshake_buffers() {
+    
+    this->handShakeReader->dealloc();
+    this->handShakeHolder->dealloc();
+    free_MIOBuffer(this->handShakeBuffer);
+    this->handShakeReader = NULL;
+    this->handShakeHolder = NULL;
+    this->handShakeBuffer = NULL;
+  }
+
 private:
   SSLNetVConnection(const SSLNetVConnection &);
   SSLNetVConnection & operator =(const SSLNetVConnection &);
@@ -138,6 +154,9 @@ private:
   bool sslHandShakeComplete;
   bool sslClientConnection;
   bool sslClientRenegotiationAbort;
+  MIOBuffer *handShakeBuffer;
+  IOBufferReader *handShakeHolder;
+  IOBufferReader *handShakeReader;
 
   enum {
     SSL_HOOKS_INIT,   ///< Initial state, no hooks called yet.

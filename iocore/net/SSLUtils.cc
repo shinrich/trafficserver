@@ -20,6 +20,7 @@
  */
 
 #include "ink_config.h"
+#include "records/I_RecHttp.h"
 #include "libts.h"
 #include "I_Layout.h"
 #include "P_Net.h"
@@ -200,6 +201,12 @@ ssl_servername_callback(SSL * ssl, int * ad, void * arg)
   if (likely(servername)) {
     cc = lookup->find((char *)servername);
     if (cc && cc->ctx) ctx = cc->ctx;
+    if (cc && SSLCertContext::OPT_TUNNEL == cc->opt && netvc->get_is_transparent()) {
+      Debug("amc", "Converting to blind tunnel for %s", servername);
+      netvc->attributes = HttpProxyPort::TRANSPORT_BLIND_TUNNEL;
+      netvc->setSSLHandShakeComplete(true);
+      return SSL_TLSEXT_ERR_READ_AGAIN;
+    }
   }
 
   // If there's no match on the server name, try to match on the peer address.
