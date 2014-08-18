@@ -363,6 +363,7 @@ tsapi int TS_HTTP_LEN_PUSH;
 tsapi const TSMLoc TS_NULL_MLOC = (TSMLoc)NULL;
 
 HttpAPIHooks *http_global_hooks = NULL;
+SslAPIHooks *ssl_hooks = NULL;
 LifecycleAPIHooks* lifecycle_hooks = NULL;
 ConfigUpdateCbTable *global_config_cbs = NULL;
 
@@ -639,6 +640,14 @@ TSReturnCode
 sdk_sanity_check_lifecycle_hook_id(TSLifecycleHookID id)
 {
   if (id<TS_LIFECYCLE_PORTS_INITIALIZED_HOOK || id> TS_LIFECYCLE_LAST_HOOK)
+    return TS_ERROR;
+  return TS_SUCCESS;
+}
+
+TSReturnCode
+sdk_sanity_check_ssl_hook_id(TSSslHookID id)
+{
+  if (id<TS_SSL_FIRST_HOOK || id> TS_SSL_LAST_HOOK)
     return TS_ERROR;
   return TS_SUCCESS;
 }
@@ -1589,6 +1598,7 @@ api_init()
     TS_HTTP_LEN_S_MAXAGE = HTTP_LEN_S_MAXAGE;
 
     http_global_hooks = new HttpAPIHooks;
+    ssl_hooks = new SslAPIHooks;
     lifecycle_hooks = new LifecycleAPIHooks;
     global_config_cbs = new ConfigUpdateCbTable;
 
@@ -4381,15 +4391,18 @@ TSHttpHookAdd(TSHttpHookID id, TSCont contp)
   INKContInternal *icontp;
   sdk_assert(sdk_sanity_check_continuation(contp) == TS_SUCCESS);
   sdk_assert(sdk_sanity_check_hook_id(id) == TS_SUCCESS);
-  extern bool SSLPreAcceptHookRegister(Continuation*);
 
   icontp = reinterpret_cast<INKContInternal*>(contp);
-  if (TS_SSL_CLIENT_PRE_HANDSHAKE_HOOK == id) {
-    SSLPreAcceptHookRegister(icontp);
-  }
-  else {
-    http_global_hooks->append(id, icontp);
-  }
+  http_global_hooks->append(id, icontp);
+}
+
+void
+TSSslHookAdd(TSSslHookID id, TSCont contp) 
+{
+  sdk_assert(sdk_sanity_check_continuation(contp) == TS_SUCCESS);
+  sdk_assert(sdk_sanity_check_ssl_hook_id(id) == TS_SUCCESS);
+  INKContInternal *icontp = reinterpret_cast<INKContInternal*>(contp);
+  ssl_hooks->append(id, icontp);
 }
 
 void
@@ -9928,9 +9941,11 @@ extern "C"
      Plugin lifecycle  hooks */
   tsapi void TSLifecycleHookAdd(TSLifecycleHookID id, TSCont contp);
   /* --------------------------------------------------------------------------
+     SSL hooks */ 
+  tsapi void TSSslHookAdd(TSSslHookID id, TSCont contp);
+  /* --------------------------------------------------------------------------
      HTTP hooks */
   tsapi void TSHttpHookAdd(TSHttpHookID id, TSCont contp);
-
   /* --------------------------------------------------------------------------
      HTTP sessions */
   tsapi void TSHttpSsnHookAdd(TSHttpSsn ssnp, TSHttpHookID id, TSCont contp);

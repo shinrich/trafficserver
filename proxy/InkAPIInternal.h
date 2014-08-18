@@ -290,6 +290,10 @@ class HttpAPIHooks : public FeatureAPIHooks<TSHttpHookID, TS_HTTP_LAST_HOOK>
 {
 };
 
+class SslAPIHooks : public FeatureAPIHooks<TSSslHookID, TS_SSL_LAST_HOOK>
+{
+};
+
 class LifecycleAPIHooks : public FeatureAPIHooks<TSLifecycleHookID, TS_LIFECYCLE_LAST_HOOK>
 {
 };
@@ -344,6 +348,7 @@ void api_init();
 
 extern HttpAPIHooks *http_global_hooks;
 extern LifecycleAPIHooks* lifecycle_hooks;
+extern SslAPIHooks* ssl_hooks;
 extern ConfigUpdateCbTable *global_config_cbs;
 
 #endif /* __INK_API_INTERNAL_H__ */

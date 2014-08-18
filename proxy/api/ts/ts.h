@@ -1213,6 +1213,9 @@ extern "C"
      Plugin lifecycle  hooks */
   tsapi void TSLifecycleHookAdd(TSLifecycleHookID id, TSCont contp);
   /* --------------------------------------------------------------------------
+     SSL hooks */
+  tsapi void TSSslHookAdd(TSSslHookID id, TSCont contp);
+  /* --------------------------------------------------------------------------
      HTTP hooks */
   tsapi void TSHttpHookAdd(TSHttpHookID id, TSCont contp);
 

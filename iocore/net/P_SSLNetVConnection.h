@@ -166,7 +166,7 @@ private:
   } sslPreAcceptHookState;
   /// The current hook.
   /// @note For @C SSL_HOOKS_INVOKE, this is the hook to invoke.
-  Continuation* curHook;
+  class APIHook* curHook;
 
   const SSLNextProtocolSet * npnSet;
   Continuation * npnEndpoint;

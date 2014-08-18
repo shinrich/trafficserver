@@ -184,7 +184,7 @@ TSPluginInit(int argc, const char *argv[]) {
   } else if (0 == (cb_pa = TSContCreate(&CB_Pre_Accept, TSMutexCreate()))) {
     TSError(PCP "Failed to pre-accept callback.");
   } else {
-    TSHttpHookAdd(TS_SSL_CLIENT_PRE_HANDSHAKE_HOOK, cb_pa);
+    TSSslHookAdd(TS_SSL_CLIENT_PRE_HANDSHAKE_HOOK, cb_pa);
     success = true;
   }
  
