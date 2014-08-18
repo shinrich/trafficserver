@@ -769,7 +769,10 @@ SSLNetVConnection::load_buffer_and_write(int64_t towrite, int64_t &wattempted, i
 }
 
 SSLNetVConnection::SSLNetVConnection():
+  ssl(NULL),
+  sslHandshakeBeginTime(0),
   hookOpRequested(TS_SSL_HOOK_OP_NONE),
+  sslCertLookupCache(NULL),
   sslHandShakeComplete(false),
   sslClientConnection(false),
   sslClientRenegotiationAbort(false),
@@ -777,11 +780,11 @@ SSLNetVConnection::SSLNetVConnection():
   handShakeHolder(NULL),
   handShakeReader(NULL),
   sslPreAcceptHookState(SSL_HOOKS_INIT),
+  sslSNIHookState(SNI_HOOKS_INIT),
   npnSet(NULL),
   npnEndpoint(NULL)
 {
-  ssl = NULL;
-  sslHandshakeBeginTime = 0;
+  sniServername[0] = '\0';
 }
 
 void
@@ -856,6 +859,8 @@ SSLNetVConnection::sslStartHandShake(int event, int &err)
         Debug("amc", "Converting to blind tunnel");
         this->attributes = HttpProxyPort::TRANSPORT_BLIND_TUNNEL;
         sslHandShakeComplete = 1;
+        SSL_free(this->ssl);
+        this->ssl = NULL;
         return EVENT_DONE;
       }
  
@@ -901,6 +906,7 @@ SSLNetVConnection::sslServerHandShakeEvent(int &err)
     Debug("amc", "Handle pre accept hooks");
     // Get the first hook if we haven't started invoking yet.
     if (SSL_HOOKS_INIT == sslPreAcceptHookState) {
+      this->sslCertLookupCache = SSLCertificateConfig::acquire();
       curHook = ssl_hooks->get(TS_SSL_CLIENT_PRE_HANDSHAKE_HOOK);
       sslPreAcceptHookState = SSL_HOOKS_INVOKE;
     } else if (SSL_HOOKS_INVOKE == sslPreAcceptHookState) {
@@ -911,6 +917,8 @@ SSLNetVConnection::sslServerHandShakeEvent(int &err)
     if (SSL_HOOKS_INVOKE == sslPreAcceptHookState) {
       if (0 == curHook) { // no hooks left, we're done
         sslPreAcceptHookState = SSL_HOOKS_DONE;
+        SSLCertificateConfig::release(this->sslCertLookupCache);
+        this->sslCertLookupCache = NULL;
         Debug("amc", "Finished pre accept hooks");
       } else {
         Debug("amc", "Invoking pre accept hook");
@@ -936,6 +944,8 @@ SSLNetVConnection::sslServerHandShakeEvent(int &err)
   // Note we can't arrive here if a hook is active.
   if (TS_SSL_HOOK_OP_TUNNEL == hookOpRequested) {
     this->attributes = HttpProxyPort::TRANSPORT_BLIND_TUNNEL;
+    SSL_free(this->ssl);
+    this->ssl = NULL;
     sslHandShakeComplete = 1;
     return EVENT_DONE;
   } else if (TS_SSL_HOOK_OP_TERMINATE == hookOpRequested) {
@@ -1201,14 +1211,24 @@ SSLNetVConnection::select_next_protocol(SSL * ssl, const unsigned char ** out, u
 }
 
 void
-SSLNetVConnection::preAcceptReenable(NetHandler* nh) {
-  Debug("amc", "Pre Accept reenable - %s",
+SSLNetVConnection::reenable(NetHandler* nh) {
+  if (this->sslPreAcceptHookState != SSL_HOOKS_DONE) {
+    Debug("amc", "Pre Accept reenable - %s",
         mutex->thread_holding == this_ethread() ? "locked" :
         mutex->thread_holding ? "bad lock" : "unlocked"
     );
-  sslPreAcceptHookState = SSL_HOOKS_INVOKE;
-  this->readReschedule(nh);
+    this->sslPreAcceptHookState = SSL_HOOKS_INVOKE;
+    this->readReschedule(nh);
+  } else {
+    Debug("amc", "SNI reenable - %s",
+        mutex->thread_holding == this_ethread() ? "locked" :
+        mutex->thread_holding ? "bad lock" : "unlocked"
+    );
+    // Reenabling from the SNI callback
+    this->sslSNIHookState = SNI_HOOKS_CONTINUE;
+  }
 }
+
 
 bool
 SSLNetVConnection::sslContextSet(void* ctx) {
@@ -1219,6 +1239,33 @@ SSLNetVConnection::sslContextSet(void* ctx) {
     zret = false;
   Debug("amc", "sslContext %s", zret ? "set" : "not set");
   return zret;
+}
+
+bool 
+SSLNetVConnection::callHooks(TSSslHookID eventId) 
+{
+  // Only dealing with the SNI hook so far
+  ink_assert(eventId == TS_SSL_SNI_HOOK);
+
+  APIHook *hook = ssl_hooks->get(TS_SSL_SNI_HOOK);
+  bool reenabled = true;
+  while (hook && reenabled) {
+    // Must reset to a completed state for each invocation
+    this->sslSNIHookState = SNI_HOOKS_DONE;
+
+    // Invoke the hook
+    hook->invoke(TS_SSL_SNI_HOOK, this);
+
+    // If it did not re-enable, return the code to 
+    // stop the accept processing
+    if (this->sslSNIHookState == SNI_HOOKS_DONE) {
+      reenabled = false;
+    }
+
+    // Otherwise, look for the next plugin code
+    hook = hook->next();
+  }
+  return reenabled;
 }
 
 

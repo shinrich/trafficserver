@@ -1230,11 +1230,16 @@ extern "C"
   /// Re-enable an SSL connection from a hook.
   /// This must be called exactly once before the SSL connection will resume.
   tsapi void TSSslVConnReenable(TSSslVConn sslvcp);
-  /// Set the SSL Context to @a ctx for @a sslp.
-  /// This can only be usefully called from the TS_SSL_CLIENT_PRE_HANDSHAKE_HOOK.
-  tsapi TSReturnCode TSSslVConnContextSet(TSSslVConn sslp, void* ctx);
   /// Set the hook operation request field.
   tsapi TSReturnCode TSSslVConnOpSet(TSSslVConn sslp, TSSslVConnOp op);
+  // Return the SSL object associated with the connection
+  tsapi TSSslVConnObject TSSslVConnObjectGet(TSSslVConn sslp);
+  // Return the servername specified by the SNI extension.  NULL if not
+  // specified
+  tsapi char * TSSslVConnServernameGet(TSSslVConn sslp);
+  // Fetch a SSL context from the global lookup table
+  tsapi TSSslContext TSSslCertFindByName(TSSslVConn sslp, char *name);
+  tsapi TSSslContext TSSslCertFindByAddress(TSSslVConn sslp, struct sockaddr const*);
 
   /* --------------------------------------------------------------------------
      HTTP transactions */

@@ -8668,7 +8668,7 @@ public:
   int event_handler(int, void*)
   {
     Debug("amc", "SSL VConn reenable callback hit");
-    m_vc->preAcceptReenable(m_vc->nh);
+    m_vc->reenable(m_vc->nh);
     delete this;
     return 0;
   }
@@ -8677,18 +8677,8 @@ private:
   SSLNetVConnection* m_vc;
 };
 
-/// SSL Hooks
-TSReturnCode
-TSSslVConnContextSet(TSSslVConn sslp, void* ctx)
-{
-  return
-    0 != sslp &&
-    0 != ctx &&
-    reinterpret_cast<SSLNetVConnection*>(sslp)->sslContextSet(ctx)
-    ? TS_SUCCESS : TS_ERROR
-    ;
-}
 
+/// SSL Hooks
 TSReturnCode
 TSSslVConnOpSet(TSSslVConn sslp, TSSslVConnOp op)
 {
@@ -8699,6 +8689,61 @@ TSSslVConnOpSet(TSSslVConn sslp, TSSslVConnOp op)
     zret = TS_ERROR;
   }
   return zret;
+}
+
+TSSslVConnObject
+TSSslVConnObjectGet(TSSslVConn sslp) 
+{
+  TSSslVConnObject ssl = NULL;
+  if (sslp != NULL) {
+    ssl = reinterpret_cast<tsapi_ssl_obj*>(reinterpret_cast<SSLNetVConnection*>(sslp)->ssl);
+  }
+  return ssl;
+}
+
+tsapi TSSslContext TSSslCertFindByName(TSSslVConn sslp, char *name) 
+{
+  TSSslContext ret = NULL;
+  if (sslp != NULL) {
+    SSLCertLookup *lookup = reinterpret_cast<SSLCertLookup *>((reinterpret_cast<SSLNetVConnection*>(sslp)->sslCertLookupCache));
+    if (lookup != NULL) {
+      SSLCertContext *cc = lookup->find(name);
+      if (cc && cc->ctx) {
+        ret = reinterpret_cast<TSSslContext>(cc->ctx);
+      }
+    }
+  }
+  return ret;
+}
+tsapi TSSslContext TSSslCertFindByAddress(TSSslVConn sslp, struct sockaddr const* addr)
+{
+  TSSslContext ret = NULL;
+  if (sslp != NULL) {
+    SSLCertLookup *lookup = reinterpret_cast<SSLCertLookup *>((reinterpret_cast<SSLNetVConnection*>(sslp)->sslCertLookupCache));
+    if (lookup != NULL) {
+      IpEndpoint ip;
+      ip.assign(addr);
+      SSLCertContext *cc = lookup->find(ip);
+      if (cc && cc->ctx) {
+        ret = reinterpret_cast<TSSslContext>(cc->ctx);
+      }
+    }
+  }
+  return ret;
+}
+
+char *
+TSSslVConnServernameGet(TSSslVConn sslp) 
+{
+  char *ret = NULL;
+  if (sslp != NULL) {
+
+    ret = reinterpret_cast<char*>(reinterpret_cast<SSLNetVConnection*>(sslp)->sniServername);
+    if (ret[0] == '\0') {
+      ret = NULL;
+    }
+  }
+  return ret;
 }
 
 
@@ -8717,8 +8762,8 @@ TSSslVConnReenable(TSSslVConn sslp)
   MUTEX_TRY_LOCK(trylock, vc->mutex, eth);
   if (!trylock) {
     vc->thread->schedule_imm(new TSSslCallback(vc));
-  } else {
-    vc->preAcceptReenable(vc->nh);
+  }   else {
+    vc->reenable(vc->nh);
   }
   Debug("amc", "Post SSL re-enabled - %s",
         vc->mutex->thread_holding == eth ? "locked" :
@@ -9959,9 +10004,8 @@ extern "C"
   tsapi void TSSslVConnReenable(TSSslVConn sslvcp);
   /// Set the SSL Context to @a ctx for @a sslp.
   /// This can only be usefully called from the TS_SSL_CLIENT_PRE_HANDSHAKE_HOOK.
-  tsapi TSReturnCode TSSslVConnContextSet(TSSslVConn sslp, void* ctx);
-  /// Set the hook operation request field.
-  tsapi TSReturnCode TSSslVConnRequestSet(TSSslVConn sslp, int op);
+  /// tsapi TSReturnCode TSSslVConnContextSet(TSSslVConn sslp, void* ctx);
+  
 
   /* --------------------------------------------------------------------------
 

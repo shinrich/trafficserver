@@ -181,18 +181,28 @@ ssl_servername_callback(SSL * ssl, int * ad, void * arg)
 {
   SSL_CTX *           ctx = NULL;
   SSLCertContext *    cc = NULL;
-  SSLCertLookup *     lookup = (SSLCertLookup *) arg;
+  // Fetching the lookup via the callback arg allows for race
+  // condition with reconfigure
+  //SSLCertLookup *     lookup = (SSLCertLookup *) arg;
   const char *        servername = SSL_get_servername(ssl, TLSEXT_NAMETYPE_host_name);
   SSLNetVConnection * netvc = (SSLNetVConnection *)SSL_get_app_data(ssl);
+  SSLCertLookup *lookup = netvc->sslCertLookupCache  = SSLCertificateConfig::acquire();
   bool found = true;
+  bool reenabled;
+  int retval = SSL_TLSEXT_ERR_OK;
 
   Debug("ssl", "ssl_servername_callback ssl=%p ad=%d lookup=%p server=%s handshake_complete=%d", ssl, *ad, lookup, servername,
     netvc->getSSLHandShakeComplete());
+  
+  if (servername != NULL) {
+    strncpy(netvc->sniServername, servername, TS_MAX_HOST_NAME_LEN);
+  }
 
   // catch the client renegotiation early on
   if (SSLConfigParams::ssl_allow_client_renegotiation == false && netvc->getSSLHandShakeComplete()) {
     Debug("ssl", "ssl_servername_callback trying to renegotiate from the client");
-    return SSL_TLSEXT_ERR_ALERT_FATAL;
+    retval = SSL_TLSEXT_ERR_ALERT_FATAL;
+    goto done;
   }
 
   // The incoming SSL_CTX is either the one mapped from the inbound IP address or the default one. If we
@@ -205,7 +215,8 @@ ssl_servername_callback(SSL * ssl, int * ad, void * arg)
       Debug("amc", "Converting to blind tunnel for %s", servername);
       netvc->attributes = HttpProxyPort::TRANSPORT_BLIND_TUNNEL;
       netvc->setSSLHandShakeComplete(true);
-      return SSL_TLSEXT_ERR_READ_AGAIN;
+      retval = SSL_TLSEXT_ERR_READ_AGAIN;
+      goto done;
     }
   }
 
@@ -230,13 +241,26 @@ ssl_servername_callback(SSL * ssl, int * ad, void * arg)
   Debug("ssl", "ssl_servername_callback %s SSL context %p for requested name '%s'", found ? "found" : "using", ctx, servername);
 
   if (ctx == NULL) {
-    return SSL_TLSEXT_ERR_NOACK;
+    retval = SSL_TLSEXT_ERR_NOACK;
+    goto done;
   }
 
+  // Call the plugin SNI code
+  reenabled = netvc->callHooks(TS_SSL_SNI_HOOK);
+  // If it did not re-enable, return the code to 
+  // stop the accept processing
+  if (!reenabled){
+    retval = SSL_TLSEXT_ERR_READ_AGAIN;
+    goto done;
+  }
+
+done:
+  SSLCertificateConfig::release(netvc->sslCertLookupCache);
+  netvc->sslCertLookupCache = NULL;
   // We need to return one of the SSL_TLSEXT_ERR constants. If we return an
   // error, we can fill in *ad with an alert code to propgate to the
   // client, see SSL_AD_*.
-  return SSL_TLSEXT_ERR_OK;
+  return retval;
 }
 
 #endif /* TS_USE_TLS_SNI */
@@ -248,7 +272,10 @@ ssl_context_enable_sni(SSL_CTX * ctx, SSLCertLookup * lookup)
   if (ctx) {
     Debug("ssl", "setting SNI callbacks with for ctx %p", ctx);
     SSL_CTX_set_tlsext_servername_callback(ctx, ssl_servername_callback);
-    SSL_CTX_set_tlsext_servername_arg(ctx, lookup);
+    // Possible race conditions against reconfigure here
+    // Better to use the SSLCertificate.acquire function to access the
+    // lookup data structure safely
+    //SSL_CTX_set_tlsext_servername_arg(ctx, lookup);
   }
 #else
   (void)lookup;

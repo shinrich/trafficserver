@@ -53,6 +53,7 @@
 #endif
 
 class SSLNextProtocolSet;
+struct SSLCertLookup;
 
 //////////////////////////////////////////////////////////////////
 //
@@ -122,14 +123,19 @@ public:
     sslClientRenegotiationAbort = state;
   };
 
-  /// Reeanable the VC after a pre-accept hook is called.
-  virtual void preAcceptReenable(NetHandler* nh);
+  /// Reenable the VC after a pre-accept or SNI hook is called.
+  virtual void reenable(NetHandler* nh);
   /// Set the SSL context.
   /// @note This must be called after the SSL endpoint has been created.
   virtual bool sslContextSet(void* ctx);
 
   /// Set by asynchronous hooks to request a specific operation.
   TSSslVConnOp hookOpRequested;
+
+  // Store the servername returned by SNI
+  char sniServername[TS_MAX_HOST_NAME_LEN];
+
+  SSLCertLookup *sslCertLookupCache;
 
   int64_t read_raw_data();
   void initialize_handshake_buffers() {
@@ -146,6 +152,8 @@ public:
     this->handShakeHolder = NULL;
     this->handShakeBuffer = NULL;
   }
+  // Returns true if all the hooks reenabled
+  bool callHooks(TSSslHookID eventId);
 
 private:
   SSLNetVConnection(const SSLNetVConnection &);
@@ -158,15 +166,24 @@ private:
   IOBufferReader *handShakeHolder;
   IOBufferReader *handShakeReader;
 
+  /// The current hook.
+  /// @note For @C SSL_HOOKS_INVOKE, this is the hook to invoke.
+  class APIHook* curHook;
+
   enum {
     SSL_HOOKS_INIT,   ///< Initial state, no hooks called yet.
     SSL_HOOKS_INVOKE, ///< Waiting to invoke hook.
     SSL_HOOKS_ACTIVE, ///< Hook invoked, waiting for it to complete.
+    SSL_HOOKS_CONTINUE, ///< All hooks have been called and completed
     SSL_HOOKS_DONE    ///< All hooks have been called and completed
   } sslPreAcceptHookState;
-  /// The current hook.
-  /// @note For @C SSL_HOOKS_INVOKE, this is the hook to invoke.
-  class APIHook* curHook;
+
+  enum {
+    SNI_HOOKS_INIT,
+    SNI_HOOKS_ACTIVE,
+    SNI_HOOKS_DONE,
+    SNI_HOOKS_CONTINUE
+  } sslSNIHookState;
 
   const SSLNextProtocolSet * npnSet;
   Continuation * npnEndpoint;

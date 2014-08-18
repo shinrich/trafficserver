@@ -824,6 +824,7 @@ extern "C"
   typedef struct tsapi_httpssn* TSHttpSsn;
   typedef struct tsapi_httptxn* TSHttpTxn;
   typedef struct tsapi_ssl_vc* TSSslVConn;
+  typedef struct tsapi_ssl_obj* TSSslVConnObject;
   typedef struct tsapi_httpaltinfo* TSHttpAltInfo;
   typedef struct tsapi_mimeparser* TSMimeParser;
   typedef struct tsapi_httpparser* TSHttpParser;
@@ -838,6 +839,7 @@ extern "C"
   typedef struct tsapi_config* TSConfig;
   typedef struct tsapi_cont* TSCont;
   typedef struct tsapi_cont* TSVConn; /* a VConn is really a specialized TSCont */
+  typedef struct tsapi_ssl_context* TSSslContext;
   typedef struct tsapi_action* TSAction;
   typedef struct tsapi_iobuffer* TSIOBuffer;
   typedef struct tsapi_iobufferdata* TSIOBufferData;
