@@ -82,13 +82,13 @@ CB_servername_whitelist(TSCont contp, TSEvent event, void *edata) {
 
   bool do_blind_tunnel = true;
   if (servername != NULL) {
-    TSSslContext ctxobj = TSSslCertFindByName(ssl_vc, servername);
+    TSSslContext ctxobj = TSSslCertFindByName(servername);
     if (ctxobj != NULL) {
       do_blind_tunnel = false;
     }
     else {
       // Look up by destination address
-      ctxobj = TSSslCertFindByAddress(ssl_vc, TSNetVConnRemoteAddrGet(vc));
+      ctxobj = TSSslCertFindByAddress(TSNetVConnRemoteAddrGet(vc));
       if (ctxobj != NULL) {
         do_blind_tunnel = false;
       }

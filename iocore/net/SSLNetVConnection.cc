@@ -771,8 +771,7 @@ SSLNetVConnection::load_buffer_and_write(int64_t towrite, int64_t &wattempted, i
 SSLNetVConnection::SSLNetVConnection():
   ssl(NULL),
   sslHandshakeBeginTime(0),
-  hookOpRequested(TS_SSL_HOOK_OP_NONE),
-  sslCertLookupCache(NULL),
+  hookOpRequested(TS_SSL_HOOK_OP_DEFAULT),
   sslHandShakeComplete(false),
   sslClientConnection(false),
   sslClientRenegotiationAbort(false),
@@ -817,7 +816,7 @@ SSLNetVConnection::free(EThread * t) {
   }
   sslPreAcceptHookState = SSL_HOOKS_INIT;
   curHook = 0;
-  hookOpRequested = TS_SSL_HOOK_OP_NONE;
+  hookOpRequested = TS_SSL_HOOK_OP_DEFAULT;
   npnSet = NULL;
   npnEndpoint= NULL;
 
@@ -906,7 +905,6 @@ SSLNetVConnection::sslServerHandShakeEvent(int &err)
     Debug("amc", "Handle pre accept hooks");
     // Get the first hook if we haven't started invoking yet.
     if (SSL_HOOKS_INIT == sslPreAcceptHookState) {
-      this->sslCertLookupCache = SSLCertificateConfig::acquire();
       curHook = ssl_hooks->get(TS_SSL_CLIENT_PRE_HANDSHAKE_HOOK);
       sslPreAcceptHookState = SSL_HOOKS_INVOKE;
     } else if (SSL_HOOKS_INVOKE == sslPreAcceptHookState) {
@@ -917,8 +915,6 @@ SSLNetVConnection::sslServerHandShakeEvent(int &err)
     if (SSL_HOOKS_INVOKE == sslPreAcceptHookState) {
       if (0 == curHook) { // no hooks left, we're done
         sslPreAcceptHookState = SSL_HOOKS_DONE;
-        SSLCertificateConfig::release(this->sslCertLookupCache);
-        this->sslCertLookupCache = NULL;
         Debug("amc", "Finished pre accept hooks");
       } else {
         Debug("amc", "Invoking pre accept hook");

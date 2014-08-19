@@ -184,14 +184,14 @@ ssl_servername_callback(SSL * ssl, int * ad, void * arg)
   // Fetching the lookup via the callback arg allows for race
   // condition with reconfigure
   //SSLCertLookup *     lookup = (SSLCertLookup *) arg;
+  SSLCertLookup *lookup = SSLCertificateConfig::acquire();
   const char *        servername = SSL_get_servername(ssl, TLSEXT_NAMETYPE_host_name);
   SSLNetVConnection * netvc = (SSLNetVConnection *)SSL_get_app_data(ssl);
-  SSLCertLookup *lookup = netvc->sslCertLookupCache  = SSLCertificateConfig::acquire();
   bool found = true;
   bool reenabled;
   int retval = SSL_TLSEXT_ERR_OK;
 
-  Debug("ssl", "ssl_servername_callback ssl=%p ad=%d lookup=%p server=%s handshake_complete=%d", ssl, *ad, lookup, servername,
+  Debug("ssl", "ssl_servername_callback ssl=%p ad=%d server=%s handshake_complete=%d", ssl, *ad, servername,
     netvc->getSSLHandShakeComplete());
   
   if (servername != NULL) {
@@ -255,8 +255,7 @@ ssl_servername_callback(SSL * ssl, int * ad, void * arg)
   }
 
 done:
-  SSLCertificateConfig::release(netvc->sslCertLookupCache);
-  netvc->sslCertLookupCache = NULL;
+  SSLCertificateConfig::release(lookup);
   // We need to return one of the SSL_TLSEXT_ERR constants. If we return an
   // error, we can fill in *ad with an alert code to propgate to the
   // client, see SSL_AD_*.

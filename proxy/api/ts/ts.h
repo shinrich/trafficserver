@@ -1238,8 +1238,8 @@ extern "C"
   // specified
   tsapi char * TSSslVConnServernameGet(TSSslVConn sslp);
   // Fetch a SSL context from the global lookup table
-  tsapi TSSslContext TSSslCertFindByName(TSSslVConn sslp, char *name);
-  tsapi TSSslContext TSSslCertFindByAddress(TSSslVConn sslp, struct sockaddr const*);
+  tsapi TSSslContext TSSslCertFindByName(char *name);
+  tsapi TSSslContext TSSslCertFindByAddress(struct sockaddr const*);
 
   /* --------------------------------------------------------------------------
      HTTP transactions */

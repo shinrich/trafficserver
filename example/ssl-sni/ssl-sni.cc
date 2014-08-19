@@ -108,7 +108,7 @@ CB_servername(TSCont contp, TSEvent event, void *edata) {
       TSDebug("skh", "SNI name is yahoo ssl obj is %p", sslobj);
       if (sslobj) {
         char *test_name = "safelyfiled.com";
-        TSSslContext ctxobj = TSSslCertFindByName(ssl_vc, test_name);
+        TSSslContext ctxobj = TSSslCertFindByName(test_name);
         if (ctxobj != NULL) {
           TSDebug("skh", "Found cert for safelyfiled");
           SSL *ssl = reinterpret_cast<SSL *>(sslobj);

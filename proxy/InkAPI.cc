@@ -8683,7 +8683,7 @@ TSReturnCode
 TSSslVConnOpSet(TSSslVConn sslp, TSSslVConnOp op)
 {
   TSReturnCode zret = TS_SUCCESS;
-  if (0 != sslp && TS_SSL_HOOK_OP_NONE <= op && op <= TS_SSL_HOOK_OP_LAST) {
+  if (0 != sslp && TS_SSL_HOOK_OP_DEFAULT <= op && op <= TS_SSL_HOOK_OP_LAST) {
     reinterpret_cast<SSLNetVConnection*>(sslp)->hookOpRequested = static_cast<TSSslVConnOp>(op);
   } else {
     zret = TS_ERROR;
@@ -8701,33 +8701,31 @@ TSSslVConnObjectGet(TSSslVConn sslp)
   return ssl;
 }
 
-tsapi TSSslContext TSSslCertFindByName(TSSslVConn sslp, char *name) 
+tsapi TSSslContext TSSslCertFindByName(char *name) 
 {
   TSSslContext ret = NULL;
-  if (sslp != NULL) {
-    SSLCertLookup *lookup = reinterpret_cast<SSLCertLookup *>((reinterpret_cast<SSLNetVConnection*>(sslp)->sslCertLookupCache));
-    if (lookup != NULL) {
-      SSLCertContext *cc = lookup->find(name);
-      if (cc && cc->ctx) {
-        ret = reinterpret_cast<TSSslContext>(cc->ctx);
-      }
+  SSLCertLookup *lookup = SSLCertificateConfig::acquire();
+  if (lookup != NULL) {
+    SSLCertContext *cc = lookup->find(name);
+    if (cc && cc->ctx) {
+      ret = reinterpret_cast<TSSslContext>(cc->ctx);
     }
+    SSLCertificateConfig::release(lookup);
   }
   return ret;
 }
-tsapi TSSslContext TSSslCertFindByAddress(TSSslVConn sslp, struct sockaddr const* addr)
+tsapi TSSslContext TSSslCertFindByAddress(struct sockaddr const* addr)
 {
   TSSslContext ret = NULL;
-  if (sslp != NULL) {
-    SSLCertLookup *lookup = reinterpret_cast<SSLCertLookup *>((reinterpret_cast<SSLNetVConnection*>(sslp)->sslCertLookupCache));
-    if (lookup != NULL) {
-      IpEndpoint ip;
-      ip.assign(addr);
-      SSLCertContext *cc = lookup->find(ip);
-      if (cc && cc->ctx) {
-        ret = reinterpret_cast<TSSslContext>(cc->ctx);
-      }
+  SSLCertLookup *lookup = SSLCertificateConfig::acquire();
+  if (lookup != NULL) {
+    IpEndpoint ip;
+    ip.assign(addr);
+    SSLCertContext *cc = lookup->find(ip);
+    if (cc && cc->ctx) {
+      ret = reinterpret_cast<TSSslContext>(cc->ctx);
     }
+    SSLCertificateConfig::release(lookup);
   }
   return ret;
 }

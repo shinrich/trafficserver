@@ -135,8 +135,6 @@ public:
   // Store the servername returned by SNI
   char sniServername[TS_MAX_HOST_NAME_LEN];
 
-  SSLCertLookup *sslCertLookupCache;
-
   int64_t read_raw_data();
   void initialize_handshake_buffers() {
     this->handShakeBuffer = new_MIOBuffer();

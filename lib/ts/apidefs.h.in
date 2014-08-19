@@ -803,7 +803,7 @@ extern "C"
 
   /// Operation requested by asynchronous hooks during SSL processing
  typedef enum {
-    TS_SSL_HOOK_OP_NONE, ///< Null / initialization value. Do nothing.
+    TS_SSL_HOOK_OP_DEFAULT, ///< Null / initialization value. Do normal processing.
     TS_SSL_HOOK_OP_TUNNEL, ///< Switch to blind tunnel
     TS_SSL_HOOK_OP_TERMINATE, ///< Termination connection / transaction.
     TS_SSL_HOOK_OP_LAST = TS_SSL_HOOK_OP_TERMINATE ///< End marker value.
