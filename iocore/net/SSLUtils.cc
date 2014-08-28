@@ -212,10 +212,15 @@ ssl_servername_callback(SSL * ssl, int * ad, void * arg)
     cc = lookup->find((char *)servername);
     if (cc && cc->ctx) ctx = cc->ctx;
     if (cc && SSLCertContext::OPT_TUNNEL == cc->opt && netvc->get_is_transparent()) {
+#ifdef SSL_TLSEXT_ERR_READ_AGAIN
       Debug("amc", "Converting to blind tunnel for %s", servername);
       netvc->attributes = HttpProxyPort::TRANSPORT_BLIND_TUNNEL;
       netvc->setSSLHandShakeComplete(true);
       retval = SSL_TLSEXT_ERR_READ_AGAIN;
+#else 
+      Error("Must have openssl patch to support OPT_TUNNEL from SNI callback");
+      retval = SSL_TLSEXT_ERR_ALERT_FATAL;
+#endif
       goto done;
     }
   }
@@ -250,7 +255,12 @@ ssl_servername_callback(SSL * ssl, int * ad, void * arg)
   // If it did not re-enable, return the code to 
   // stop the accept processing
   if (!reenabled){
+#ifdef SSL_TLSEXT_ERR_READ_AGAIN
     retval = SSL_TLSEXT_ERR_READ_AGAIN;
+#else 
+    Error("Must have openssl patch to support OPT_TUNNEL from SNI callback");
+    retval = SSL_TLSEXT_ERR_ALERT_FATAL;
+#endif
     goto done;
   }
 

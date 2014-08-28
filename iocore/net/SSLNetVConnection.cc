@@ -1042,6 +1042,9 @@ SSLNetVConnection::sslServerHandShakeEvent(int &err)
   case SSL_ERROR_WANT_READ:
     return SSL_HANDSHAKE_WANT_READ;
 
+// This value is only defined in openssl has been patched to
+// enable the sni callback to break out of the SSL_accept processing
+#ifdef SSL_ERROR_WANT_SNI_RESOLVE
   case SSL_ERROR_WANT_SNI_RESOLVE:
     if (this->attributes == HttpProxyPort::TRANSPORT_BLIND_TUNNEL ||
         TS_SSL_HOOK_OP_TUNNEL == hookOpRequested) {
@@ -1054,6 +1057,7 @@ SSLNetVConnection::sslServerHandShakeEvent(int &err)
       Debug("skh", "No SNI tunnel request");
       return EVENT_ERROR;
     }
+#endif
 
   case SSL_ERROR_WANT_ACCEPT:
   case SSL_ERROR_WANT_X509_LOOKUP:
