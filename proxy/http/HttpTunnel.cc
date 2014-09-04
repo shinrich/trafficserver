@@ -1070,6 +1070,7 @@ HttpTunnel::producer_handler_chunked(int event, HttpTunnelProducer * p)
   case VC_EVENT_EOS:
   case VC_EVENT_READ_COMPLETE:
     if (!done) {
+TSDebug("skh", "Connection closed before chunked processing is done");
       p->chunked_handler.truncation = true;
     }
     break;
