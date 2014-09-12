@@ -891,6 +891,19 @@ HttpTunnel::producer_run(HttpTunnelProducer * p)
       c->write_vio = NULL;
       consumer_handler(VC_EVENT_WRITE_COMPLETE, c);
     } else {
+      // SKH - In the client half close case, all the buffer that
+      // will be sent from the client is already in the buffer.
+      // Go ahead and set the amount to read since we know it.
+      // We can send the FIN to the server in the VC_EVENT_WRITE_COMPLETE
+      if (p->vc_type == HT_HTTP_CLIENT) {
+        HttpClientSession * ua_vc = dynamic_cast<HttpClientSession *>(p->vc);
+        if (ua_vc->get_half_close_flag()) {
+          // This is all we will be reading, so set the write count
+          c_write = c->buffer_reader->read_avail();
+          p->alive = false;
+        }
+      }
+
       c->write_vio = c->vc->do_io_write(this, c_write, c->buffer_reader);
       ink_assert(c_write > 0);
     }
