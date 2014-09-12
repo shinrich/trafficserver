@@ -1,5 +1,5 @@
 # if !defined(_ats_util_h)
-# define ats_util_h
+# define _ats_util_h
 
 # if defined(__cplusplus)
 /** Set data to zero.

@@ -86,14 +86,16 @@ ts::ConstBuffer text;
    this connection.
  */
 int
-CB_servername(TSCont contp, TSEvent event, void *edata) {
-  TSSslVConn ssl_vc = reinterpret_cast<TSSslVConn>(edata);
-  char *servername = TSSslVConnServernameGet(ssl_vc);
+CB_servername(TSCont /* contp */, TSEvent /* event */, void *edata) {
+  TSVConn ssl_vc = reinterpret_cast<TSVConn>(edata);
+  TSSslConnection sslobj = TSVConnSSLConnectionGet(ssl_vc);
+  SSL *ssl = reinterpret_cast<SSL *>(sslobj);
+  const char *servername = SSL_get_servername(ssl, TLSEXT_NAMETYPE_host_name);
   if (servername != NULL) {
     int servername_len = strlen(servername);
     int facebook_name_len = strlen("facebook.com");
     if (servername_len >= facebook_name_len) {
-      char *server_ptr = servername + (servername_len - facebook_name_len);
+      const char *server_ptr = servername + (servername_len - facebook_name_len);
       if (strcmp(server_ptr, "facebook.com") == 0) {
         TSDebug("skh", "Blind tunnel from SNI callback");
         TSSslVConnOpSet(ssl_vc, TS_SSL_HOOK_OP_TUNNEL);
@@ -104,14 +106,11 @@ CB_servername(TSCont contp, TSEvent event, void *edata) {
     }
     // If the name is yahoo, look for a context for safelyfiled and use that here
     if (strcmp("www.yahoo.com", servername) == 0) {
-      TSSslVConnObject sslobj = TSSslVConnObjectGet(ssl_vc);
       TSDebug("skh", "SNI name is yahoo ssl obj is %p", sslobj);
       if (sslobj) {
-        char *test_name = "safelyfiled.com";
-        TSSslContext ctxobj = TSSslCertFindByName(test_name);
+        TSSslContext ctxobj = TSSslContextFindByName("safelyfiled.com");
         if (ctxobj != NULL) {
           TSDebug("skh", "Found cert for safelyfiled");
-          SSL *ssl = reinterpret_cast<SSL *>(sslobj);
           SSL_CTX *ctx = reinterpret_cast<SSL_CTX *>(ctxobj);
           SSL_set_SSL_CTX(ssl, ctx); 
           TSDebug("skh", "SNI plugin cb: replace SSL CTX");
@@ -122,7 +121,7 @@ CB_servername(TSCont contp, TSEvent event, void *edata) {
 
 
   // All done, reactivate things
-  TSSslVConnReenable(ssl_vc);
+  TSVConnReenable(ssl_vc);
   return TS_SUCCESS;
 }
 
@@ -148,7 +147,7 @@ TSPluginInit(int argc, const char *argv[]) {
   } else if (0 == (cb_sni = TSContCreate(&CB_servername, TSMutexCreate()))) {
     TSError(PCP "Failed to create SNI callback.");
   } else {
-    TSSslHookAdd(TS_SSL_SNI_HOOK, cb_sni);
+    TSHttpHookAdd(TS_SSL_SNI_HOOK, cb_sni);
     success = true;
   }
  

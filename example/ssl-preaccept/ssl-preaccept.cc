@@ -123,15 +123,15 @@ ts::ConstBuffer text;
 
 int
 CB_Pre_Accept(TSCont contp, TSEvent event, void *edata) {
-  TSSslVConn ssl_vc = reinterpret_cast<TSSslVConn>(edata);
-  ip::Addr ip(TSNetVConnLocalAddrGet(reinterpret_cast<TSVConn>(ssl_vc)));
+  TSVConn ssl_vc = reinterpret_cast<TSVConn>(edata);
+  ip::Addr ip(TSNetVConnLocalAddrGet(ssl_vc));
   char buff[INET6_ADDRSTRLEN];
-  ip::Addr ip_client(TSNetVConnRemoteAddrGet(reinterpret_cast<TSVConn>(ssl_vc)));
+  ip::Addr ip_client(TSNetVConnRemoteAddrGet(ssl_vc));
   char buff2[INET6_ADDRSTRLEN];
 
   TSDebug("skh", "Pre accept callback %p - event is %s, target address %s, client address %s"
           , ssl_vc
-          , event == TS_EVENT_SSL_CLIENT_PRE_HANDSHAKE ? "good" : "bad"
+          , event == TS_EVENT_VCONN_PRE_ACCEPT ? "good" : "bad"
           , ip.toString(buff, sizeof(buff))
           , ip_client.toString(buff2, sizeof(buff2))
     );
@@ -142,8 +142,6 @@ CB_Pre_Accept(TSCont contp, TSEvent event, void *edata) {
   bool proxy_tunnel = true;
   IpRangeQueue::iterator iter;
   for (iter = ClientBlindTunnelIp.begin(); iter != ClientBlindTunnelIp.end() && proxy_tunnel; iter++) {
-    ip::Addr low = iter->first;
-    ip::Addr high = iter->second;
     if (ip_client >= iter->first && ip_client <= iter->second) {
       proxy_tunnel = false;
     }
@@ -158,7 +156,7 @@ CB_Pre_Accept(TSCont contp, TSEvent event, void *edata) {
   }
 
   // All done, reactivate things
-  TSSslVConnReenable(ssl_vc);
+  TSVConnReenable(ssl_vc);
   return TS_SUCCESS;
 }
 
@@ -184,7 +182,7 @@ TSPluginInit(int argc, const char *argv[]) {
   } else if (0 == (cb_pa = TSContCreate(&CB_Pre_Accept, TSMutexCreate()))) {
     TSError(PCP "Failed to pre-accept callback.");
   } else {
-    TSSslHookAdd(TS_SSL_CLIENT_PRE_HANDSHAKE_HOOK, cb_pa);
+    TSHttpHookAdd(TS_VCONN_PRE_ACCEPT_HOOK, cb_pa);
     success = true;
   }
  

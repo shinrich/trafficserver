@@ -76,19 +76,20 @@ ts::ConstBuffer text;
 
 int
 CB_servername_whitelist(TSCont contp, TSEvent event, void *edata) {
-  TSVConn vc = reinterpret_cast<TSVConn>(edata);
-  TSSslVConn ssl_vc = reinterpret_cast<TSSslVConn>(edata);
-  char *servername = TSSslVConnServernameGet(ssl_vc);
+  TSVConn ssl_vc = reinterpret_cast<TSVConn>(edata);
+  TSSslConnection sslobj = TSVConnSSLConnectionGet(ssl_vc);
+  SSL *ssl = reinterpret_cast<SSL *>(sslobj);
+  const char *servername = SSL_get_servername(ssl, TLSEXT_NAMETYPE_host_name);
 
   bool do_blind_tunnel = true;
   if (servername != NULL) {
-    TSSslContext ctxobj = TSSslCertFindByName(servername);
+    TSSslContext ctxobj = TSSslContextFindByName(servername);
     if (ctxobj != NULL) {
       do_blind_tunnel = false;
     }
     else {
       // Look up by destination address
-      ctxobj = TSSslCertFindByAddress(TSNetVConnRemoteAddrGet(vc));
+      ctxobj = TSSslContextFindByAddr(TSNetVConnRemoteAddrGet(ssl_vc));
       if (ctxobj != NULL) {
         do_blind_tunnel = false;
       }
@@ -99,7 +100,7 @@ CB_servername_whitelist(TSCont contp, TSEvent event, void *edata) {
     TSSslVConnOpSet(ssl_vc, TS_SSL_HOOK_OP_TUNNEL);
     return TS_SUCCESS; // Don't re-enable so we interrupt processing
   }  
-  TSSslVConnReenable(ssl_vc);
+  TSVConnReenable(ssl_vc);
   return TS_SUCCESS;
 }        
 
@@ -125,7 +126,7 @@ TSPluginInit(int argc, const char *argv[]) {
   } else if (0 == (cb_sni = TSContCreate(&CB_servername_whitelist, TSMutexCreate()))) {
     TSError(PCP "Failed to create SNI callback.");
   } else {
-    TSSslHookAdd(TS_SSL_SNI_HOOK, cb_sni);
+    TSHttpHookAdd(TS_SSL_SNI_HOOK, cb_sni);
     success = true;
   }
  

@@ -645,7 +645,7 @@ sdk_sanity_check_lifecycle_hook_id(TSLifecycleHookID id)
 }
 
 TSReturnCode
-sdk_sanity_check_ssl_hook_id(TSSslHookID id)
+sdk_sanity_check_ssl_hook_id(TSHttpHookID id)
 {
   if (id<TS_SSL_FIRST_HOOK || id> TS_SSL_LAST_HOOK)
     return TS_ERROR;
@@ -4393,10 +4393,17 @@ TSHttpHookAdd(TSHttpHookID id, TSCont contp)
   sdk_assert(sdk_sanity_check_hook_id(id) == TS_SUCCESS);
 
   icontp = reinterpret_cast<INKContInternal*>(contp);
-  http_global_hooks->append(id, icontp);
+
+  if (id >= TS_SSL_FIRST_HOOK && id <= TS_SSL_LAST_HOOK) {
+    TSSslHookInternalID internalId = static_cast<TSSslHookInternalID>(id - TS_SSL_FIRST_HOOK);
+    ssl_hooks->append(internalId , icontp);
+  }
+  else { // Follow through the regular HTTP hook framework
+    http_global_hooks->append(id, icontp);
+  }
 }
 
-void
+/*void
 TSSslHookAdd(TSSslHookID id, TSCont contp) 
 {
   sdk_assert(sdk_sanity_check_continuation(contp) == TS_SUCCESS);
@@ -4404,7 +4411,7 @@ TSSslHookAdd(TSSslHookID id, TSCont contp)
   INKContInternal *icontp = reinterpret_cast<INKContInternal*>(contp);
   ssl_hooks->append(id, icontp);
 }
-
+*/
 void
 TSLifecycleHookAdd(TSLifecycleHookID id, TSCont contp)
 {
@@ -8680,28 +8687,32 @@ private:
 
 /// SSL Hooks
 TSReturnCode
-TSSslVConnOpSet(TSSslVConn sslp, TSSslVConnOp op)
+TSSslVConnOpSet(TSVConn sslp, TSSslVConnOp op)
 {
+  NetVConnection *vc = reinterpret_cast<NetVConnection*>(sslp);
+  SSLNetVConnection *ssl_vc = dynamic_cast<SSLNetVConnection*>(vc);
   TSReturnCode zret = TS_SUCCESS;
-  if (0 != sslp && TS_SSL_HOOK_OP_DEFAULT <= op && op <= TS_SSL_HOOK_OP_LAST) {
-    reinterpret_cast<SSLNetVConnection*>(sslp)->hookOpRequested = static_cast<TSSslVConnOp>(op);
+  if (0 != ssl_vc && TS_SSL_HOOK_OP_DEFAULT <= op && op <= TS_SSL_HOOK_OP_LAST) {
+    ssl_vc->hookOpRequested = static_cast<TSSslVConnOp>(op);
   } else {
     zret = TS_ERROR;
   }
   return zret;
 }
 
-TSSslVConnObject
-TSSslVConnObjectGet(TSSslVConn sslp) 
+TSSslConnection
+TSVConnSSLConnectionGet(TSVConn sslp) 
 {
-  TSSslVConnObject ssl = NULL;
-  if (sslp != NULL) {
-    ssl = reinterpret_cast<tsapi_ssl_obj*>(reinterpret_cast<SSLNetVConnection*>(sslp)->ssl);
-  }
+  TSSslConnection ssl = NULL;
+  NetVConnection *vc = reinterpret_cast<NetVConnection*>(sslp);
+  SSLNetVConnection *ssl_vc = dynamic_cast<SSLNetVConnection*>(vc);
+  if (ssl_vc != NULL) {
+    ssl = reinterpret_cast<TSSslConnection>(ssl_vc->ssl);
+  } 
   return ssl;
 }
 
-tsapi TSSslContext TSSslCertFindByName(char *name) 
+tsapi TSSslContext TSSslContextFindByName(const char *name) 
 {
   TSSslContext ret = NULL;
   SSLCertLookup *lookup = SSLCertificateConfig::acquire();
@@ -8714,7 +8725,7 @@ tsapi TSSslContext TSSslCertFindByName(char *name)
   }
   return ret;
 }
-tsapi TSSslContext TSSslCertFindByAddress(struct sockaddr const* addr)
+tsapi TSSslContext TSSslContextFindByAddr(struct sockaddr const* addr)
 {
   TSSslContext ret = NULL;
   SSLCertLookup *lookup = SSLCertificateConfig::acquire();
@@ -8730,43 +8741,39 @@ tsapi TSSslContext TSSslCertFindByAddress(struct sockaddr const* addr)
   return ret;
 }
 
-char *
-TSSslVConnServernameGet(TSSslVConn sslp) 
+tsapi int TSVConnIsSsl(TSVConn sslp) 
 {
-  char *ret = NULL;
-  if (sslp != NULL) {
-
-    ret = reinterpret_cast<char*>(reinterpret_cast<SSLNetVConnection*>(sslp)->sniServername);
-    if (ret[0] == '\0') {
-      ret = NULL;
-    }
-  }
-  return ret;
+  NetVConnection *vc = reinterpret_cast<NetVConnection*>(sslp);
+  SSLNetVConnection *ssl_vc = dynamic_cast<SSLNetVConnection*>(vc);
+  return ssl_vc != NULL;
 }
 
-
 void
-TSSslVConnReenable(TSSslVConn sslp)
+TSVConnReenable(TSVConn vconn)
 {
-  SSLNetVConnection* vc = reinterpret_cast<SSLNetVConnection*>(sslp);
-  EThread *eth = this_ethread();
+  NetVConnection *vc = reinterpret_cast<NetVConnection *>(vconn);
+  SSLNetVConnection *ssl_vc = dynamic_cast<SSLNetVConnection*>(vc);
+  // We really only deal with a SSLNetVConnection at the moment
+  if (ssl_vc != NULL) {
+    EThread *eth = this_ethread();
 
-  Debug("amc", "API SSL VConn reenable");
+    Debug("amc", "API SSL VConn reenable");
 
-  // We use the VC mutex so we don't need to reschedule again if we
-  // can't get the lock. For this reason we need to execute the
-  // callback on the VC thread or it doesn't work (not sure why -
-  // deadlock or it ends up interacting with the wrong NetHandler).
-  MUTEX_TRY_LOCK(trylock, vc->mutex, eth);
-  if (!trylock) {
-    vc->thread->schedule_imm(new TSSslCallback(vc));
-  }   else {
-    vc->reenable(vc->nh);
+    // We use the VC mutex so we don't need to reschedule again if we
+    // can't get the lock. For this reason we need to execute the
+    // callback on the VC thread or it doesn't work (not sure why -
+    // deadlock or it ends up interacting with the wrong NetHandler).
+    MUTEX_TRY_LOCK(trylock, ssl_vc->mutex, eth);
+    if (!trylock) {
+      ssl_vc->thread->schedule_imm(new TSSslCallback(ssl_vc));
+    }   else {
+      ssl_vc->reenable(ssl_vc->nh);
+    }
+    Debug("amc", "Post SSL re-enabled - %s",
+          ssl_vc->mutex->thread_holding == eth ? "locked" :
+          ssl_vc->mutex->thread_holding ? "bad lock" : "unlocked"
+      );
   }
-  Debug("amc", "Post SSL re-enabled - %s",
-        vc->mutex->thread_holding == eth ? "locked" :
-        vc->mutex->thread_holding ? "bad lock" : "unlocked"
-    );
 }
 
 /** @file
@@ -9985,7 +9992,7 @@ extern "C"
   tsapi void TSLifecycleHookAdd(TSLifecycleHookID id, TSCont contp);
   /* --------------------------------------------------------------------------
      SSL hooks */ 
-  tsapi void TSSslHookAdd(TSSslHookID id, TSCont contp);
+  //tsapi void TSSslHookAdd(TSSslHookID id, TSCont contp);
   /* --------------------------------------------------------------------------
      HTTP hooks */
   tsapi void TSHttpHookAdd(TSHttpHookID id, TSCont contp);
@@ -9999,7 +10006,7 @@ extern "C"
      SSL connections */
   /// Re-enable an SSL connection from a hook.
   /// This must be called exactly once before the SSL connection will resume.
-  tsapi void TSSslVConnReenable(TSSslVConn sslvcp);
+  tsapi void TSVConnReenable(TSVConn sslvcp);
   /// Set the SSL Context to @a ctx for @a sslp.
   /// This can only be usefully called from the TS_SSL_CLIENT_PRE_HANDSHAKE_HOOK.
   /// tsapi TSReturnCode TSSslVConnContextSet(TSSslVConn sslp, void* ctx);

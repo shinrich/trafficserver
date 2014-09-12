@@ -290,7 +290,14 @@ class HttpAPIHooks : public FeatureAPIHooks<TSHttpHookID, TS_HTTP_LAST_HOOK>
 {
 };
 
-class SslAPIHooks : public FeatureAPIHooks<TSSslHookID, TS_SSL_LAST_HOOK>
+typedef enum {
+  TS_SSL_INTERNAL_FIRST_HOOK,
+  TS_VCONN_PRE_ACCEPT_INTERNAL_HOOK = TS_SSL_INTERNAL_FIRST_HOOK,
+  TS_SSL_SNI_INTERNAL_HOOK,
+  TS_SSL_INTERNAL_LAST_HOOK 
+} TSSslHookInternalID;
+
+class SslAPIHooks : public FeatureAPIHooks<TSSslHookInternalID, TS_SSL_INTERNAL_LAST_HOOK>
 {
 };
 

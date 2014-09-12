@@ -151,7 +151,7 @@ public:
     this->handShakeBuffer = NULL;
   }
   // Returns true if all the hooks reenabled
-  bool callHooks(TSSslHookID eventId);
+  bool callHooks(TSHttpHookID eventId);
 
 private:
   SSLNetVConnection(const SSLNetVConnection &);

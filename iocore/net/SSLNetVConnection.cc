@@ -905,7 +905,7 @@ SSLNetVConnection::sslServerHandShakeEvent(int &err)
     Debug("amc", "Handle pre accept hooks");
     // Get the first hook if we haven't started invoking yet.
     if (SSL_HOOKS_INIT == sslPreAcceptHookState) {
-      curHook = ssl_hooks->get(TS_SSL_CLIENT_PRE_HANDSHAKE_HOOK);
+      curHook = ssl_hooks->get(TS_VCONN_PRE_ACCEPT_INTERNAL_HOOK);
       sslPreAcceptHookState = SSL_HOOKS_INVOKE;
     } else if (SSL_HOOKS_INVOKE == sslPreAcceptHookState) {
       // if the state is anything else, we haven't finished
@@ -919,7 +919,7 @@ SSLNetVConnection::sslServerHandShakeEvent(int &err)
       } else {
         Debug("amc", "Invoking pre accept hook");
         sslPreAcceptHookState = SSL_HOOKS_ACTIVE;
-        ContWrapper::wrap(mutex, curHook->m_cont, TS_EVENT_SSL_CLIENT_PRE_HANDSHAKE, this);
+        ContWrapper::wrap(mutex, curHook->m_cont, TS_EVENT_VCONN_PRE_ACCEPT, this);
         return SSL_WAIT_FOR_HOOK;
       }
     } else { // waiting for hook to complete
@@ -1054,8 +1054,10 @@ SSLNetVConnection::sslServerHandShakeEvent(int &err)
       return EVENT_CONT;
     }
     else {
+      //  Stopping for some other reason, perhaps loading certificate
       Debug("skh", "No SNI tunnel request");
-      return EVENT_ERROR;
+      //;return EVENT_ERROR;
+      return EVENT_CONT;
     }
 #endif
 
@@ -1242,12 +1244,12 @@ SSLNetVConnection::sslContextSet(void* ctx) {
 }
 
 bool 
-SSLNetVConnection::callHooks(TSSslHookID eventId) 
+SSLNetVConnection::callHooks(TSHttpHookID eventId) 
 {
   // Only dealing with the SNI hook so far
   ink_assert(eventId == TS_SSL_SNI_HOOK);
 
-  APIHook *hook = ssl_hooks->get(TS_SSL_SNI_HOOK);
+  APIHook *hook = ssl_hooks->get(TS_SSL_SNI_INTERNAL_HOOK);
   bool reenabled = true;
   while (hook && reenabled) {
     // Must reset to a completed state for each invocation

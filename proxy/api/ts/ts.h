@@ -1213,9 +1213,6 @@ extern "C"
      Plugin lifecycle  hooks */
   tsapi void TSLifecycleHookAdd(TSLifecycleHookID id, TSCont contp);
   /* --------------------------------------------------------------------------
-     SSL hooks */
-  tsapi void TSSslHookAdd(TSSslHookID id, TSCont contp);
-  /* --------------------------------------------------------------------------
      HTTP hooks */
   tsapi void TSHttpHookAdd(TSHttpHookID id, TSCont contp);
 
@@ -1229,17 +1226,16 @@ extern "C"
      SSL connections */
   /// Re-enable an SSL connection from a hook.
   /// This must be called exactly once before the SSL connection will resume.
-  tsapi void TSSslVConnReenable(TSSslVConn sslvcp);
+  tsapi void TSVConnReenable(TSVConn sslvcp);
   /// Set the hook operation request field.
-  tsapi TSReturnCode TSSslVConnOpSet(TSSslVConn sslp, TSSslVConnOp op);
+  tsapi TSReturnCode TSSslVConnOpSet(TSVConn sslp, TSSslVConnOp op);
   // Return the SSL object associated with the connection
-  tsapi TSSslVConnObject TSSslVConnObjectGet(TSSslVConn sslp);
-  // Return the servername specified by the SNI extension.  NULL if not
-  // specified
-  tsapi char * TSSslVConnServernameGet(TSSslVConn sslp);
+  tsapi TSSslConnection TSVConnSSLConnectionGet(TSVConn sslp);
   // Fetch a SSL context from the global lookup table
-  tsapi TSSslContext TSSslCertFindByName(char *name);
-  tsapi TSSslContext TSSslCertFindByAddress(struct sockaddr const*);
+  tsapi TSSslContext TSSslContextFindByName(const char *name);
+  tsapi TSSslContext TSSslContextFindByAddr(struct sockaddr const*);
+  // Returns 1 if the sslp argument refers to a SSL connection
+  tsapi int TSVConnIsSsl(TSVConn sslp);
 
   /* --------------------------------------------------------------------------
      HTTP transactions */
