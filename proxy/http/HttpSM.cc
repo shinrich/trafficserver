@@ -670,7 +670,7 @@ HttpSM::state_read_client_request_header(int event, void *data)
     state = PARSE_ERROR;
   }
 
-  // SKH adding VC_EVENT_EOS as a valid state to check the
+  // ts-3073 adding VC_EVENT_EOS as a valid state to check the
   // parse results for flipping into passthrough mode
   // Must propagate the EOS back to the the blind tunnel
   // Otherwise the connection to the client sticks around forever
@@ -693,7 +693,8 @@ HttpSM::state_read_client_request_header(int event, void *data)
 
       // Make sure we don't lose the client EOS
       if (event == VC_EVENT_EOS) {
-        // Must somehow schedule the EOS to come around again
+        // Make note that the client hs closed already.  Must
+        // reinsert the FIN to the server 
         this->set_ua_half_close_flag();      
         t_state.client_info.keep_alive = HTTP_NO_KEEPALIVE;
       }
@@ -3602,11 +3603,11 @@ HttpSM::tunnel_handler_ssl_consumer(int event, HttpTunnelConsumer * c)
     if (c->self_producer->alive == true) {
       c->vc->do_io_shutdown(IO_SHUTDOWN_WRITE);
       if (!c->producer->alive) {
-        // SKH - Not clear on the purpose of these lines
+        // ts-3037 - Not clear on the purpose of these lines
         // Certainly do not make sense in the client half-closed
         // case.  I don't see how they make sense in any case since
         // the close_vc will be closing the socket that we so carefully
-        // only write-closed above
+        // only write-closed above.  Prehaps this was a merge error?
         /*tunnel.close_vc(c);
         tunnel.local_finish_all(c->self_producer);
         break; */
@@ -6410,7 +6411,7 @@ HttpSM::setup_blind_tunnel(bool send_response_hdr)
 
   tunnel.tunnel_run();
 
-  // SKH trying to shut down client side after
+  // ts-3037 trying to shut down client side after
   // the tunnel is set up.  Go ahead and shut down the
   // client side for reading. 
   if (ua_session->get_half_close_flag()) {
