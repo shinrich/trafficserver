@@ -3610,7 +3610,7 @@ HttpSM::tunnel_handler_ssl_consumer(int event, HttpTunnelConsumer * c)
     //  read side to close so that we don't cut off
     //  pipelined responses with TCP resets
     //
-    ink_assert(c->producer->alive == false);
+    //ink_assert(c->producer->alive == false);
     c->write_success = true;
     if (c->self_producer->alive == true) {
       c->vc->do_io_shutdown(IO_SHUTDOWN_WRITE);
@@ -6416,7 +6416,7 @@ HttpSM::setup_blind_tunnel(bool send_response_hdr)
 
   ua_entry->in_tunnel = true;
   server_entry->in_tunnel = true;
-
+  
   tunnel.tunnel_run();
 
   // If we're half closed, we got a FIN from the client. Forward it on to the origin server
