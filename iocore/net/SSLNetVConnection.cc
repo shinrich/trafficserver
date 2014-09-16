@@ -443,9 +443,9 @@ SSLNetVConnection::net_read_io(NetHandler *nh, EThread *lthread)
     int err;
     int data_to_read = 0;
     char *data_ptr = NULL;
-    // Continue through here as long as we are getting SSL_ERROR_WANT_READ,
-    // are still in the handshake, and are reading more data
-    while (!getSSLHandShakeComplete()) {
+
+    // Not done handshaking, go into the SSL handshake logic again
+    if (!getSSLHandShakeComplete()) {
 
       if (getSSLClientConnection()) {
         ret = sslStartHandShake(SSL_EVENT_CLIENT, err);
@@ -494,7 +494,6 @@ SSLNetVConnection::net_read_io(NetHandler *nh, EThread *lthread)
       if (ret == EVENT_ERROR) {
         this->read.triggered = 0;
         readSignalError(nh, err);
-        break;
       } else if (ret == SSL_HANDSHAKE_WANT_READ || ret == SSL_HANDSHAKE_WANT_ACCEPT) {
         read.triggered = 0;
         nh->read_ready_list.remove(this);
@@ -503,7 +502,6 @@ SSLNetVConnection::net_read_io(NetHandler *nh, EThread *lthread)
         write.triggered = 0;
         nh->write_ready_list.remove(this);
         writeReschedule(nh);
-        break;
       } else if (ret == EVENT_DONE) {
         // If this was driven by a zero length read, signal complete when
         // the handshake is complete. Otherwise set up for continuing read
@@ -515,22 +513,12 @@ SSLNetVConnection::net_read_io(NetHandler *nh, EThread *lthread)
           if (read.enabled)
             nh->read_ready_list.in_or_enqueue(this);
         }
-        break;
       } else if (ret == SSL_WAIT_FOR_HOOK) {
         // avoid readReschedule - done when the plugin calls us back to reenable
-        break;
       } else {
         readReschedule(nh);
-        break;
       }
     }
-    return;
-  }
-
-  // Shutdown if requested by hook
-  if (TS_SSL_HOOK_OP_TERMINATE == hookOpRequested) {
-    this->read.triggered = 0;
-    this->readSignalDone(VC_EVENT_EOS, nh);
     return;
   }
 
@@ -563,7 +551,7 @@ SSLNetVConnection::net_read_io(NetHandler *nh, EThread *lthread)
         BIO *rbio = BIO_new_mem_buf(start, end - start);
         BIO_set_mem_eof_return(rbio, -1); 
         // SKH - So assigning directly into the SSL structure
-        // is dirty, but there is not openssl function that only
+        // is dirty, but there is no openssl function that only
         // assigns the read bio.  Originally I was getting and
         // resetting the same write bio, but that caused the 
         // inserted buffer bios to be freed and then reinserted.
@@ -575,7 +563,8 @@ SSLNetVConnection::net_read_io(NetHandler *nh, EThread *lthread)
   }
   // Otherwise, we already replaced the buffer bio with a socket bio
 
-  // not sure if this do-while loop is really needed here, please replace this comment if you know
+  // not sure if this do-while loop is really needed here, please replace 
+  // this comment if you know
   do {
     ret = ssl_read_from_net(this, lthread, r);
     if (ret == SSL_READ_READY || ret == SSL_READ_ERROR_NONE) {

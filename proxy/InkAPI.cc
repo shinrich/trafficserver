@@ -8687,13 +8687,13 @@ private:
 
 /// SSL Hooks
 TSReturnCode
-TSSslVConnOpSet(TSVConn sslp, TSSslVConnOp op)
+TSVConnTunnel(TSVConn sslp)
 {
   NetVConnection *vc = reinterpret_cast<NetVConnection*>(sslp);
   SSLNetVConnection *ssl_vc = dynamic_cast<SSLNetVConnection*>(vc);
   TSReturnCode zret = TS_SUCCESS;
-  if (0 != ssl_vc && TS_SSL_HOOK_OP_DEFAULT <= op && op <= TS_SSL_HOOK_OP_LAST) {
-    ssl_vc->hookOpRequested = static_cast<TSSslVConnOp>(op);
+  if (0 != ssl_vc) {
+    ssl_vc->hookOpRequested = TS_SSL_HOOK_OP_TUNNEL;
   } else {
     zret = TS_ERROR;
   }

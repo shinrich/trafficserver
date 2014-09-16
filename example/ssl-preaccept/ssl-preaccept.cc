@@ -149,7 +149,7 @@ CB_Pre_Accept(TSCont contp, TSEvent event, void *edata) {
   if (!proxy_tunnel) {
     TSDebug("skh", "Blind tunnel");
     // Push everything to blind tunnel
-    TSSslVConnOpSet(ssl_vc, TS_SSL_HOOK_OP_TUNNEL);
+    TSVConnTunnel(ssl_vc);
   }
   else {
     TSDebug("skh", "Proxy tunnel");

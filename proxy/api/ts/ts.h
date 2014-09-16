@@ -1227,8 +1227,8 @@ extern "C"
   /// Re-enable an SSL connection from a hook.
   /// This must be called exactly once before the SSL connection will resume.
   tsapi void TSVConnReenable(TSVConn sslvcp);
-  /// Set the hook operation request field.
-  tsapi TSReturnCode TSSslVConnOpSet(TSVConn sslp, TSSslVConnOp op);
+  /// Set the connection to go into blind tunnel mode
+  tsapi TSReturnCode TSVConnTunnel(TSVConn sslp);
   // Return the SSL object associated with the connection
   tsapi TSSslConnection TSVConnSSLConnectionGet(TSVConn sslp);
   // Fetch a SSL context from the global lookup table

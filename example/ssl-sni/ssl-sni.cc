@@ -98,7 +98,7 @@ CB_servername(TSCont /* contp */, TSEvent /* event */, void *edata) {
       const char *server_ptr = servername + (servername_len - facebook_name_len);
       if (strcmp(server_ptr, "facebook.com") == 0) {
         TSDebug("skh", "Blind tunnel from SNI callback");
-        TSSslVConnOpSet(ssl_vc, TS_SSL_HOOK_OP_TUNNEL);
+        TSVConnTunnel(ssl_vc);
         // Don't reenable to ensure that we break out of the
         // SSL handshake processing
         return TS_SUCCESS; // Don't re-enable so we interrupt processing
