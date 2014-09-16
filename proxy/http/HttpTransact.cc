@@ -607,7 +607,6 @@ HttpTransact::HandleBlindTunnel(State* s)
   //  For logging purposes we create a fake request
   s->hdr_info.client_request.create(HTTP_TYPE_REQUEST);
   s->hdr_info.client_request.method_set(HTTP_METHOD_CONNECT, HTTP_LEN_CONNECT);
-  URL u;
   s->hdr_info.client_request.url_create(&u);
   u.scheme_set(URL_SCHEME_TUNNEL, URL_LEN_TUNNEL);
   s->hdr_info.client_request.url_set(&u);
@@ -622,7 +621,7 @@ HttpTransact::HandleBlindTunnel(State* s)
   ats_ip_ntop(s->state_machine->ua_session->get_netvc()->get_local_addr(), new_host, sizeof(new_host));
 
   s->hdr_info.client_request.url_get()->host_set(new_host, strlen(new_host));
-  s->hdr_info.client_request.url_get()->port_set(ntohs(dest_addr.port());
+  s->hdr_info.client_request.url_get()->port_set(ntohs(dest_addr.port()));
 
   // Initialize the state vars necessary to sending error responses
   bootstrap_state_variables_from_request(s, &s->hdr_info.client_request);
