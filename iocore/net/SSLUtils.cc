@@ -177,7 +177,7 @@ SSL_CTX_add_extra_chain_cert_file(SSL_CTX * ctx, const char * chainfile)
 #if TS_USE_TLS_SNI
 
 static int
-ssl_servername_callback(SSL * ssl, int * ad, void * arg)
+ssl_servername_callback(SSL * ssl, int * ad, void * /*arg*/)
 {
   SSL_CTX *           ctx = NULL;
   SSLCertContext *    cc = NULL;
@@ -275,7 +275,7 @@ done:
 #endif /* TS_USE_TLS_SNI */
 
 static SSL_CTX *
-ssl_context_enable_sni(SSL_CTX * ctx, SSLCertLookup * lookup)
+ssl_context_enable_sni(SSL_CTX * ctx, SSLCertLookup * /*lookup*/)
 {
 #if TS_USE_TLS_SNI
   if (ctx) {
