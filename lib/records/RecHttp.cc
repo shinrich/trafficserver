@@ -299,7 +299,6 @@ HttpProxyPort::processOptions(char const* opts) {
       m_type = TRANSPORT_BLIND_TUNNEL;
     } else if (0 == strcasecmp(OPT_IPV6, item)) {
       m_family = AF_INET6;
-      m_type = TRANSPORT_DEFAULT;
       af_set_p = true;
     } else if (0 == strcasecmp(OPT_IPV4, item)) {
       m_family = AF_INET;

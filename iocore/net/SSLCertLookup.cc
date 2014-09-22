@@ -84,7 +84,6 @@ public:
   /// @return @a idx
   int insert(const char * name, int idx);
   SSLCertContext* lookup(const char * name) const;
-  // SKH Commenting out for now
   unsigned count() const { return this->ctx_store.length(); }
   SSLCertContext* get(unsigned i) const { return &this->ctx_store[i]; }
 
@@ -272,14 +271,12 @@ SSLContextStorage::insert(const char* name, int idx)
   ats_wildcard_matcher wildcard;
   bool inserted = false;
 
-  Debug("skh", "Try to add %s to wildcard table", name);
   if (wildcard.match(name)) {
     // We turn wildcards into the reverse DNS form, then insert them into the trie
     // so that we can do a longest match lookup.
     char namebuf[TS_MAX_HOST_NAME_LEN + 1];
     char * reversed;
     ats_scoped_obj<ContextRef> ref;
-    Debug("skh", "Add %s to wildcard table", name);
 
     reversed = reverse_dns_name(name + 1, namebuf);
     if (!reversed) {

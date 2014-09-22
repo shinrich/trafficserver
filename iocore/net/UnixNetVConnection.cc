@@ -456,16 +456,9 @@ write_to_net_io(NetHandler *nh, UnixNetVConnection *vc, EThread *thread)
     if (r == -EAGAIN || r == -ENOTCONN) {
       NET_DEBUG_COUNT_DYN_STAT(net_calls_to_write_nodata_stat, 1);
       if((needs & EVENTIO_WRITE) == EVENTIO_WRITE) {
-        if ((needs & EVENTIO_WRITE) == EVENTIO_WRITE) {
-          vc->write.triggered = 0;
-          nh->write_ready_list.remove(vc);
-          write_reschedule(nh, vc);
-        }
-        if ((needs & EVENTIO_READ) == EVENTIO_READ) {
-          vc->read.triggered = 0;
-          nh->read_ready_list.remove(vc);
-          read_reschedule(nh, vc);
-        }
+        vc->write.triggered = 0;
+        nh->write_ready_list.remove(vc);
+        write_reschedule(nh, vc);
       }
       if((needs & EVENTIO_READ) == EVENTIO_READ) {
         vc->read.triggered = 0;
@@ -506,7 +499,6 @@ write_to_net_io(NetHandler *nh, UnixNetVConnection *vc, EThread *thread)
     } else if (signalled && (wbe_event != vc->write_buffer_empty_event)) {
       // @a signalled means we won't send an event, and the event values differing means we
       // had a write buffer trap and cleared it, so we need to send it now.
-      Debug("amc", "empty write buffer trap [%d]", wbe_event);
       if (write_signal_and_update(wbe_event, vc) != EVENT_CONT)
         return;
     } else if (!signalled) {

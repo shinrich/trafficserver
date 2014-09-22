@@ -70,7 +70,6 @@ namespace {
       , _edata(edata)
     {
       SET_HANDLER(&ContWrapper::event_handler);
-      Debug("amc", "Continuation wrapper created");
     }
 
     /// Required event handler method.
@@ -135,14 +134,12 @@ make_ssl_connection(SSL_CTX * ctx, SSLNetVConnection * netvc)
     // Only set up the bio stuff for the server side
     if (netvc->getSSLClientConnection()) {
       SSL_set_fd(ssl, netvc->get_socket());
-      Debug("skh", "Create client SSL");
     } else {
       netvc->initialize_handshake_buffers();
       BIO *rbio = BIO_new(BIO_s_mem());
       BIO *wbio = BIO_new_fd(netvc->get_socket(), BIO_NOCLOSE);
       BIO_set_mem_eof_return(wbio, -1); 
       SSL_set_bio(ssl, rbio, wbio);
-      Debug("skh", "Create server SSL");
     }
 
     SSL_set_app_data(ssl, netvc);
@@ -380,14 +377,12 @@ SSLNetVConnection::read_raw_data()
   char *start = this->handShakeReader->start();
   char *end = this->handShakeReader->end();
 
-  Debug("skh", "Read into %d blocks.  Total read %d", niov, (int)(end - start));
-
   // Sets up the buffer as a read only bio target
   // Must be reset on each read
   BIO *rbio = BIO_new_mem_buf(start, end - start);
   BIO_set_mem_eof_return(rbio, -1); 
-  // SKH - So assigning directly into the SSL structure
-  // is dirty, but there is not openssl function that only
+  // Assigning directly into the SSL structure
+  // is dirty, but there is no openssl function that only
   // assigns the read bio.  Originally I was getting and
   // resetting the same write bio, but that caused the 
   // inserted buffer bios to be freed and then reinserted.
@@ -478,8 +473,6 @@ SSLNetVConnection::net_read_io(NetHandler *nh, EThread *lthread)
             s->vio.nbytes += r;
             s->vio.ndone += r;
  
-            Debug("skh", "Copied over %d bytes", (int)r);
-  
             // Clean up the handshake buffers
             this->free_handshake_buffers();
 
@@ -550,7 +543,7 @@ SSLNetVConnection::net_read_io(NetHandler *nh, EThread *lthread)
         // Must be reset on each read
         BIO *rbio = BIO_new_mem_buf(start, end - start);
         BIO_set_mem_eof_return(rbio, -1); 
-        // SKH - So assigning directly into the SSL structure
+        // So assigning directly into the SSL structure
         // is dirty, but there is no openssl function that only
         // assigns the read bio.  Originally I was getting and
         // resetting the same write bio, but that caused the 
@@ -844,7 +837,6 @@ SSLNetVConnection::sslStartHandShake(int event, int &err)
       // No data has been read at this point, so we can go
       // directly into blind tunnel mode
       if (cc && SSLCertContext::OPT_TUNNEL == cc->opt && this->is_transparent) {
-        Debug("amc", "Converting to blind tunnel");
         this->attributes = HttpProxyPort::TRANSPORT_BLIND_TUNNEL;
         sslHandShakeComplete = 1;
         SSL_free(this->ssl);
@@ -891,7 +883,6 @@ SSLNetVConnection::sslServerHandShakeEvent(int &err)
   int ret;
 
   if (SSL_HOOKS_DONE != sslPreAcceptHookState) {
-    Debug("amc", "Handle pre accept hooks");
     // Get the first hook if we haven't started invoking yet.
     if (SSL_HOOKS_INIT == sslPreAcceptHookState) {
       curHook = ssl_hooks->get(TS_VCONN_PRE_ACCEPT_INTERNAL_HOOK);
@@ -904,9 +895,7 @@ SSLNetVConnection::sslServerHandShakeEvent(int &err)
     if (SSL_HOOKS_INVOKE == sslPreAcceptHookState) {
       if (0 == curHook) { // no hooks left, we're done
         sslPreAcceptHookState = SSL_HOOKS_DONE;
-        Debug("amc", "Finished pre accept hooks");
       } else {
-        Debug("amc", "Invoking pre accept hook");
         sslPreAcceptHookState = SSL_HOOKS_ACTIVE;
         ContWrapper::wrap(mutex, curHook->m_cont, TS_EVENT_VCONN_PRE_ACCEPT, this);
         return SSL_WAIT_FOR_HOOK;
@@ -918,7 +907,6 @@ SSLNetVConnection::sslServerHandShakeEvent(int &err)
          more clever and provide some sort of cancel mechanism. I have a trap
          in SSLNetVConnection::free to check for this.
       */
-      Debug("amc", "SSL wait for hook return (active hook)");
       return SSL_WAIT_FOR_HOOK;
     }
   }
@@ -948,7 +936,6 @@ SSLNetVConnection::sslServerHandShakeEvent(int &err)
     int64_t data_read;
     if ((data_read = this->read_raw_data()) > 0) {
       data_to_read = BIO_get_mem_data(SSL_get_rbio(this->ssl), &data_ptr);
-      Debug("skh", "%d Bytes read from socket. %d bytes ready to read from bio", (int)data_read, data_to_read);
     }
   }
 
@@ -1038,13 +1025,11 @@ SSLNetVConnection::sslServerHandShakeEvent(int &err)
     if (this->attributes == HttpProxyPort::TRANSPORT_BLIND_TUNNEL ||
         TS_SSL_HOOK_OP_TUNNEL == hookOpRequested) {
       this->attributes = HttpProxyPort::TRANSPORT_BLIND_TUNNEL;
-      Debug("skh", "SNI Call back requested a blind tunnel");
       sslHandShakeComplete = 0;
       return EVENT_CONT;
     }
     else {
       //  Stopping for some other reason, perhaps loading certificate
-      Debug("skh", "No SNI tunnel request");
       //;return EVENT_ERROR;
       return EVENT_CONT;
     }
@@ -1204,17 +1189,9 @@ SSLNetVConnection::select_next_protocol(SSL * ssl, const unsigned char ** out, u
 void
 SSLNetVConnection::reenable(NetHandler* nh) {
   if (this->sslPreAcceptHookState != SSL_HOOKS_DONE) {
-    Debug("amc", "Pre Accept reenable - %s",
-        mutex->thread_holding == this_ethread() ? "locked" :
-        mutex->thread_holding ? "bad lock" : "unlocked"
-    );
     this->sslPreAcceptHookState = SSL_HOOKS_INVOKE;
     this->readReschedule(nh);
   } else {
-    Debug("amc", "SNI reenable - %s",
-        mutex->thread_holding == this_ethread() ? "locked" :
-        mutex->thread_holding ? "bad lock" : "unlocked"
-    );
     // Reenabling from the SNI callback
     this->sslSNIHookState = SNI_HOOKS_CONTINUE;
   }
@@ -1228,7 +1205,6 @@ SSLNetVConnection::sslContextSet(void* ctx) {
     SSL_set_SSL_CTX(ssl, static_cast<SSL_CTX*>(ctx));
   else
     zret = false;
-  Debug("amc", "sslContext %s", zret ? "set" : "not set");
   return zret;
 }
 

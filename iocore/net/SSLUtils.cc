@@ -213,7 +213,6 @@ ssl_servername_callback(SSL * ssl, int * ad, void * /*arg*/)
     if (cc && cc->ctx) ctx = cc->ctx;
     if (cc && SSLCertContext::OPT_TUNNEL == cc->opt && netvc->get_is_transparent()) {
 #ifdef SSL_TLSEXT_ERR_READ_AGAIN
-      Debug("amc", "Converting to blind tunnel for %s", servername);
       netvc->attributes = HttpProxyPort::TRANSPORT_BLIND_TUNNEL;
       netvc->setSSLHandShakeComplete(true);
       retval = SSL_TLSEXT_ERR_READ_AGAIN;
