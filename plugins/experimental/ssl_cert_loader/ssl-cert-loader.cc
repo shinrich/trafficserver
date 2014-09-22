@@ -12,8 +12,8 @@
 # include <openssl/ssl.h>
 # include <openssl/x509.h>
 # include <openssl/x509v3.h>
-# include "ip.h"
-# include "IpMap.h"
+# include <ts/ink_inet.h>
+# include <ts/IpMap.h>
 # include "domain-tree.h"
 
 using ts::config::Configuration;
@@ -49,14 +49,14 @@ public:
 };
 
 std::string ConfigPath;
-typedef std::pair<Addr, Addr> IpRange;
+typedef std::pair<IpAddr, IpAddr> IpRange;
 typedef std::deque<IpRange> IpRangeQueue;
 
 Configuration Config;	// global configuration
 
 void
 Parse_Addr_String(ts::ConstBuffer const &text, IpRange &range) {
-  Addr newAddr;
+  IpAddr newAddr;
   std::string textstr(text._ptr, text._size);
   // Is there a hyphen?
   size_t hyphen_pos = textstr.find("-");
@@ -157,7 +157,7 @@ Load_Configuration() {
   node = Lookup.tree.findFirstMatch("www.buseyil.com");
   TSDebug("skh-cert", "Found node with key=%s and order=%d", node->key.c_str(), node->order);
 
-  Addr key_ip;
+  IpAddr key_ip;
   key_ip.load(ts::ConstBuffer("107.23.60.186", strlen("107.23.60.186")));
   IpEndpoint key_endpoint;
   key_endpoint.assign(key_ip);
@@ -388,9 +388,9 @@ CB_Life_Cycle(TSCont , TSEvent , void *) {
 int
 CB_Pre_Accept(TSCont /*contp*/, TSEvent event, void *edata) {
   TSVConn ssl_vc = reinterpret_cast<TSVConn>(edata);
-  Addr ip(TSNetVConnLocalAddrGet(ssl_vc));
+  IpAddr ip(TSNetVConnLocalAddrGet(ssl_vc));
   char buff[INET6_ADDRSTRLEN];
-  Addr ip_client(TSNetVConnRemoteAddrGet(ssl_vc));
+  IpAddr ip_client(TSNetVConnRemoteAddrGet(ssl_vc));
   char buff2[INET6_ADDRSTRLEN];
 
   TSDebug("skh-cert", "Pre accept callback %p - event is %s, target address %s, client address %s"

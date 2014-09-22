@@ -12,7 +12,7 @@
 # include <ts/ts.h>
 # include <tsconfig/TsValue.h>
 # include <alloca.h>
-# include "ip.h"
+# include <ts/ink_inet.h>
 
 using ts::config::Configuration;
 using ts::config::Value;
@@ -23,7 +23,7 @@ using ts::config::Value;
 namespace {
 
 std::string ConfigPath;
-typedef std::pair<ip::Addr, ip::Addr> IpRange;
+typedef std::pair<IpAddr, IpAddr> IpRange;
 typedef std::deque<IpRange> IpRangeQueue;
 IpRangeQueue ClientBlindTunnelIp;
 
@@ -31,7 +31,7 @@ Configuration Config;	// global configuration
 
 void
 Parse_Addr_String(ts::ConstBuffer const &text, IpRange &range) {
-  ip::Addr newAddr;
+  IpAddr newAddr;
   std::string textstr(text._ptr, text._size);
   // Is there a hyphen?
   size_t hyphen_pos = textstr.find("-");
@@ -122,11 +122,11 @@ ts::ConstBuffer text;
 }
 
 int
-CB_Pre_Accept(TSCont contp, TSEvent event, void *edata) {
+CB_Pre_Accept(TSCont /*contp*/, TSEvent event, void *edata) {
   TSVConn ssl_vc = reinterpret_cast<TSVConn>(edata);
-  ip::Addr ip(TSNetVConnLocalAddrGet(ssl_vc));
+  IpAddr ip(TSNetVConnLocalAddrGet(ssl_vc));
   char buff[INET6_ADDRSTRLEN];
-  ip::Addr ip_client(TSNetVConnRemoteAddrGet(ssl_vc));
+  IpAddr ip_client(TSNetVConnRemoteAddrGet(ssl_vc));
   char buff2[INET6_ADDRSTRLEN];
 
   TSDebug("skh", "Pre accept callback %p - event is %s, target address %s, client address %s"

@@ -75,7 +75,7 @@ thread_1_la_SOURCES = thread-1/thread-1.c
 psi_la_SOURCES = thread-pool/psi.c thread-pool/thread.c
 version_la_SOURCES = version/version.c
 secure_link_la_SOURCES = secure-link/secure-link.c
-ssl_preaccept_la_SOURCES = ssl-preaccept/ssl-preaccept.cc ssl-preaccept/ip.cc
+ssl_preaccept_la_SOURCES = ssl-preaccept/ssl-preaccept.cc 
 ssl_sni_la_SOURCES = ssl-sni/ssl-sni.cc 
 ssl_sni_whitelist_la_SOURCES = ssl-sni-whitelist/ssl-sni-whitelist.cc 
 
