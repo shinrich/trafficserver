@@ -198,6 +198,54 @@ write_signal_error(NetHandler *nh, UnixNetVConnection *vc, int lerrno)
   return write_signal_done(VC_EVENT_ERROR, nh, vc);
 }
 
+static int64_t
+read_from_net_raw(MIOBuffer *buf, int64_t toread, UnixNetVConnection *vc, int &read_count)
+{
+  // read data
+  int64_t r = 0;
+  int64_t rattempted = 0, total_read = 0;
+  int niov = 0;
+  IOVec tiovec[NET_MAX_IOV];
+  if (toread) {
+    IOBufferBlock *b = buf->first_write_block();
+    do {
+      niov = 0;
+      rattempted = 0;
+      while (b && niov < NET_MAX_IOV) {
+        int64_t a = b->write_avail();
+        if (a > 0) {
+          tiovec[niov].iov_base = b->_end;
+          int64_t togo = toread - total_read - rattempted;
+          if (a > togo)
+            a = togo;
+          tiovec[niov].iov_len = a;
+          rattempted += a;
+          niov++;
+          if (a >= togo)
+            break;
+        }
+        b = b->next;
+      }
+
+      if (niov == 1) {
+        r = socketManager.read(vc->con.fd, tiovec[0].iov_base, tiovec[0].iov_len);
+      } else {
+        r = socketManager.readv(vc->con.fd, &tiovec[0], niov);
+      }
+      read_count++;
+      total_read += rattempted;
+    } while (rattempted && r == rattempted && total_read < toread);
+
+    // if we have already moved some bytes successfully, summarize in r
+    if (total_read != rattempted) {
+      if (r <= 0)
+        r = total_read - rattempted;
+      else
+        r = total_read - rattempted + r;
+    }
+  }
+  return r;
+}
 // Read the data for a UnixNetVConnection.
 // Rescheduling the UnixNetVConnection by moving the VC
 // onto or off of the ready_list.
@@ -235,46 +283,10 @@ read_from_net(NetHandler *nh, UnixNetVConnection *vc, EThread *thread)
     toread = ntodo;
 
   // read data
-  int64_t rattempted = 0, total_read = 0;
-  int niov = 0;
-  IOVec tiovec[NET_MAX_IOV];
+  int read_count = 0;
+  r = read_from_net_raw(buf.writer(), toread, vc, read_count);
   if (toread) {
-    IOBufferBlock *b = buf.writer()->first_write_block();
-    do {
-      niov = 0;
-      rattempted = 0;
-      while (b && niov < NET_MAX_IOV) {
-        int64_t a = b->write_avail();
-        if (a > 0) {
-          tiovec[niov].iov_base = b->_end;
-          int64_t togo = toread - total_read - rattempted;
-          if (a > togo)
-            a = togo;
-          tiovec[niov].iov_len = a;
-          rattempted += a;
-          niov++;
-          if (a >= togo)
-            break;
-        }
-        b = b->next;
-      }
-
-      if (niov == 1) {
-        r = socketManager.read(vc->con.fd, tiovec[0].iov_base, tiovec[0].iov_len);
-      } else {
-        r = socketManager.readv(vc->con.fd, &tiovec[0], niov);
-      }
-      NET_DEBUG_COUNT_DYN_STAT(net_calls_to_read_stat, 1);
-      total_read += rattempted;
-    } while (rattempted && r == rattempted && total_read < toread);
-
-    // if we have already moved some bytes successfully, summarize in r
-    if (total_read != rattempted) {
-      if (r <= 0)
-        r = total_read - rattempted;
-      else
-        r = total_read - rattempted + r;
-    }
+    NET_DEBUG_COUNT_DYN_STAT(net_calls_to_read_stat, read_count);
     // check for errors
     if (r <= 0) {
 
@@ -844,6 +856,13 @@ void
 UnixNetVConnection::net_read_io(NetHandler *nh, EThread *lthread)
 {
   read_from_net(nh, this, lthread);
+}
+
+// Need raw access for SSL handshake processing too.
+int64_t
+UnixNetVConnection::net_read_raw_io(MIOBuffer *buf, int64_t toread, int &read_count)
+{
+  return read_from_net_raw(buf, toread, this, read_count);
 }
 
 // This code was pulled out of write_to_net so
