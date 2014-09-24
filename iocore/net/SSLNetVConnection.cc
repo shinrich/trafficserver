@@ -313,26 +313,19 @@ SSLNetVConnection::read_raw_data()
 
   // read data
   r = this->net_read_raw_io(this->handShakeBuffer, toread, read_count);
-  if (toread) {
-    // check for errors
-    if (r <= 0) {
-
-      if (r == -EAGAIN || r == -ENOTCONN) {
-        NET_DEBUG_COUNT_DYN_STAT(net_calls_to_read_nodata_stat, 1);
-        return r;
-      }
-
-      if (!r || r == -ECONNRESET) {
-        return r;
-      }
+  // check for errors
+  if (r <= 0) {
+    if (r == -EAGAIN || r == -ENOTCONN) {
+      NET_DEBUG_COUNT_DYN_STAT(net_calls_to_read_nodata_stat, 1);
       return r;
     }
-    NET_SUM_DYN_STAT(net_read_bytes_stat, r);
-
-    this->handShakeBuffer->fill(r);
-
-  } else
-    r = 0;
+    if (!r || r == -ECONNRESET) {
+      return r;
+    }
+    return r;
+  }
+  NET_SUM_DYN_STAT(net_read_bytes_stat, r);
+  this->handShakeBuffer->fill(r);
 
   char *start = this->handShakeReader->start();
   char *end = this->handShakeReader->end();
