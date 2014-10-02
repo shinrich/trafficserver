@@ -7,3 +7,4 @@
 #inktomi/iwx/iwx.so
 #inktomi/abuse/abuse.so etc/trafficserver/abuse.config
 #inktomi/icx/icx.so etc/trafficserver/icx.config
+yahoo_connection.so ypath=0

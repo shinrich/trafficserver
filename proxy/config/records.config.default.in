@@ -196,3 +196,11 @@ CONFIG proxy.config.cluster.cluster_port INT 8086
 CONFIG proxy.config.cluster.rsport INT 8088
 CONFIG proxy.config.cluster.mcport INT 8089
 CONFIG proxy.config.cluster.mc_group_addr STRING 224.0.1.37
+
+##############################################################################
+# Extra Yahoo ATS Defaults
+##############################################################################
+CONFIG proxy.config.ssl.session_cache.size    INT 512000
+CONFIG proxy.config.ssl.session_cache.timeout INT 7200
+CONFIG proxy.config.ssl.max_record_size       INT 0
+CONFIG proxy.config.net.default_inactivity_timeout INT 300
