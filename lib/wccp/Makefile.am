@@ -26,7 +26,7 @@ AM_CPPFLAGS = \
 #DEFS += $(WCCP_DEFS)
 
 noinst_LIBRARIES = libwccp.a
-#noinst_PROGRAMS = test-cache
+noinst_PROGRAMS = test-cache test-router
 
 libwccp_a_SOURCES = \
   Wccp.h \
@@ -38,5 +38,8 @@ libwccp_a_SOURCES = \
   WccpStatic.cc \
   WccpUtil.h
 
-#test_cache_SOURCES = \
-#  wccp-test-cache.cc wccp-test-router.cc
+test_router_SOURCES = \
+  wccp-test-router.cc
+
+test_cache_SOURCES = \
+  wccp-test-cache.cc

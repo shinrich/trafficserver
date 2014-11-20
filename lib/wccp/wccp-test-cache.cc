@@ -38,7 +38,7 @@
 
 # include <poll.h>
 
-# include <libconfig.h++>
+# include <tsconfig/TsValue.h>
 
 static char const USAGE_TEXT[] =
   "%s\n"
@@ -59,10 +59,10 @@ inline void Error(char const* fmt, ...) {
 
 void Log(
   std::ostream& out,
-  ats::Errata const& errata,
+  ts::Errata const& errata,
   int indent = 0
 ) {
-  for ( ats::Errata::const_iterator spot = errata.begin(), limit = errata.end();
+  for ( ts::Errata::const_iterator spot = errata.begin(), limit = errata.end();
         spot != limit;
         ++spot
   ) {
@@ -76,13 +76,13 @@ void Log(
   }
 }
 
-void LogToStdErr(ats::Errata const& errata) {
+void LogToStdErr(ts::Errata const& errata) {
   Log(std::cerr, errata);
 }
 
 int
 main(int argc, char** argv) {
-  Wccp::Cache wcp;
+  wccp::Cache wcp;
 
   // Reading stdin support.
   size_t in_size = 200;
@@ -90,7 +90,7 @@ main(int argc, char** argv) {
   ssize_t in_count;
 
   // Set up erratum support.
-  ats::Errata::registerSink(&LogToStdErr);
+  ts::Errata::registerSink(&LogToStdErr);
 
   // getopt return values. Selected to avoid collisions with
   // short arguments.
@@ -138,7 +138,7 @@ main(int argc, char** argv) {
       }
       break;
     case OPT_SERVICE:
-      ats::Errata status = wcp.loadServicesFromFile(optarg);
+      ts::Errata status = wcp.loadServicesFromFile(optarg);
       if (!status) fail = true;
       break;
     }
@@ -167,7 +167,7 @@ main(int argc, char** argv) {
   wcp.housekeeping();
 
   while (true) {
-    time_t dt = std::min(Wccp::TIME_UNIT, wcp.waitTime());
+    time_t dt = std::min(wccp::TIME_UNIT, wcp.waitTime());
     printf("Waiting %lu milliseconds\n", dt * 1000);
     int n = poll(pfa, POLL_FD_COUNT, dt * 1000);
     if (n < 0) { // error
