@@ -136,7 +136,7 @@ main(int argc, char** argv) {
       if (pfa[1].revents) {
         if (pfa[1].revents & POLLIN) {
           wcp.handleMessage();
-          wcp.sendPendingMessages();
+          //wcp.sendPendingMessages();
         } else {
           fprintf(stderr, "Socket failure.\n");
           return 6;
@@ -150,7 +150,7 @@ main(int argc, char** argv) {
         }
       }
     } else { // timeout
-      wcp.sendPendingMessages();
+      //wcp.sendPendingMessages();
     }
   }
 
