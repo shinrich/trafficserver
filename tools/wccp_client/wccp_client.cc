@@ -41,6 +41,8 @@
 # include "tsconfig/TsValue.h"
 # include "ink_lockfile.h"
 
+#define WCCP_LOCK       "wccp.lock"
+
 static char const USAGE_TEXT[] =
   "%s\n"
   "--address IP address to bind.\n"
