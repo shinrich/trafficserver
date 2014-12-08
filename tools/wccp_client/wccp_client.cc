@@ -30,15 +30,16 @@
 
 # include <getopt.h>
 
-# include "Wccp.h"
-
 # include <sys/socket.h>
 # include <netinet/in.h>
 # include <arpa/inet.h>
 
 # include <poll.h>
 
-# include <tsconfig/TsValue.h>
+# include "ink_memory.h"
+# include "Wccp.h"
+# include "tsconfig/TsValue.h"
+# include "ink_lockfile.h"
 
 static char const USAGE_TEXT[] =
   "%s\n"
@@ -47,15 +48,6 @@ static char const USAGE_TEXT[] =
   "--service Path to service group definitions.\n"
   "--help Print usage and exit.\n"
   ;
-
-static bool Ready = true;
-
-inline void Error(char const* fmt, ...) {
-  va_list args;
-  va_start(args, fmt);
-  vfprintf(stderr, fmt, args);
-  Ready = false;
-}
 
 void Log(
   std::ostream& out,
@@ -80,14 +72,39 @@ void LogToStdErr(ts::Errata const& errata) {
   Log(std::cerr, errata);
 }
 
+static void
+check_lockfile()
+{
+  char lockfile[256];
+  pid_t holding_pid;
+  int err;
+
+  strcpy(lockfile, "/var/run/");
+  strcat(lockfile, WCCP_LOCK);
+
+  Lockfile server_lockfile(lockfile);
+  err = server_lockfile.Get(&holding_pid);
+
+  if (err != 1) {
+    char *reason = strerror(-err);
+    fprintf(stderr, "WARNING: Can't acquire lockfile '%s'", (const char *)lockfile);
+
+    if ((err == 0) && (holding_pid != -1)) {
+      fprintf(stderr, " (Lock file held by process ID %ld)\n", (long)holding_pid);
+    } else if ((err == 0) && (holding_pid == -1)) {
+      fprintf(stderr, " (Lock file exists, but can't read process ID)\n");
+    } else if (reason) {
+      fprintf(stderr, " (%s)\n", reason);
+    } else {
+      fprintf(stderr, "\n");
+    }
+    _exit(1);
+  }
+}
+
 int
 main(int argc, char** argv) {
   wccp::Cache wcp;
-
-  // Reading stdin support.
-  size_t in_size = 200;
-  char* in_buff = 0;
-  ssize_t in_count;
 
   // Set up erratum support.
   ts::Errata::registerSink(&LogToStdErr);
@@ -137,10 +154,11 @@ main(int argc, char** argv) {
         fail = true;
       }
       break;
-    case OPT_SERVICE:
+    case OPT_SERVICE: {
       ts::Errata status = wcp.loadServicesFromFile(optarg);
       if (!status) fail = true;
       break;
+    }
     }
   }
 
@@ -148,21 +166,20 @@ main(int argc, char** argv) {
     printf(USAGE_TEXT, FAIL_MSG);
     return 1;
   }
-
+ 
+  check_lockfile();
+  
   if (0 > wcp.open(ip_addr.s_addr)) {
     fprintf(stderr, "Failed to open or bind socket.\n");
     return 2;
   }
 
-  static int const POLL_FD_COUNT = 2;
+  static int const POLL_FD_COUNT = 1;
   pollfd pfa[POLL_FD_COUNT];
 
-  // Poll on STDIN and the socket.
-  pfa[0].fd = STDIN_FILENO;
+  // Poll on the socket.
+  pfa[0].fd = wcp.getSocket();
   pfa[0].events = POLLIN;
-
-  pfa[1].fd = wcp.getSocket();
-  pfa[1].events = POLLIN;
 
   wcp.housekeeping();
 
@@ -174,19 +191,12 @@ main(int argc, char** argv) {
       perror("General polling failure");
       return 5;
     } else if (n > 0) { // things of interest happened
-      if (pfa[1].revents) {
-        if (pfa[1].revents & POLLIN) {
+      if (pfa[0].revents) {
+        if (pfa[0].revents & POLLIN) {
           wcp.handleMessage();
         } else {
           fprintf(stderr, "Socket failure.\n");
           return 6;
-        }
-      }
-      if (pfa[0].revents) {
-        if (pfa[0].revents & POLLIN) {
-          in_count = getline(&in_buff, &in_size, stdin);
-          fprintf(stderr, "Terminated from console.\n");
-          return 0;
         }
       }
     } else { // timeout
