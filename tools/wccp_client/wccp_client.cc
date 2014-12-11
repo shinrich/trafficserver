@@ -75,6 +75,26 @@ void LogToStdErr(ts::Errata const& errata) {
 }
 
 static void
+PrintErrata(ts::Errata const& err) {
+  size_t n;
+  static size_t const SIZE = 4096;
+  char buff[SIZE];
+  if (err.size()) {
+    ts::Errata::Code code = err.top().getCode();
+    n = err.write(buff, SIZE, 1, 0, 2, "> ");
+    // strip trailing newlines.
+    while (n && (buff[n-1] == '\n' || buff[n-1] == '\r'))
+      buff[--n] = 0;
+    printf("%s\n", buff);
+  }
+}
+
+static void
+Init_Errata_Logging() {
+  ts::Errata::registerSink(&PrintErrata);
+}
+
+static void
 check_lockfile()
 {
   char lockfile[256];
@@ -109,7 +129,8 @@ main(int argc, char** argv) {
   wccp::Cache wcp;
 
   // Set up erratum support.
-  ts::Errata::registerSink(&LogToStdErr);
+  //ts::Errata::registerSink(&LogToStdErr);
+  Init_Errata_Logging();
 
   // getopt return values. Selected to avoid collisions with
   // short arguments.
@@ -186,9 +207,9 @@ main(int argc, char** argv) {
   wcp.housekeeping();
 
   while (true) {
-    time_t dt = std::min(wccp::TIME_UNIT, wcp.waitTime());
-    printf("Waiting %lu milliseconds\n", dt * 1000);
-    int n = poll(pfa, POLL_FD_COUNT, dt * 1000);
+    //time_t dt = std::min(wccp::TIME_UNIT, wcp.waitTime());
+    //printf("Waiting %lu milliseconds\n", dt * 1000);
+    int n = poll(pfa, POLL_FD_COUNT,  1000);
     if (n < 0) { // error
       perror("General polling failure");
       return 5;
