@@ -163,10 +163,6 @@ public:
   */
   self& setSvcType(ServiceGroup::Type svc);
 
-  self& setProcName(const ts::ConstBuffer &);
-  self& clearProcName();
-  const char *getProcName();
-
   uint8_t getSvcId() const; ///< Get service ID field.
   self& setSvcId(uint8_t id); ///< Set service ID field to @a id.
 
@@ -205,7 +201,6 @@ protected:
   uint8_t m_protocol; ///< IP protocol for service.
   uint32_t m_flags; ///< Flags.
   uint16_t m_ports[N_PORTS]; ///< Service ports.
-  char *m_proc_name;
 };
 
 /// Security component option (sub-type)
@@ -426,22 +421,6 @@ ServiceGroup::operator != (self const& that) const {
 inline ServiceGroup::Type
 ServiceGroup::getSvcType() const {
   return static_cast<ServiceGroup::Type>(m_svc_type);
-}
-
-inline ServiceGroup&
-ServiceGroup::setProcName(const ts::ConstBuffer &name) {
-  m_proc_name = ats_strndup(name.data(), name.size());
-  return *this;
-}
-inline ServiceGroup&
-ServiceGroup::clearProcName() {
-  m_proc_name = NULL;
-  return *this;
-}
-inline const char *
-ServiceGroup::getProcName() {
-  if (NULL == m_proc_name) return "";
-  else return m_proc_name;
 }
 inline uint8_t
 ServiceGroup::getSvcId() const {

@@ -255,7 +255,7 @@ Impl::handleRemovalQuery(IpHeader const&, ts::Buffer const& /* data ATS_UNUSED *
 }
 // ------------------------------------------------------
 CacheImpl::GroupData::GroupData()
-  : m_assignment_pending(false) {
+  : m_proc_name(NULL), m_assignment_pending(false) {
 }
 
 CacheImpl::GroupData&
@@ -406,7 +406,7 @@ CacheImpl::GroupData::waitTime(time_t now) const {
 bool
 CacheImpl::GroupData::processUp() {
   bool zret = false;
-  const char *proc_pid_path = this->m_svc.getProcName();
+  const char *proc_pid_path = this->getProcName();
   if (proc_pid_path == NULL || proc_pid_path[0] == '\0') {
     zret = true; // No process to track, always chatter
   } else {

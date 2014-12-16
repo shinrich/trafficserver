@@ -1104,9 +1104,6 @@ public:
       by the protocol.
   */
   self& setSvcType(ServiceGroup::Type svc);
-  self& setProcName(const ts::ConstBuffer &name);
-  self& clearProcName();
-  const char * getProcName();
 
   uint8_t getSvcId() const; ///< Get service ID field.
   self& setSvcId(uint8_t id); ///< Set service ID field to @a id.
@@ -2466,10 +2463,12 @@ namespace detail {
       /// Cache assignment methods supported.
       ServiceGroup::CacheAssignmentStyle m_cache_assign;
 
+
       /// Known caches.
       CacheBag m_caches;
       /// Known routers.
       RouterBag m_routers;
+      char *m_proc_name;
 
       /// Set if there an assignment should be computed and sent.
       /// This is before checking for being a designated cache
@@ -2480,6 +2479,9 @@ namespace detail {
       std::vector<SeedRouter> m_seed_routers;
 
       GroupData(); ///< Default constructor.
+
+      void setProcName(const ts::ConstBuffer &name);
+      const char *getProcName();
 
       /// Find a router by IP @a addr.
       /// @return A pointer to the router, or @c NULL if not found.
@@ -2537,6 +2539,14 @@ namespace detail {
         SecurityOption style ///< Security style to use.
       );
     };
+    inline const char *
+    GroupData::getProcName() {
+      return m_proc_name;
+    }
+    inline void
+    GroupData::setProcName(const ts::ConstBuffer &name) {
+      m_proc_name = ats_strndup(name.data(), name.size());
+    }
   }
 }
 
@@ -3055,15 +3065,6 @@ ServiceComp::getSvcType() const {
 inline ServiceComp&
 ServiceComp::setSvcType(ServiceGroup::Type t) {
   this->access()->setSvcType(t);
-  return *this;
-}
-inline const char *
-ServiceComp::getProcName() {
-  return this->access()->getProcName();
-}
-inline ServiceComp &
-ServiceComp::setProcName(const ts::ConstBuffer &proc_name) {
-  this->access()->setProcName(proc_name);
   return *this;
 }
 inline uint8_t

@@ -575,17 +575,6 @@ CacheImpl::loadServicesFromFile(char const* path) {
       zret.push(Service_Type_Defaulted(svc_type, svc_line));
     }
 
-    // Is there a process we should track?
-    if ((prop = svc_cfg[SVC_PROP_PROC]).hasValue()) {
-      if (ts::config::StringValue == prop.getType()) {
-         svc_info.setProcName(prop.getText());
-      } else {
-        zret.push(Prop_Invalid_Type(prop, ts::config::StringValue));
-      }
-    } else {
-      svc_info.clearProcName();
-    }
-
     // Get the protocol.
     if ((prop = svc_cfg[SVC_PROP_PROTOCOL]).hasValue()) {
       if (svc_info.getSvcType() == ServiceGroup::STANDARD) {
@@ -737,6 +726,16 @@ CacheImpl::loadServicesFromFile(char const* path) {
 
     // Properties after this are optional so we can proceed if they fail.
     GroupData& svc = this->defineServiceGroup(svc_info);
+
+    // Is there a process we should track?
+    if ((prop = svc_cfg[SVC_PROP_PROC]).hasValue()) {
+      if (ts::config::StringValue == prop.getType()) {
+         svc.setProcName(prop.getText());
+      } else {
+        zret.push(Prop_Invalid_Type(prop, ts::config::StringValue));
+      }
+    } 
+
     // Add seed routers.
     std::vector<uint32_t>::iterator rspot, rlimit;
     for ( rspot = routers.begin(), rlimit = routers.end() ; rspot != rlimit ; ++rspot )
