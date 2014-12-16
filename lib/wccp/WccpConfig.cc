@@ -67,6 +67,7 @@ static char const * const SVC_PROP_ROUTERS = "routers";
 static char const * const SVC_PROP_FORWARD = "forward";
 static char const * const SVC_PROP_RETURN = "return";
 static char const * const SVC_PROP_ASSIGN = "assignment";
+static char const * const SVC_PROP_PROC = "proc-name";
 
 static char const * const SECURITY_PROP_OPTION = "option";
 static char const * const SECURITY_PROP_KEY = "key";
@@ -572,6 +573,17 @@ CacheImpl::loadServicesFromFile(char const* path) {
         ;
       svc_info.setSvcType(svc_type);
       zret.push(Service_Type_Defaulted(svc_type, svc_line));
+    }
+
+    // Is there a process we should track?
+    if ((prop = svc_cfg[SVC_PROP_PROC]).hasValue()) {
+      if (ts::config::StringValue == prop.getType()) {
+         svc_info.setProcName(prop.getText());
+      } else {
+        zret.push(Prop_Invalid_Type(prop, ts::config::StringValue));
+      }
+    } else {
+      svc_info.clearProcName();
     }
 
     // Get the protocol.

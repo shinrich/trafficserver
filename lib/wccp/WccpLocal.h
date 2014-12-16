@@ -1104,6 +1104,9 @@ public:
       by the protocol.
   */
   self& setSvcType(ServiceGroup::Type svc);
+  self& setProcName(const ts::ConstBuffer &name);
+  self& clearProcName();
+  const char * getProcName();
 
   uint8_t getSvcId() const; ///< Get service ID field.
   self& setSvcId(uint8_t id); ///< Set service ID field to @a id.
@@ -2518,6 +2521,10 @@ namespace detail {
         time_t now ///< Current time.
       );
 
+      /** Check to see if the process associated with service is up
+      */
+      bool processUp();
+
       /// Update state to reflect a view change.
       self& viewChanged(time_t now);
 
@@ -3048,6 +3055,15 @@ ServiceComp::getSvcType() const {
 inline ServiceComp&
 ServiceComp::setSvcType(ServiceGroup::Type t) {
   this->access()->setSvcType(t);
+  return *this;
+}
+inline const char *
+ServiceComp::getProcName() {
+  return this->access()->getProcName();
+}
+inline ServiceComp &
+ServiceComp::setProcName(const ts::ConstBuffer &proc_name) {
+  this->access()->setProcName(proc_name);
   return *this;
 }
 inline uint8_t

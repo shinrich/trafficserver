@@ -38,16 +38,22 @@
 
 # include "ink_memory.h"
 # include "Wccp.h"
+# include "WccpUtil.h"
 # include "tsconfig/TsValue.h"
 # include "ink_lockfile.h"
 
-#define WCCP_LOCK       "wccp.lock"
+#define WCCP_LOCK       "wccp.pid"
+
+bool do_debug = false;
+bool do_daemon = false;
 
 static char const USAGE_TEXT[] =
   "%s\n"
   "--address IP address to bind.\n"
   "--router Booststrap IP address for routers.\n"
   "--service Path to service group definitions.\n"
+  "--debug Print debugging information.\n"
+  "--daemon Run as daemon.\n"
   "--help Print usage and exit.\n"
   ;
 
@@ -81,11 +87,13 @@ PrintErrata(ts::Errata const& err) {
   char buff[SIZE];
   if (err.size()) {
     ts::Errata::Code code = err.top().getCode();
-    n = err.write(buff, SIZE, 1, 0, 2, "> ");
-    // strip trailing newlines.
-    while (n && (buff[n-1] == '\n' || buff[n-1] == '\r'))
-      buff[--n] = 0;
-    printf("%s\n", buff);
+    if (do_debug || code >=  wccp::LVL_WARN) {
+      n = err.write(buff, SIZE, 1, 0, 2, "> ");
+      // strip trailing newlines.
+      while (n && (buff[n-1] == '\n' || buff[n-1] == '\r'))
+        buff[--n] = 0;
+      printf("%s\n", buff);
+    }
   }
 }
 
@@ -128,9 +136,6 @@ int
 main(int argc, char** argv) {
   wccp::Cache wcp;
 
-  // Set up erratum support.
-  //ts::Errata::registerSink(&LogToStdErr);
-  Init_Errata_Logging();
 
   // getopt return values. Selected to avoid collisions with
   // short arguments.
@@ -138,11 +143,15 @@ main(int argc, char** argv) {
   static int const OPT_HELP = 258; ///< Print help message.
   static int const OPT_ROUTER = 259; ///< Seeded router IP address.
   static int const OPT_SERVICE = 260; ///< Service group definition.
+  static int const OPT_DEBUG = 261; ///< Enable debug printing
+  static int const OPT_DAEMON = 262; ///< Disconnect and run as daemon
 
   static option OPTIONS[] = {
     { "address", 1, 0, OPT_ADDRESS },
     { "router", 1, 0, OPT_ROUTER },
     { "service", 1, 0, OPT_SERVICE },
+    { "debug", 0, 0, OPT_DEBUG },
+    { "daemon", 0, 0, OPT_DAEMON },
     { "help", 0, 0, OPT_HELP },
     { 0, 0, 0, 0 } // required terminator.
   };
@@ -182,6 +191,12 @@ main(int argc, char** argv) {
       if (!status) fail = true;
       break;
     }
+    case OPT_DEBUG: 
+      do_debug = true;
+      break;
+    case OPT_DAEMON: 
+      do_daemon = true;
+      break;
     }
   }
 
@@ -190,12 +205,24 @@ main(int argc, char** argv) {
     return 1;
   }
  
-  check_lockfile();
-  
   if (0 > wcp.open(ip_addr.s_addr)) {
     fprintf(stderr, "Failed to open or bind socket.\n");
     return 2;
   }
+
+  if (do_daemon) {
+    pid_t pid = fork();
+    if (pid > 0) {
+      // Successful, the parent should go away
+      _exit(0);
+    }
+  }
+
+  check_lockfile();
+
+  // Set up erratum support.
+  //ts::Errata::registerSink(&LogToStdErr);
+  Init_Errata_Logging();
 
   static int const POLL_FD_COUNT = 1;
   pollfd pfa[POLL_FD_COUNT];
