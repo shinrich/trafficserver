@@ -634,17 +634,16 @@ CacheImpl::housekeeping() {
 
     group.cullRouters(now); // TBD UPDATE VIEW!
 
-    // Check the active routers for scheduled packets.
-    for ( RouterBag::iterator rspot = group.m_routers.begin(),
-             rend = group.m_routers.end() ;
-           rspot != rend ;
-           ++rspot
-    ) {
-      dst_addr.sin_addr.s_addr = rspot->m_addr;
-      if (0 == rspot->pingTime(now)) {
-
-        // Check to see if the related service is up
-        if (group.processUp()) {
+    // Check to see if the related service is up
+    if (group.processUp()) {
+      // Check the active routers for scheduled packets.
+      for ( RouterBag::iterator rspot = group.m_routers.begin(),
+               rend = group.m_routers.end() ;
+             rspot != rend ;
+             ++rspot
+      ) {
+        dst_addr.sin_addr.s_addr = rspot->m_addr;
+        if (0 == rspot->pingTime(now)) {
           HereIAmMsg here_i_am;
           here_i_am.setBuffer(msg_buffer);
           this->generateHereIAm(here_i_am, group, *rspot);
