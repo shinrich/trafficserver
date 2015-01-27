@@ -1241,14 +1241,6 @@ SSLNetVConnection::callHooks(TSHttpHookID eventId)
   ink_assert(eventId == TS_SSL_SNI_HOOK || eventId == TS_SSL_CERT_HOOK);
 
   if ((this->sslHandshakeHookState == HANDSHAKE_HOOKS_PRE ||
-       this->sslHandshakeHookState == HANDSHAKE_HOOKS_SNI) && eventId == TS_SSL_SNI_HOOK) {
-    if (curHook != NULL) {
-      curHook = curHook->next();
-    } else {
-      curHook = ssl_hooks->get(TS_SSL_SNI_INTERNAL_HOOK);
-    }
-  }
-  else if ((this->sslHandshakeHookState == HANDSHAKE_HOOKS_PRE ||
             this->sslHandshakeHookState == HANDSHAKE_HOOKS_CERT) && eventId == TS_SSL_CERT_HOOK) {
     if (curHook != NULL) {
       curHook = curHook->next();
@@ -1257,7 +1249,7 @@ SSLNetVConnection::callHooks(TSHttpHookID eventId)
     }
   } 
   else {
-    // Not in the write state, or no plugins registered for this hook
+    // Not in the right state, or no plugins registered for this hook
     // reenable and continue
     return true;
   }

@@ -275,16 +275,9 @@ ssl_rm_cached_session(SSL_CTX *ctx, SSL_SESSION *sess)
   session_cache->removeSession(sid);
 }
 
-
-
 #if TS_USE_TLS_SNI
-
-/**
- * Called before either the server or the client certificate is used
- * Return 1 on success, 0 on error, or -1 to pause
- */
-static int
-ssl_cert_callback(SSL * ssl, void * /*arg*/)
+int 
+set_context_cert(SSL *ssl) 
 {
   SSL_CTX *           ctx = NULL;
   SSLCertContext *    cc = NULL;
@@ -292,13 +285,9 @@ ssl_cert_callback(SSL * ssl, void * /*arg*/)
   const char *        servername = SSL_get_servername(ssl, TLSEXT_NAMETYPE_host_name);
   SSLNetVConnection * netvc = (SSLNetVConnection *)SSL_get_app_data(ssl);
   bool found = true;
-  bool reenabled;
   int retval = 1;
 
-  // SKH need to figure out if we are calling this for a client
-  // certificate or a server certificate.  Do we want to do the same thing 
-  // in the client case?
-  Debug("ssl", "ssl_cert_callback ssl=%p server=%s handshake_complete=%d", ssl, servername,
+  Debug("ssl", "set_context_cert ssl=%p server=%s handshake_complete=%d", ssl, servername,
     netvc->getSSLHandShakeComplete());
 
   // catch the client renegotiation early on
@@ -308,20 +297,16 @@ ssl_cert_callback(SSL * ssl, void * /*arg*/)
     goto done;
   }
 
-  // The incoming SSL_CTX is either the one mapped from the inbound IP address or the default one. If we
-  // don't find a name-based match at this point, we *do not* want to mess with the context because we've
-  // already made a best effort to find the best match.
+  // The incoming SSL_CTX is either the one mapped from the inbound IP address
+  // or the default one. If we don't find a name-based match at this point, 
+  // we *do not* want to mess with the context because we've already made a 
+  // best effort to find the best match.
   if (likely(servername)) {
     cc = lookup->find((char *)servername);
     if (cc && cc->ctx) ctx = cc->ctx;
     if (cc && SSLCertContext::OPT_TUNNEL == cc->opt && netvc->get_is_transparent()) {
-      // if we are running 1.0.2 or better, we can pause the processing
-#if OPENSSL_VERSION_NUMBER >= 0x100200fL
       netvc->attributes = HttpProxyPort::TRANSPORT_BLIND_TUNNEL;
       netvc->setSSLHandShakeComplete(true);
-#else
-      Error("Must run at least 1.0.2 to pause handshake processing");
-#endif
       retval = -1;
       goto done;
     }
@@ -348,8 +333,30 @@ ssl_cert_callback(SSL * ssl, void * /*arg*/)
   Debug("ssl", "ssl_cert_callback %s SSL context %p for requested name '%s'", found ? "found" : "using", ctx, servername);
 
   if (ctx == NULL) {
-    retval = SSL_TLSEXT_ERR_NOACK;
+    retval = 0;
     goto done;
+  }
+done:
+  SSLCertificateConfig::release(lookup);
+  return retval;
+}
+
+// Use the certificate callback for openssl 1.0.2 and greater
+// otherwise use the SNI callback
+#if OPENSSL_VERSION_NUMBER >= 0x1000200fL
+/**
+ * Called before either the server or the client certificate is used
+ * Return 1 on success, 0 on error, or -1 to pause
+ */
+static int
+ssl_cert_callback(SSL * ssl, void * /*arg*/)
+{
+  SSLNetVConnection * netvc = (SSLNetVConnection *)SSL_get_app_data(ssl);
+  bool reenabled;
+  int retval = set_context_cert(ssl); 
+
+  if (retval != 1) {
+    goto done; 
   }
 
   // Call the plugin cert code
@@ -362,79 +369,17 @@ ssl_cert_callback(SSL * ssl, void * /*arg*/)
   }
 
 done:
-  SSLCertificateConfig::release(lookup);
-  // We need to return one of the SSL_TLSEXT_ERR constants. If we return an
-  // error, we can fill in *ad with an alert code to propgate to the
-  // client, see SSL_AD_*.
+  // Return 1 for success, 0 for error, or -1 to pause
   return retval;
 }
-
-static int
-ssl_servername_callback(SSL * ssl, int * ad, void * /*arg*/)
-{
-  SSL_CTX *           ctx = NULL;
-  SSLCertContext *    cc = NULL;
-  // Fetching the lookup via the callback arg allows for race
-  // condition with reconfigure
-  //SSLCertLookup *     lookup = (SSLCertLookup *) arg;
-  SSLCertLookup *lookup = SSLCertificateConfig::acquire();
-  const char *        servername = SSL_get_servername(ssl, TLSEXT_NAMETYPE_host_name);
-  SSLNetVConnection * netvc = (SSLNetVConnection *)SSL_get_app_data(ssl);
-  bool found = true;
-  bool reenabled;
-  int retval = SSL_TLSEXT_ERR_OK;
-
-  Debug("ssl", "ssl_servername_callback ssl=%p ad=%d server=%s handshake_complete=%d", ssl, *ad, servername,
-    netvc->getSSLHandShakeComplete());
-
-  // catch the client renegotiation early on
-  if (SSLConfigParams::ssl_allow_client_renegotiation == false && netvc->getSSLHandShakeComplete()) {
-    Debug("ssl", "ssl_servername_callback trying to renegotiate from the client");
-    retval = SSL_TLSEXT_ERR_ALERT_FATAL;
-    goto done;
-  }
-
-  // The incoming SSL_CTX is either the one mapped from the inbound IP address or the default one. If we
-  // don't find a name-based match at this point, we *do not* want to mess with the context because we've
-  // already made a best effort to find the best match.
-  if (likely(servername)) {
-    cc = lookup->find((char *)servername);
-    if (cc && cc->ctx) ctx = cc->ctx;
-    if (cc && SSLCertContext::OPT_TUNNEL == cc->opt && netvc->get_is_transparent()) {
-#ifdef SSL_TLSEXT_ERR_READ_AGAIN
-      netvc->attributes = HttpProxyPort::TRANSPORT_BLIND_TUNNEL;
-      netvc->setSSLHandShakeComplete(true);
-      retval = SSL_TLSEXT_ERR_READ_AGAIN;
 #else
-      Error("Must have openssl patch to support OPT_TUNNEL from SNI callback");
-      retval = SSL_TLSEXT_ERR_ALERT_FATAL;
-#endif
-      goto done;
-    }
-  }
-
-  // If there's no match on the server name, try to match on the peer address.
-  if (ctx == NULL) {
-    IpEndpoint ip;
-    int namelen = sizeof(ip);
-
-    safe_getsockname(netvc->get_socket(), &ip.sa, &namelen);
-    cc = lookup->find(ip);
-    if (cc && cc->ctx) ctx = cc->ctx;
-  }
-
-  if (ctx != NULL) {
-    SSL_set_SSL_CTX(ssl, ctx);
-  }
-  else {
-    found = false;
-  }
-
-  ctx = SSL_get_SSL_CTX(ssl);
-  Debug("ssl", "ssl_servername_callback %s SSL context %p for requested name '%s'", found ? "found" : "using", ctx, servername);
-
-  if (ctx == NULL) {
-    retval = SSL_TLSEXT_ERR_NOACK;
+static int
+ssl_servername_callback(SSL * ssl, int * /* ad */, void * /*arg*/)
+{
+  SSLNetVConnection * netvc = (SSLNetVConnection *)SSL_get_app_data(ssl);
+  bool reenabled;
+  int retval = set_context_cert(ssl); 
+  if (retval != 1) {
     goto done;
   }
 
@@ -443,41 +388,35 @@ ssl_servername_callback(SSL * ssl, int * ad, void * /*arg*/)
   // If it did not re-enable, return the code to
   // stop the accept processing
   if (!reenabled){
-#ifdef SSL_TLSEXT_ERR_READ_AGAIN
-    retval = SSL_TLSEXT_ERR_READ_AGAIN;
-#else
-    Error("Must have openssl patch to support OPT_TUNNEL from SNI callback");
-    retval = SSL_TLSEXT_ERR_ALERT_FATAL;
-#endif
+    retval = -1;
     goto done;
   }
 
 done:
-  SSLCertificateConfig::release(lookup);
-  // We need to return one of the SSL_TLSEXT_ERR constants. If we return an
-  // error, we can fill in *ad with an alert code to propgate to the
-  // client, see SSL_AD_*.
+  // Map 1 to SSL_TLSEXT_ERR_OK
+  // Map 0 to SSL_TLSEXT_ERR_ALERT_FATAL
+  // Map -1 to SSL_TLSEXT_ERR_READ_AGAIN, if present
+  switch (retval) {
+  case 1:
+    retval = SSL_TLSEXT_ERR_OK;
+    break;
+  case -1:
+#ifdef SSL_TLSEXT_ERR_READ_AGAIN
+    retval = SSL_TLSEXT_ERR_READ_AGAIN;
+#else
+    Error("Cannot pause SNI processsing with this version of openssl");
+    retval = SSL_TLSEXT_ERR_ALERT_FATAL;
+#endif
+    break;
+  case 0:
+  default:
+    retval = SSL_TLSEXT_ERR_ALERT_FATAL;
+    break;
+  }
   return retval;
 }
-
+#endif
 #endif /* TS_USE_TLS_SNI */
-
-static SSL_CTX *
-ssl_context_enable_sni(SSL_CTX * ctx, SSLCertLookup * /*lookup*/)
-{
-#if TS_USE_TLS_SNI
-  if (ctx) {
-    Debug("ssl", "setting SNI callbacks with for ctx %p", ctx);
-    SSL_CTX_set_tlsext_servername_callback(ctx, ssl_servername_callback);
-    // Possible race conditions against reconfigure here
-    // Better to use the SSLCertificate.acquire function to access the
-    // lookup data structure safely
-    //SSL_CTX_set_tlsext_servername_arg(ctx, lookup);
-  }
-
-#endif /* TS_USE_TLS_SNI */
-  return ctx;
-}
 
 /* Build 2048-bit MODP Group with 256-bit Prime Order Subgroup from RFC 5114 */
 static DH *get_dh2048()
@@ -1701,7 +1640,6 @@ ssl_index_certificate(SSLCertLookup * lookup, SSLCertContext const& cc, const ch
   X509_free(cert);
 }
 
-#ifdef OLD
 // This callback function is executed while OpenSSL processes the SSL
 // handshake and does SSL record layer stuff.  It's used to trap
 // client-initiated renegotiations and update cipher stats
@@ -1733,7 +1671,6 @@ ssl_callback_info(const SSL *ssl, int where, int ret)
     }
   }
 }
-#endif
 
 static bool
 ssl_store_ssl_context(
@@ -1741,15 +1678,19 @@ ssl_store_ssl_context(
     SSLCertLookup *         lookup,
     const ssl_user_config & sslMultCertSettings)
 {
-  SSL_CTX *   ctx;
+  SSL_CTX *   ctx = SSLInitServerContext(params, sslMultCertSettings);
   ats_scoped_str  certpath;
   ats_scoped_str  session_key_path;
 
-  ctx = ssl_context_enable_sni(SSLInitServerContext(params, sslMultCertSettings), lookup);
-  if (!ctx) {
-    return false;
-  }
+// If we are 1.0.2 or better we can do all the processing in the 
+// certificate callback
+#if OPENSSL_VERSION_NUMBER >= 0x1000200fL
   SSL_CTX_set_cert_cb(ctx, ssl_cert_callback, NULL);
+#else
+  SSL_CTX_set_tlsext_servername_callback(ctx, ssl_servername_callback);
+#endif
+
+  SSL_CTX_set_info_callback(ctx, ssl_callback_info);
 
 #if TS_USE_TLS_NPN
   SSL_CTX_set_next_protos_advertised_cb(ctx, SSLNetVConnection::advertise_next_protocol, NULL);
