@@ -292,7 +292,7 @@ set_context_cert(SSL *ssl)
 
   // catch the client renegotiation early on
   if (SSLConfigParams::ssl_allow_client_renegotiation == false && netvc->getSSLHandShakeComplete()) {
-    Debug("ssl", "ssl_cert_callback trying to renegotiate from the client");
+    Debug("ssl", "set_context_cert trying to renegotiate from the client");
     retval = 0; // Error 
     goto done;
   }
