@@ -82,6 +82,56 @@ Load_Configuration()
    this connection.
  */
 int
+CB_cert(TSCont /* contp */, TSEvent /* event */, void *edata)
+{
+  TSVConn ssl_vc = reinterpret_cast<TSVConn>(edata);
+  TSSslConnection sslobj = TSVConnSSLConnectionGet(ssl_vc);
+  SSL *ssl = reinterpret_cast<SSL *>(sslobj);
+  const char *servername = SSL_get_servername(ssl, TLSEXT_NAMETYPE_host_name);
+  if (servername != NULL) {
+    int servername_len = strlen(servername);
+    int facebook_name_len = strlen("facebook.com");
+    if (servername_len >= facebook_name_len) {
+      const char *server_ptr = servername + (servername_len - facebook_name_len);
+      if (strcmp(server_ptr, "facebook.com") == 0) {
+        TSDebug("skh", "Blind tunnel from cert callback");
+        TSVConnTunnel(ssl_vc);
+        // Don't reenable to ensure that we break out of the
+        // SSL handshake processing
+        return TS_SUCCESS; // Don't re-enable so we interrupt processing
+      }
+    }
+    // If the name is yahoo, look for a context for safelyfiled and use that here
+    if (strcmp("www.yahoo.com", servername) == 0) {
+      TSDebug("skh", "From cert callback: SNI name is yahoo ssl obj is %p", sslobj);
+      if (sslobj) {
+        TSSslContext ctxobj = TSSslContextFindByName("safelyfiled.com");
+        if (ctxobj != NULL) {
+          TSDebug("skh", "Found cert for safelyfiled");
+          SSL_CTX *ctx = reinterpret_cast<SSL_CTX *>(ctxobj);
+          SSL_set_SSL_CTX(ssl, ctx);
+          TSDebug("skh", "Cert plugin cb: replace SSL CTX");
+        }
+      }
+    }
+  }
+
+
+  // All done, reactivate things
+  TSVConnReenable(ssl_vc);
+  return TS_SUCCESS;
+}
+
+/**
+   Somewhat nonscensically exercise some scenarios of proxying
+   and blind tunneling from the SNI callback plugin
+
+   Case 1: If the servername ends in facebook.com, blind tunnel
+   Case 2: If the servername is www.yahoo.com and there is a context
+   entry for "safelyfiled.com", use the "safelyfiled.com" context for
+   this connection.
+ */
+int
 CB_servername(TSCont /* contp */, TSEvent /* event */, void *edata)
 {
   TSVConn ssl_vc = reinterpret_cast<TSVConn>(edata);
@@ -131,6 +181,7 @@ TSPluginInit(int argc, const char *argv[])
   bool success = false;
   TSPluginRegistrationInfo info;
   TSCont cb_sni = 0; // sni callback continuation
+  TSCont cb_cert = 0; // Certificate callback continuation
   static const struct option longopt[] = {
     { const_cast<char *>("config"), required_argument, NULL, 'c' },
     { NULL, no_argument, NULL, '\0' }
@@ -164,8 +215,11 @@ TSPluginInit(int argc, const char *argv[])
     TSError(PCP "Failed to load config file.");
   } else if (0 == (cb_sni = TSContCreate(&CB_servername, TSMutexCreate()))) {
     TSError(PCP "Failed to create SNI callback.");
+  } else if (0 == (cb_cert = TSContCreate(&CB_cert, TSMutexCreate()))) {
+    TSError(PCP "Failed to create cert callback.");
   } else {
     TSHttpHookAdd(TS_SSL_SNI_HOOK, cb_sni);
+    TSHttpHookAdd(TS_SSL_CERT_HOOK, cb_cert);
     success = true;
   }
 

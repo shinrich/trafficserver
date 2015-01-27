@@ -68,6 +68,7 @@
 class SSLNextProtocolSet;
 struct SSLCertLookup;
 
+
 //////////////////////////////////////////////////////////////////
 //
 //  class NetVConnection
@@ -208,12 +209,15 @@ private:
     SSL_HOOKS_DONE    ///< All hooks have been called and completed
   } sslPreAcceptHookState;
 
-  enum {
-    SNI_HOOKS_INIT,
-    SNI_HOOKS_ACTIVE,
-    SNI_HOOKS_DONE,
-    SNI_HOOKS_CONTINUE
-  } sslSNIHookState;
+  typedef  enum {
+    HANDSHAKE_HOOKS_PRE,
+    HANDSHAKE_HOOKS_SNI,
+    HANDSHAKE_HOOKS_CERT,
+    HANDSHAKE_HOOKS_POST,
+    HANDSHAKE_HOOKS_INVOKE,
+    HANDSHAKE_HOOKS_DONE
+  } SSLHandshakeHookState_t;
+  SSLHandshakeHookState_t sslHandshakeHookState;
 
   const SSLNextProtocolSet * npnSet;
   Continuation * npnEndpoint;
