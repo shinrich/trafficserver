@@ -297,10 +297,9 @@ set_context_cert(SSL *ssl)
     goto done;
   }
 
-  // The incoming SSL_CTX is either the one mapped from the inbound IP address
-  // or the default one. If we don't find a name-based match at this point, 
-  // we *do not* want to mess with the context because we've already made a 
-  // best effort to find the best match.
+  // The incoming SSL_CTX is either the one mapped from the inbound IP address or the default one. If we
+  // don't find a name-based match at this point, we *do not* want to mess with the context because we've
+  // already made a best effort to find the best match.
   if (likely(servername)) {
     cc = lookup->find((char *)servername);
     if (cc && cc->ctx) ctx = cc->ctx;
@@ -353,11 +352,17 @@ ssl_cert_callback(SSL * ssl, void * /*arg*/)
 {
   SSLNetVConnection * netvc = (SSLNetVConnection *)SSL_get_app_data(ssl);
   bool reenabled;
-  int retval = set_context_cert(ssl); 
+  int retval =  1;
 
-  if (retval != 1) {
-    goto done; 
+  // Do the common certificate lookup only once.  If we pause
+  // and restart processing, do not execute the common logic again
+  if (!netvc->calledHooks(TS_SSL_CERT_HOOK)) {
+    retval = set_context_cert(ssl); 
+    if (retval != 1) {
+      return retval;
+    }
   }
+
 
   // Call the plugin cert code
   reenabled = netvc->callHooks(TS_SSL_CERT_HOOK);
@@ -365,10 +370,8 @@ ssl_cert_callback(SSL * ssl, void * /*arg*/)
   // stop the accept processing
   if (!reenabled){
     retval = -1; // Pause
-    goto done;
   }
 
-done:
   // Return 1 for success, 0 for error, or -1 to pause
   return retval;
 }
@@ -378,9 +381,15 @@ ssl_servername_callback(SSL * ssl, int * /* ad */, void * /*arg*/)
 {
   SSLNetVConnection * netvc = (SSLNetVConnection *)SSL_get_app_data(ssl);
   bool reenabled;
-  int retval = set_context_cert(ssl); 
-  if (retval != 1) {
-    goto done;
+  int retval = 1;
+
+  // Do the common certificate lookup only once.  If we pause
+  // and restart processing, do not execute the common logic again
+  if (!netvc->calledHooks(TS_SSL_CERT_HOOK)) {
+    retval = set_context_cert(ssl); 
+    if (retval != 1) {
+      goto done;
+    }
   }
 
   // Call the plugin SNI code
@@ -389,7 +398,6 @@ ssl_servername_callback(SSL * ssl, int * /* ad */, void * /*arg*/)
   // stop the accept processing
   if (!reenabled){
     retval = -1;
-    goto done;
   }
 
 done:

@@ -184,6 +184,12 @@ public:
   // Returns true if all the hooks reenabled
   bool callHooks(TSHttpHookID eventId);
 
+  // Returns true if we have already called at
+  // least some of the hooks
+  bool calledHooks(TSHttpHookID /* eventId */) {
+    return (this->sslHandshakeHookState != HANDSHAKE_HOOKS_PRE);
+  }
+
 private:
   SSLNetVConnection(const SSLNetVConnection &);
   SSLNetVConnection & operator =(const SSLNetVConnection &);
@@ -209,14 +215,13 @@ private:
     SSL_HOOKS_DONE    ///< All hooks have been called and completed
   } sslPreAcceptHookState;
 
-  typedef  enum {
+  enum SSLHandshakeHookState {
     HANDSHAKE_HOOKS_PRE,
     HANDSHAKE_HOOKS_CERT,
     HANDSHAKE_HOOKS_POST,
     HANDSHAKE_HOOKS_INVOKE,
     HANDSHAKE_HOOKS_DONE
-  } SSLHandshakeHookState_t;
-  SSLHandshakeHookState_t sslHandshakeHookState;
+  } sslHandshakeHookState;
 
   const SSLNextProtocolSet * npnSet;
   Continuation * npnEndpoint;

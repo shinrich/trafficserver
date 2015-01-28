@@ -34,5 +34,6 @@ If the server is running openssl 1.0.1 with the appropraite patch installed or i
 
 Additional processing could reenable the virtual connection causing the ``SSL_accept`` to be called again to complete the handshake exchange.  In the case of a blind tunnel conversion, the SSL handshake will never be completed by Traffic Server.
 
+This call does appropriate locking and scheduling, so it is safe to call from another thread.
 
 

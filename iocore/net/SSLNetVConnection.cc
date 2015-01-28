@@ -1237,8 +1237,9 @@ SSLNetVConnection::sslContextSet(void* ctx) {
 bool
 SSLNetVConnection::callHooks(TSHttpHookID eventId)
 {
-  // Only dealing with the SNI hook so far
-  ink_assert(eventId == TS_SSL_SNI_HOOK || eventId == TS_SSL_CERT_HOOK);
+  // Only dealing with the SNI/CERT hook so far. 
+  // TS_SSL_SNI_HOOK and TS_SSL_CERT_HOOK are the same value
+  ink_assert(eventId == TS_SSL_CERT_HOOK);
 
   if ((this->sslHandshakeHookState == HANDSHAKE_HOOKS_PRE ||
             this->sslHandshakeHookState == HANDSHAKE_HOOKS_CERT) && eventId == TS_SSL_CERT_HOOK) {
@@ -1256,7 +1257,7 @@ SSLNetVConnection::callHooks(TSHttpHookID eventId)
 
   // Otherwise, we have plugin hooks to run
   bool reenabled = true;
-  SSLHandshakeHookState_t holdState = this->sslHandshakeHookState;
+  SSLHandshakeHookState holdState = this->sslHandshakeHookState;
   while (curHook && reenabled) {
 
     this->sslHandshakeHookState = HANDSHAKE_HOOKS_INVOKE ;
