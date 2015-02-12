@@ -75,10 +75,36 @@ struct SSLCertLookup;
 //  A VConnection for a network socket.
 //
 //////////////////////////////////////////////////////////////////
+const int shutdownBufferSize = 0x10000;
 class SSLNetVConnection:public UnixNetVConnection
 {
   typedef UnixNetVConnection super; ///< Parent type.
+  /**
+   * SSLShutdown contains two logical buffers of socket file descriptors
+   * These buffers contain file descriptors of sockets that are still waiting
+   * for the peer's close notify.
+   * One buffer is where we are enqueing new fd's to wait.
+   * The other buffer has been waiting at least one interval (currently one
+   * second) and is ready to be drained and closed
+   * At the end of each interval, we swap buffers
+   */
+  class SSLShutdown : public Continuation
+  {
+    int first, index, max, old_last;
+    SOCKET buffer[shutdownBufferSize]; 
+    Ptr<ProxyMutex> mutex;
+
+  public:
+    SSLShutdown() : first(0), index(0), max(shutdownBufferSize>>1), old_last(shutdownBufferSize>>1), mutex(new_ProxyMutex()) 
+    {
+      SET_HANDLER(&SSLShutdown::process_queue);
+    };
+    void enque(SOCKET fd);
+    int process_queue(int event, void *data);
+  };
 public:
+  static SSLShutdown shutdown_queue;	//<! Class to track sockets that are still waiting for close_notify
+  static void enque(SOCKET fd) { SSLNetVConnection::shutdown_queue.enque(fd); }
   virtual int sslStartHandShake(int event, int &err);
   virtual void free(EThread * t);
   virtual void enableRead()
@@ -102,6 +128,7 @@ public:
   {
     sslClientConnection = state;
   };
+  virtual void do_io_close(int lerrno = -1); //<! overriding to handle close_notify shutdown as needed
   int sslServerHandShakeEvent(int &err);
   int sslClientHandShakeEvent(int &err);
   virtual void net_read_io(NetHandler * nh, EThread * lthread);
@@ -120,6 +147,7 @@ public:
   ink_hrtime sslHandshakeBeginTime;
   ink_hrtime sslLastWriteTime;
   int64_t    sslTotalBytesSent;
+  bool       sslDoShutdown; //<! Set to false if peer initiated shutdown without close notify
 
   static int advertise_next_protocol(SSL * ssl, const unsigned char ** out, unsigned * outlen, void *);
   static int select_next_protocol(SSL * ssl, const unsigned char ** out, unsigned char * outlen, const unsigned char * in, unsigned inlen, void *);

@@ -1586,6 +1586,7 @@ main(int /* argc ATS_UNUSED */, const char **argv)
   SET_INTERVAL(RecProcess, "proxy.config.raw_stat_sync_interval_ms", raw_stat_sync_interval_ms);
   SET_INTERVAL(RecProcess, "proxy.config.remote_sync_interval_ms", remote_sync_interval_ms);
 
+
   // Initialize the stat pages manager
   statPagesManager.init();
 
@@ -1735,6 +1736,8 @@ main(int /* argc ATS_UNUSED */, const char **argv)
     // Continuation Statistics Dump
     if (show_statistics)
       eventProcessor.schedule_every(new ShowStats(), HRTIME_SECONDS(show_statistics), ET_CALL);
+
+    eventProcessor.schedule_every(&SSLNetVConnection::shutdown_queue, HRTIME_SECONDS(1), ET_TASK); 
 
 
     //////////////////////////////////////

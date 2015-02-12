@@ -239,15 +239,35 @@ ssl_read_from_net(SSLNetVConnection * sslvc, EThread * lthread, int64_t &ret)
           ret = errno;
           Debug("ssl.error", "[SSL_NetVConnection::ssl_read_from_net] SSL_ERROR_SYSCALL, underlying IO error: %s", strerror(errno));
         } else {
+          int shutdown_state = SSL_get_shutdown(sslvc->ssl);
+          if (!(shutdown_state & SSL_RECEIVED_SHUTDOWN)) {
+            Debug("skh", "Client EOS without shutdown");
+          }
+          sslvc->sslDoShutdown = (shutdown_state & SSL_RECEIVED_SHUTDOWN); 
+         
           // then EOF observed, treat it as EOS
           event = SSL_READ_EOS;
           //Error("[SSL_NetVConnection::ssl_read_from_net] SSL_ERROR_SYSCALL, EOF observed violating SSL protocol");
         }
         break;
       case SSL_ERROR_ZERO_RETURN:
+      {
+        sslvc->sslDoShutdown = true;
+        int shutdown_state = SSL_get_shutdown(sslvc->ssl);
+        if ((shutdown_state & SSL_RECEIVED_SHUTDOWN)) {
+          Debug("skh", "Client initiated shutdown");
+        }
+        if ((shutdown_state & SSL_SENT_SHUTDOWN)) {
+          Debug("skh", "Client initiated shutdown.  Have also sent shutdown");
+        } else {
+          Debug("skh", "Client initiated shutdown.  Now sending shutdown");
+          SSL_shutdown(sslvc->ssl);
+        }
+
         event = SSL_READ_EOS;
         SSL_INCREMENT_DYN_STAT(ssl_error_zero_return);
         Debug("ssl.error", "[SSL_NetVConnection::ssl_read_from_net] SSL_ERROR_ZERO_RETURN");
+      }
         break;
       case SSL_ERROR_SSL:
       default:
@@ -766,6 +786,7 @@ SSLNetVConnection::SSLNetVConnection():
   sslHandshakeBeginTime(0),
   sslLastWriteTime(0),
   sslTotalBytesSent(0),
+  sslDoShutdown(true),
   hookOpRequested(TS_SSL_HOOK_OP_DEFAULT),
   sslHandShakeComplete(false),
   sslClientConnection(false),
@@ -797,8 +818,8 @@ SSLNetVConnection::free(EThread * t) {
   closed = 0;
   ink_assert(con.fd == NO_FD);
   if (ssl != NULL) {
-    /*if (sslHandShakeComplete)
-       SSL_set_shutdown(ssl, SSL_SENT_SHUTDOWN|SSL_RECEIVED_SHUTDOWN); */
+    // No sense doing the shutdown here, because we've already dealt with the socket
+    // See the fd assert above
     SSL_free(ssl);
     ssl = NULL;
   }
@@ -1293,4 +1314,85 @@ SSLNetVConnection::callHooks(TSHttpHookID eventId)
   return reenabled;
 }
 
+void SSLNetVConnection::do_io_close(int lerrno) {
+  // Save aside the file descriptor
+  SOCKET fd = this->con.fd;
+  int shutdown_state = SSL_get_shutdown(this->ssl);
+  if (SSL_in_init(this->ssl)) {
+    Debug("skh", "In init state, do shutdown=%d shutdown_state=0x%x", this->sslDoShutdown, shutdown_state);
+  }
+  if (this->sslDoShutdown) {
+    // Have we send the close notify?
+    if (!(shutdown_state & SSL_SENT_SHUTDOWN)) {
+      SSL_shutdown(this->ssl);
+      Debug("skh", "Send shutdown now");
+    } else {
+      Debug("skh", "Sent shutdown already");
+    }
 
+    shutdown_state = SSL_get_shutdown(this->ssl);
+
+    // Have we received the close notify?
+    if (!(shutdown_state & SSL_RECEIVED_SHUTDOWN)) {
+      // Must wait for the close notify to come back Don't close the socket yet
+      // While the return value of SSL_shutdown should indicate whether
+      // we have received the close notify or not, it seems that the ssl
+      // connection gets into the INIT state (specifically 
+      // SSL3_ST_SR_CLNT_HELLO_c for openssl 1.0.1f), and the return value is not
+      // accurate. Relying instead on the SSL_get_shutdown call
+      con.fd = -1;
+      SSLNetVConnection::enque(fd);
+      Debug("skh", "Wait to receive close notify");
+    }
+  } 
+
+  // Go ahead and clean up the rest of the data structure
+  super::do_io_close(lerrno);
+}
+
+SSLNetVConnection::SSLShutdown SSLNetVConnection::shutdown_queue;
+
+void 
+SSLNetVConnection::SSLShutdown::enque(SOCKET fd) 
+{
+  MUTEX_LOCK(lock, mutex, this_ethread());
+  if (index < max) {
+    buffer[index++] = fd;
+  } else {
+    close(fd);
+  }
+}
+
+int
+SSLNetVConnection::SSLShutdown::process_queue(int /* event */, void * /*data */) 
+{
+  // Catch you next time around
+  MUTEX_TRY_LOCK(lock, mutex, this_ethread());
+  if (!lock.is_locked()) {
+    return 1;
+  }
+  int hold_new_last = index;
+  // Flip the active pointer;
+  if (max == shutdownBufferSize) {
+    first = index = 0;
+    max = shutdownBufferSize >> 1; 
+  } else {
+    first = index = shutdownBufferSize >> 1;
+    max = shutdownBufferSize;
+  }
+  // Clear/close the saved 
+  int i;
+  for (i = first; i < old_last && i < max; i++) {
+    char read_buffer[1024];
+    // drain the file descriptor
+    int num_read = 0;
+    int retval;
+    while ((retval = ::read(buffer[i], read_buffer, sizeof(read_buffer))) > 0) {
+      num_read += retval;
+    }
+    Debug("skh", "Shutdown %d at index %d read %d", buffer[i], i, num_read);
+    close(buffer[i]);
+  }
+  old_last = hold_new_last;
+  return 1;
+}
