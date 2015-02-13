@@ -1586,7 +1586,6 @@ main(int /* argc ATS_UNUSED */, const char **argv)
   SET_INTERVAL(RecProcess, "proxy.config.raw_stat_sync_interval_ms", raw_stat_sync_interval_ms);
   SET_INTERVAL(RecProcess, "proxy.config.remote_sync_interval_ms", remote_sync_interval_ms);
 
-
   // Initialize the stat pages manager
   statPagesManager.init();
 
