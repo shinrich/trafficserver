@@ -75,27 +75,32 @@ struct SSLCertLookup;
 //  A VConnection for a network socket.
 //
 //////////////////////////////////////////////////////////////////
-const int shutdownBufferSize = 0x10000;
+const int shutdownBufferCount = 0x10000;
 class SSLNetVConnection:public UnixNetVConnection
 {
   typedef UnixNetVConnection super; ///< Parent type.
   /**
-   * SSLShutdown contains two logical buffers of socket file descriptors
-   * These buffers contain file descriptors of sockets that are still waiting
-   * for the peer's close notify.
-   * One buffer is where we are enqueing new fd's to wait.
-   * The other buffer has been waiting at least one interval (currently one
-   * second) and is ready to be drained and closed
-   * At the end of each interval, we swap buffers
+   * The goal of SSLShutdown is to store socket file descriptors to give the peer
+   * time to response with a close_notify and shutdown the SSL connection cleanly.
+   *
+   * SSLShutdown contains a cirular buffer of socket file descriptors.
+   * The circular buffer is divided into two regions.  The area from start
+   * to last_cleanse is the set of socket file descriptors that have been waiting
+   * at least one interval (currently 1 second).  The area from last_cleanse to 
+   * cur are the socket file descriptors that have been enqueued in the current
+   * interval.  The space between cur and start is currently unused.
    */
   class SSLShutdown : public Continuation
   {
-    int first, index, max, old_last;
-    SOCKET buffer[shutdownBufferSize]; 
-    Ptr<ProxyMutex> mutex;
+  private:
+    SOCKET buffer[shutdownBufferCount]; 
+    SOCKET *start, *last_cleanse, *cur;
+    
+    int tryEnque(SOCKET fd);	//<! try to enque data.  Give up in case of race
+    void drain(SOCKET fd);	//<! Read the data and shutdown the connection
 
   public:
-    SSLShutdown() : first(0), index(0), max(shutdownBufferSize>>1), old_last(shutdownBufferSize>>1), mutex(new_ProxyMutex()) 
+    SSLShutdown() : start(buffer), last_cleanse(buffer), cur(buffer) 
     {
       SET_HANDLER(&SSLShutdown::process_queue);
     };

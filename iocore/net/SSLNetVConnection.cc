@@ -21,6 +21,7 @@
   limitations under the License.
  */
 #include "ink_config.h"
+#include "ink_atomic.h"
 #include "records/I_RecHttp.h"
 #include "P_Net.h"
 #include "P_SSLNextProtocolSet.h"
@@ -1352,47 +1353,103 @@ void SSLNetVConnection::do_io_close(int lerrno) {
 
 SSLNetVConnection::SSLShutdown SSLNetVConnection::shutdown_queue;
 
+/**
+ *  Try to enque
+ *  Return 1 on success
+ *  Return 0 on race
+ *  Return -1 on failure
+ */
+int SSLNetVConnection::SSLShutdown::tryEnque(SOCKET fd) 
+{
+  int retval;
+  SOCKET *enter_ptr = cur;
+  SOCKET *new_cur = cur + 1;
+  if (new_cur >= (buffer+shutdownBufferCount)) new_cur = buffer;
+  // If start moves here, it is only moving forward in the circular
+  // buffer.  So the worst thing that happens is we give up and 
+  // close a socket when there might have been room for it.
+  if (new_cur != start) { 
+    // Only one increment and no wrap
+    if (enter_ptr == ink_atomic_swap(&cur, new_cur)) {
+      *enter_ptr = fd;
+      retval = 1;
+    } else {
+      // Someone updated in between, try again 
+      retval = 0;
+    }
+  } else { 
+    // Ran out of space, just give it up
+    Debug("skh", "Give up shutting down nicely");
+    retval = -1;
+  }
+  return retval;
+}
+
+/**
+ * Add a socketd file descriptor to the circular buffer.
+ * Close the socket right away if there is no room to enque it.
+ */
 void 
 SSLNetVConnection::SSLShutdown::enque(SOCKET fd) 
 {
-  MUTEX_LOCK(lock, mutex, this_ethread());
-  if (index < max) {
-    buffer[index++] = fd;
-  } else {
+  int enque_result = 0;
+  while (enque_result == 0) {
+    enque_result = tryEnque(fd);
+  }
+ 
+  // If we gave up, clean up the file descriptor 
+  if (enque_result < 0) {
+    Debug("skh", "Give up on enque");
     close(fd);
   }
 }
 
-int
-SSLNetVConnection::SSLShutdown::process_queue(int /* event */, void * /*data */) 
+/**
+ * Read all the data out the file descriptor and close the file descriptor
+ */
+void
+SSLNetVConnection::SSLShutdown::drain(SOCKET fd) 
 {
-  // Catch you next time around
-  MUTEX_TRY_LOCK(lock, mutex, this_ethread());
-  if (!lock.is_locked()) {
-    return 1;
-  }
-  int hold_new_last = index;
-  // Flip the active pointer;
-  if (max == shutdownBufferSize) {
-    first = index = 0;
-    max = shutdownBufferSize >> 1; 
-  } else {
-    first = index = shutdownBufferSize >> 1;
-    max = shutdownBufferSize;
-  }
-  // Clear/close the saved 
-  int i;
-  for (i = first; i < old_last && i < max; i++) {
-    char read_buffer[1024];
-    // drain the file descriptor
-    int num_read = 0;
-    int retval;
-    while ((retval = ::read(buffer[i], read_buffer, sizeof(read_buffer))) > 0) {
-      num_read += retval;
+   // Observing that in draining for a shutting down connection at most 
+   // 120 some bytes were read
+   char read_buffer[1024];
+   int num_read;
+   do {
+     num_read = ::read(fd, read_buffer, sizeof(read_buffer));
+   } while (num_read > 0);
+   Debug("skh", "Closing fd %d", fd);
+   close(fd);
+}
+
+/**
+ * Method that is called periodically to drain and close the sockets that
+ * have been waiting around at least one interval.   We assume that the
+ * client has closed nicely by now if it is going to.
+ */
+int
+SSLNetVConnection::SSLShutdown::process_queue(int /*event*/, void * /*data*/) 
+{
+  SOCKET *ptr;
+
+  /* 
+   * Drain all the file descriptors from start to last_cleanse. Since
+   * this is a circular buffer, we must deal with the two cases of the
+   * relative positions of start and last_cleanse in the linear storage buffer.
+   */
+  if (last_cleanse >= start) {
+    for (ptr = start;  ptr < last_cleanse; ++ptr) {
+      drain(*ptr);
     }
-    Debug("skh", "Shutdown %d at index %d read %d", buffer[i], i, num_read);
-    close(buffer[i]);
+  } else { // start < last_cleanse, we've wrapped
+    for (ptr = start;  ptr < (buffer + shutdownBufferCount); ++ptr) {
+      drain(*ptr);
+    }
+    for (ptr = buffer;  ptr < last_cleanse; ++ptr) {
+      drain(*ptr);
+    }
   }
-  old_last = hold_new_last;
+  // Now update the pointers for the next cleanup phase
+  start = last_cleanse;
+  last_cleanse = cur;
   return 1;
 }
