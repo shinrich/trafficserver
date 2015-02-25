@@ -1,5 +1,7 @@
 Changes with Apache Traffic Server 5.3.0
 
+  *) [TS-3370] header_rewrite plugin uses dead continuation.
+
   *) [TS-3436] Add API milestones.
 
   *) [TS-3538] ATS should perform validity checks on certificate prior to serving.
