@@ -57,8 +57,15 @@ CacheDisk::open(char *s, off_t blocks, off_t askip, int ahw_sector_size, int fil
   header = (DiskHeader *)ats_memalign(ats_pagesize(), header_len);
   memset(header, 0, header_len);
   if (clear) {
-    SET_HANDLER(&CacheDisk::clearDone);
-    return clearDisk();
+    if (read_only_p) {
+      fprintf(stderr, "Could not read disk header for disk %s", path);
+      SET_DISK_BAD(this);
+      SET_HANDLER(&CacheDisk::openDone);
+      return openDone(EVENT_IMMEDIATE, 0);
+    } else {
+      SET_HANDLER(&CacheDisk::clearDone);
+      return clearDisk();
+    }
   }
 
   SET_HANDLER(&CacheDisk::openStart);
@@ -144,6 +151,11 @@ CacheDisk::openStart(int event, void * /* data ATS_UNUSED */)
       // So no space recovery.
       //      if (header->num_diskvol_blks == 1)
       //        header->vol_info[0].len += delta_3_2;
+    } else if (read_only_p) {
+      fprintf(stderr, "Disk header is different than expected for disk %s", path);
+      SET_DISK_BAD(this);
+      SET_HANDLER(&CacheDisk::openDone);
+      return EVENT_DONE;
     } else {
       Warning("disk header different for disk %s: clearing the disk", path);
       SET_HANDLER(&CacheDisk::clearDone);
