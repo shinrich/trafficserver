@@ -571,8 +571,9 @@ HttpSM::attach_client_session(ProxyClientTransaction *client_vc, IOBufferReader 
   ua_entry->vc = client_vc;
   ua_entry->vc_type = HTTP_UA_VC;
 
-  ats_ip_copy(&t_state.client_info.addr, netvc->get_remote_addr());
-  t_state.client_info.port = netvc->get_local_port();
+  ats_ip_copy(&t_state.client_info.src_addr, netvc->get_remote_addr());
+  ats_ip_copy(&t_state.client_info.dst_addr, netvc->get_local_addr());
+  t_state.client_info.dst_addr.port() = netvc->get_local_port();
   t_state.client_info.is_transparent = netvc->get_is_transparent();
   t_state.backdoor_request = !client_vc->hooks_enabled();
   t_state.client_info.port_attribute = static_cast<HttpProxyPort::TransportType>(netvc->attributes);
@@ -1775,7 +1776,7 @@ HttpSM::state_http_server_open(int event, void *data)
        printf("client fd is :%d , server fd is %d\n",vc->con.fd,
        server_vc->con.fd); */
     session->attach_hostname(t_state.current.server->name);
-    ats_ip_copy(&session->server_ip, &t_state.current.server->addr);
+    ats_ip_copy(&session->server_ip, &t_state.current.server->dst_addr);
     session->new_connection(static_cast<NetVConnection *>(data));
     session->state = HSS_ACTIVE;
 
@@ -1812,8 +1813,8 @@ HttpSM::state_http_server_open(int event, void *data)
       if (is_debug_tag_set("http_tproxy")) {
         ip_port_text_buffer ip_c, ip_s;
         Debug("http_tproxy", "Force close of client connect (%s->%s) due to EADDRNOTAVAIL [%" PRId64 "]",
-              ats_ip_nptop(&t_state.client_info.addr.sa, ip_c, sizeof ip_c),
-              ats_ip_nptop(&t_state.server_info.addr.sa, ip_s, sizeof ip_s), sm_id);
+              ats_ip_nptop(&t_state.client_info.src_addr.sa, ip_c, sizeof ip_c),
+              ats_ip_nptop(&t_state.server_info.dst_addr.sa, ip_s, sizeof ip_s), sm_id);
       }
       t_state.client_info.keep_alive = HTTP_NO_KEEPALIVE; // part of the problem, clear it.
       terminate_sm = true;
@@ -2176,7 +2177,7 @@ HttpSM::process_hostdb_info(HostDBInfo *r)
         // may be very large, we cannot use client_request_time to approximate
         // current time when calling select_best_http().
         HostDBRoundRobin *rr = r->rr();
-        ret = rr->select_best_http(&t_state.client_info.addr.sa, now, (int)t_state.txn_conf->down_server_timeout);
+        ret = rr->select_best_http(&t_state.client_info.src_addr.sa, now, static_cast<int>(t_state.txn_conf->down_server_timeout));
 
         // set the srv target`s last_failure
         if (t_state.dns_info.srv_lookup_success) {
@@ -2268,7 +2269,7 @@ HttpSM::state_hostdb_lookup(int event, void *data)
 
     char *host_name = t_state.dns_info.srv_lookup_success ? t_state.dns_info.srv_hostname : t_state.dns_info.lookup_name;
     HostDBProcessor::Options opt;
-    opt.port = t_state.dns_info.srv_lookup_success ? t_state.dns_info.srv_port : t_state.server_info.port;
+    opt.port = t_state.dns_info.srv_lookup_success ? t_state.dns_info.srv_port : t_state.server_info.dst_addr.host_order_port();
     opt.flags = (t_state.cache_info.directives.does_client_permit_dns_storing) ? HostDBProcessor::HOSTDB_DO_NOT_FORCE_DNS :
                                                                                  HostDBProcessor::HOSTDB_FORCE_DNS_RELOAD;
     opt.timeout = (t_state.api_txn_dns_timeout_value != -1) ? t_state.api_txn_dns_timeout_value : 0;
@@ -2339,7 +2340,7 @@ HttpSM::state_mark_os_down(int event, void *data)
       ink_assert(t_state.current.server != NULL);
       ink_assert(t_state.current.request_to == HttpTransact::ORIGIN_SERVER);
       if (t_state.current.server) {
-        mark_down = r->rr()->find_ip(&t_state.current.server->addr.sa);
+        mark_down = r->rr()->find_ip(&t_state.current.server->dst_addr.sa);
       }
     } else {
       // No longer a round robin, check to see if our address is the same
@@ -4136,7 +4137,7 @@ HttpSM::do_hostdb_lookup()
       historical_action = pending_action;
     } else {
       char *host_name = t_state.dns_info.srv_lookup_success ? t_state.dns_info.srv_hostname : t_state.dns_info.lookup_name;
-      opt.port = t_state.dns_info.srv_lookup_success ? t_state.dns_info.srv_port : t_state.server_info.port;
+      opt.port = t_state.dns_info.srv_lookup_success ? t_state.dns_info.srv_port : t_state.server_info.dst_addr.isValid() ? t_state.server_info.dst_addr.host_order_port() : t_state.hdr_info.client_request.port_get();
       opt.flags = (t_state.cache_info.directives.does_client_permit_dns_storing) ? HostDBProcessor::HOSTDB_DO_NOT_FORCE_DNS :
                                                                                    HostDBProcessor::HOSTDB_FORCE_DNS_RELOAD;
       opt.timeout = (t_state.api_txn_dns_timeout_value != -1) ? t_state.api_txn_dns_timeout_value : 0;
@@ -4155,6 +4156,10 @@ HttpSM::do_hostdb_lookup()
     return;
   } else { /* we aren't using SRV stuff... */
     DebugSM("http_seq", "[HttpSM::do_hostdb_lookup] Doing DNS Lookup");
+
+    // If there is not a current server, we must be looking up the origin
+    //  server at the beginning of the transaction
+    int server_port = t_state.current.server ? t_state.current.server->dst_addr.host_order_port() : t_state.server_info.dst_addr.isValid() ? t_state.server_info.dst_addr.host_order_port() : t_state.hdr_info.client_request.port_get();
 
     if (t_state.api_txn_dns_timeout_value != -1) {
       DebugSM("http_timeout", "beginning DNS lookup. allowing %d mseconds for DNS lookup", t_state.api_txn_dns_timeout_value);
@@ -4214,7 +4219,7 @@ HttpSM::do_hostdb_update_if_necessary()
   }
   // If we failed back over to the origin server, we don't have our
   //   hostdb information anymore which means we shouldn't update the hostdb
-  if (!ats_ip_addr_eq(&t_state.current.server->addr.sa, t_state.host_db_info.ip())) {
+  if (!ats_ip_addr_eq(&t_state.current.server->dst_addr.sa, t_state.host_db_info.ip())) {
     DebugSM("http", "[%" PRId64 "] skipping hostdb update due to server failover", sm_id);
     return;
   }
@@ -4241,11 +4246,12 @@ HttpSM::do_hostdb_update_if_necessary()
   } else {
     if (t_state.host_db_info.app.http_data.last_failure != 0) {
       t_state.host_db_info.app.http_data.last_failure = 0;
-      ats_ip_port_cast(&t_state.current.server->addr) = htons(t_state.current.server->port);
       issue_update |= 1;
       char addrbuf[INET6_ADDRPORTSTRLEN];
       DebugSM("http", "[%" PRId64 "] hostdb update marking IP: %s as up", sm_id,
-              ats_ip_nptop(&t_state.current.server->addr.sa, addrbuf, sizeof(addrbuf)));
+              ats_ip_nptop(&t_state.current.server->dst_addr.sa, addrbuf, sizeof(addrbuf)));
+      DebugSM("http", "[%" PRId64 "] hostdb update marking IP: %s as up", sm_id,
+              ats_ip_nptop(&t_state.current.server->dst_addr.sa, addrbuf, sizeof(addrbuf)));
     }
 
     if (t_state.dns_info.srv_lookup_success && t_state.dns_info.srv_app.http_data.last_failure != 0) {
@@ -4256,12 +4262,12 @@ HttpSM::do_hostdb_update_if_necessary()
   }
 
   if (issue_update) {
-    hostDBProcessor.setby(t_state.current.server->name, strlen(t_state.current.server->name), &t_state.current.server->addr.sa,
+    hostDBProcessor.setby(t_state.current.server->name, strlen(t_state.current.server->name), &t_state.current.server->dst_addr.sa,
                           &t_state.host_db_info.app);
   }
 
   char addrbuf[INET6_ADDRPORTSTRLEN];
-  DebugSM("http", "server info = %s", ats_ip_nptop(&t_state.current.server->addr.sa, addrbuf, sizeof(addrbuf)));
+  DebugSM("http", "server info = %s", ats_ip_nptop(&t_state.current.server->dst_addr.sa, addrbuf, sizeof(addrbuf)));
   return;
 }
 
@@ -4704,7 +4710,7 @@ HttpSM::send_origin_throttled_response()
 void
 HttpSM::do_http_server_open(bool raw)
 {
-  int ip_family = t_state.current.server->addr.sa.sa_family;
+  int ip_family = t_state.current.server->dst_addr.sa.sa_family;
   DebugSM("http_track", "entered inside do_http_server_open ][%s]", ats_ip_family_name(ip_family));
 
   // Make sure we are on the "right" thread
@@ -4725,15 +4731,14 @@ HttpSM::do_http_server_open(bool raw)
   ink_assert(pending_action == NULL);
 
   if (false == t_state.api_server_addr_set) {
-    ink_assert(t_state.current.server->port > 0);
-    t_state.current.server->addr.port() = htons(t_state.current.server->port);
+    ink_assert(t_state.current.server->dst_addr.host_order_port() > 0);
   } else {
-    ink_assert(ats_ip_port_cast(&t_state.current.server->addr) != 0);
+    ink_assert(t_state.current.server->dst_addr.port() != 0); // verify the plugin set it to something.
   }
 
   char addrbuf[INET6_ADDRPORTSTRLEN];
   DebugSM("http", "[%" PRId64 "] open connection to %s: %s", sm_id, t_state.current.server->name,
-          ats_ip_nptop(&t_state.current.server->addr.sa, addrbuf, sizeof(addrbuf)));
+          ats_ip_nptop(&t_state.current.server->dst_addr.sa, addrbuf, sizeof(addrbuf)));
 
   if (plugin_tunnel) {
     PluginVCCore *t = plugin_tunnel;
@@ -4751,7 +4756,7 @@ HttpSM::do_http_server_open(bool raw)
   md5_ctx.hash_immediate(hostname_hash, static_cast<const void *>(t_state.current.server->name),
                          strlen(t_state.current.server->name));
   ConnectionCount *connections = ConnectionCount::getInstance();
-  server_connection_count = connections->getCount(t_state.current.server->addr, hostname_hash,
+  server_connection_count = connections->getCount(t_state.current.server->dst_addr, hostname_hash,
                               (TSServerSessionSharingMatchType)t_state.txn_conf->server_session_sharing_match);
  
   milestones[TS_MILESTONE_SERVER_CONNECT] = Thread::get_hrtime();
@@ -4816,11 +4821,11 @@ HttpSM::do_http_server_open(bool raw)
       (t_state.txn_conf->keep_alive_post_out == 1 || t_state.hdr_info.request_content_length == 0) && !is_private() &&
       ua_session != NULL) {
     HSMresult_t shared_result;
-    shared_result = httpSessionManager.acquire_session(this,                             // state machine
-                                                       &t_state.current.server->addr.sa, // ip + port
-                                                       t_state.current.server->name,     // hostname
-                                                       ua_session,                       // has ptr to bound ua sessions
-                                                       this                              // sm
+    shared_result = httpSessionManager.acquire_session(this,                                 // state machine
+                                                       &t_state.current.server->dst_addr.sa, // ip + port
+                                                       t_state.current.server->name,         // hostname
+                                                       ua_session,                           // has ptr to bound ua sessions
+                                                       this                                  // sm
                                                        );
 
     switch (shared_result) {
@@ -4851,7 +4856,7 @@ HttpSM::do_http_server_open(bool raw)
       // so there's no point in further checking on the match or pool values. But why check anything? The
       // client has already exchanged a request with this specific origin server and has sent another one
       // shouldn't we just automatically keep the association?
-      if (ats_ip_addr_port_eq(&existing_ss->server_ip.sa, &t_state.current.server->addr.sa)) {
+      if (ats_ip_addr_port_eq(&existing_ss->server_ip.sa, &t_state.current.server->dst_addr.sa)) {
         ua_session->attach_server_session(NULL);
         existing_ss->state = HSS_ACTIVE;
         this->attach_server_session(existing_ss);
@@ -4902,10 +4907,9 @@ HttpSM::do_http_server_open(bool raw)
   // Check to see if we have reached the max number of connections on this
   // host.
   if (t_state.txn_conf->origin_max_connections > 0) {
-    ip_port_text_buffer addrbuf;
-    if (server_connection_count >= t_state.txn_conf->origin_max_connections) { 
+    if (server_connection_count >= t_state.txn_conf->origin_max_connections) {
       DebugSM("http", "[%" PRId64 "] over the number of connection for this host: %s", sm_id,
-              ats_ip_nptop(&t_state.current.server->addr.sa, addrbuf, sizeof(addrbuf)));
+              ats_ip_ntop(&t_state.current.server->dst_addr.sa, addrbuf, sizeof(addrbuf)));
       ink_assert(pending_action == NULL);
 
       // if we were previously queued, or the queue is disabled-- just reschedule
@@ -4915,13 +4919,13 @@ HttpSM::do_http_server_open(bool raw)
       } else if (t_state.txn_conf->origin_max_connections_queue > 0) { // If we have a queue, lets see if there is a slot
         ConnectionCountQueue *waiting_connections = ConnectionCountQueue::getInstance();
         // if there is space in the queue
-        if (waiting_connections->getCount(t_state.current.server->addr, hostname_hash,
+        if (waiting_connections->getCount(t_state.current.server->dst_addr, hostname_hash,
                                           (TSServerSessionSharingMatchType)t_state.txn_conf->server_session_sharing_match) <
             t_state.txn_conf->origin_max_connections_queue) {
           t_state.origin_request_queued = true;
           Debug("http", "[%" PRId64 "] queued for this host: %s", sm_id,
-                ats_ip_ntop(&t_state.current.server->addr.sa, addrbuf, sizeof(addrbuf)));
-          waiting_connections->incrementCount(t_state.current.server->addr, hostname_hash,
+                ats_ip_ntop(&t_state.current.server->dst_addr.sa, addrbuf, sizeof(addrbuf)));
+          waiting_connections->incrementCount(t_state.current.server->dst_addr, hostname_hash,
                                               (TSServerSessionSharingMatchType)t_state.txn_conf->server_session_sharing_match, 1);
           pending_action = eventProcessor.schedule_in(this, HRTIME_MSECONDS(100));
         } else { // the queue is full
@@ -4955,7 +4959,7 @@ HttpSM::do_http_server_open(bool raw)
       opt.local_ip = outbound_ip;
     } else if (ua_session->is_outbound_transparent()) {
       opt.addr_binding = NetVCOptions::FOREIGN_ADDR;
-      opt.local_ip = t_state.client_info.addr;
+      opt.local_ip = t_state.client_info.src_addr;
       /* If the connection is server side transparent, we can bind to the
          port that the client chose instead of randomly assigning one at
          the proxy.  This is controlled by the 'use_client_source_port'
@@ -4988,14 +4992,14 @@ HttpSM::do_http_server_open(bool raw)
     const char *host = t_state.hdr_info.server_request.host_get(&len);
     if (host && len > 0)
       opt.set_sni_servername(host, len);
-    connect_action_handle = sslNetProcessor.connect_re(this,                             // state machine
-                                                       &t_state.current.server->addr.sa, // addr + port
+    connect_action_handle = sslNetProcessor.connect_re(this,                                 // state machine
+                                                       &t_state.current.server->dst_addr.sa, // addr + port
                                                        &opt);
   } else {
     if (t_state.method != HTTP_WKSIDX_CONNECT) {
       DebugSM("http", "calling netProcessor.connect_re");
-      connect_action_handle = netProcessor.connect_re(this,                             // state machine
-                                                      &t_state.current.server->addr.sa, // addr + port
+      connect_action_handle = netProcessor.connect_re(this,                                 // state machine
+                                                      &t_state.current.server->dst_addr.sa, // addr + port
                                                       &opt);
     } else {
       // Setup the timeouts
@@ -5014,8 +5018,8 @@ HttpSM::do_http_server_open(bool raw)
           connect_timeout = t_state.txn_conf->connect_attempts_timeout;
       }
       DebugSM("http", "calling netProcessor.connect_s");
-      connect_action_handle = netProcessor.connect_s(this,                             // state machine
-                                                     &t_state.current.server->addr.sa, // addr + port
+      connect_action_handle = netProcessor.connect_s(this,                                 // state machine
+                                                     &t_state.current.server->dst_addr.sa, // addr + port
                                                      connect_timeout, &opt);
     }
   }
@@ -5160,7 +5164,7 @@ HttpSM::mark_host_failure(HostDBInfo *info, time_t time_down)
     char *url_str = t_state.hdr_info.client_request.url_string_get(&t_state.arena, 0);
     Log::error("CONNECT: could not connect to %s "
                "for '%s' (setting last failure time)",
-               ats_ip_ntop(&t_state.current.server->addr.sa, addrbuf, sizeof(addrbuf)), url_str ? url_str : "<none>");
+               ats_ip_ntop(&t_state.current.server->dst_addr.sa, addrbuf, sizeof(addrbuf)), url_str ? url_str : "<none>");
     if (url_str)
       t_state.arena.str_free(url_str);
   }
@@ -5173,7 +5177,9 @@ HttpSM::mark_host_failure(HostDBInfo *info, time_t time_down)
 #endif
 
   DebugSM("http", "[%" PRId64 "] hostdb update marking IP: %s as down", sm_id,
-          ats_ip_nptop(&t_state.current.server->addr.sa, addrbuf, sizeof(addrbuf)));
+          ats_ip_nptop(&t_state.current.server->dst_addr.sa, addrbuf, sizeof(addrbuf)));
+  DebugSM("http", "[%" PRId64 "] hostdb update marking IP: %s as down", sm_id,
+          ats_ip_nptop(&t_state.current.server->dst_addr.sa, addrbuf, sizeof(addrbuf)));
 }
 
 void
@@ -5352,7 +5358,7 @@ HttpSM::handle_http_server_open()
                            strlen(t_state.current.server->name));
 
     ConnectionCountQueue *waiting_connections = ConnectionCountQueue::getInstance();
-    waiting_connections->incrementCount(t_state.current.server->addr, hostname_hash,
+    waiting_connections->incrementCount(t_state.current.server->dst_addr, hostname_hash,
                                         (TSServerSessionSharingMatchType)t_state.txn_conf->server_session_sharing_match, -1);
     // The request is now not queued. This is important if the request will ever retry, the t_state is re-used
     t_state.origin_request_queued = false;
@@ -6997,7 +7003,7 @@ HttpSM::update_stats()
       status = t_state.hdr_info.client_response.status_get();
     }
     char client_ip[INET6_ADDRSTRLEN];
-    ats_ip_ntop(&t_state.client_info.addr, client_ip, sizeof(client_ip));
+    ats_ip_ntop(&t_state.client_info.src_addr, client_ip, sizeof(client_ip));
     Error("[%" PRId64 "] Slow Request: "
           "client_ip: %s:%u "
           "url: %s "
@@ -7022,7 +7028,7 @@ HttpSM::update_stats()
           "sm_finish: %.3f "
           "plugin_active: %.3f "
           "plugin_total: %.3f",
-          sm_id, client_ip, ats_ip_port_host_order(&t_state.client_info.addr), url_string, status, unique_id_string,
+          sm_id, client_ip, ats_ip_port_host_order(&t_state.client_info.src_addr), url_string, status, unique_id_string,
           client_response_body_bytes, fd, t_state.client_info.state, t_state.server_info.state,
           milestones.difference(TS_MILESTONE_SM_START, TS_MILESTONE_UA_BEGIN),
           milestones.difference(TS_MILESTONE_SM_START, TS_MILESTONE_UA_READ_HEADER_DONE),
@@ -7212,9 +7218,9 @@ HttpSM::set_next_state()
        */
       ip_text_buffer ipb;
       DebugSM("dns", "[HttpTransact::HandleRequest] Skipping DNS lookup for API supplied target %s.\n",
-              ats_ip_ntop(&t_state.server_info.addr, ipb, sizeof(ipb)));
+              ats_ip_ntop(&t_state.server_info.dst_addr, ipb, sizeof(ipb)));
       // this seems wasteful as we will just copy it right back
-      ats_ip_copy(t_state.host_db_info.ip(), &t_state.server_info.addr);
+      ats_ip_copy(t_state.host_db_info.ip(), &t_state.server_info.dst_addr);
       t_state.dns_info.lookup_success = true;
       call_transact_and_set_next_state(NULL);
       break;
