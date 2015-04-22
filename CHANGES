@@ -1,6 +1,29 @@
                                                          -*- coding: utf-8 -*-
 Changes with Apache Traffic Server 5.3.0
 
+  *) [TS-3533] Revert commits that break unregistered plugin loading.
+
+  *) [TS-3529] Add config option to allow ATS to start even if certificate files are bad.
+
+  *) [TS-3522] Segfault due to inactivity_cop.
+
+  *) [TS-3530] HTTP/2 memory leak with headers and more...
+
+  *) [TS-3519] HTTP/2 seeing a lot of GOAWAY frames being sent
+
+  *) [TS-3520] Fix logging core dump due to invalid unmapped url length/buffer
+
+  *) [TS-3516] Fix various compile warnings with latest versions of clang.
+
+  *) [TS-3489] Not able to set more than 1 accept thread per port and cleaned
+   other thread configurable ranges
+
+  *) [TS-3513] HTTP/2 core dump. Fixed problem with cursor not advancing
+   during parsing
+
+  *) [TS-3514] Atomic check for gcc >4.1 breaks with gcc 5.0
+   Author: Marcin Juszkiewicz <mjuszkiewicz@redhat.com>
+
   *) [TS-3480] Large stream id cause PROTOCOL_ERROR.
    Author: Ryo Okubo <rokubo@yahoo-corp.jp>.
 
@@ -189,8 +212,6 @@ Changes with Apache Traffic Server 5.3.0
    crash.
 
   *) [TS-3338] Update the list of gauges in the epic plugin.
-
-  *) [TS-3337] Remove internal plugin SDK versioning.
 
   *) [TS-3336] Remove unimplemented HTTP metrics.
 
