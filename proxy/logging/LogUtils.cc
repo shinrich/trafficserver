@@ -352,6 +352,19 @@ LogUtils::escapify_url(Arena *arena, char *url, size_t len_in, int *len_out, cha
   while (from < in_url_end) {
     unsigned char c = *from;
     if (map[c / 8] & (1 << (7 - c % 8))) {
+      if ((*from == '%') && ((from+2) < in_url_end)) {
+        unsigned char c1 = *(from+1);
+        unsigned char c2 = *(from+2);
+        bool needsEncoding = ((map[c1 / 8] & (1 << (7 - c1 % 8))) ||
+                              (map[c2 / 8] & (1 << (7 - c2 % 8))));
+        if (!needsEncoding) {
+           out_len -= 2;
+          *to++ = *from;
+          from++;
+          Debug ("log-utils", "character already encoded..skipping %c, %c, %c", *from, *(from+1), *(from+2));
+          continue;
+        }
+      }
       *to++ = '%';
       *to++ = hex_digit[c / 16];
       *to++ = hex_digit[c % 16];
