@@ -134,12 +134,14 @@ MakeHttpProxyAcceptor(HttpProxyAcceptor &acceptor, HttpProxyPort &port, unsigned
 {
   NetProcessor::AcceptOptions &net_opt = acceptor._net_opt;
   HttpSessionAccept::Options accept_opt;
+  int enable_spdy = 0;
 
   net_opt = make_net_accept_options(port, nthreads);
   REC_ReadConfigInteger(net_opt.recv_bufsize, "proxy.config.net.sock_recv_buffer_size_in");
   REC_ReadConfigInteger(net_opt.send_bufsize, "proxy.config.net.sock_send_buffer_size_in");
   REC_ReadConfigInteger(net_opt.packet_mark, "proxy.config.net.sock_packet_mark_in");
   REC_ReadConfigInteger(net_opt.packet_tos, "proxy.config.net.sock_packet_tos_in");
+  REC_ReadConfigInteger(enable_spdy, "proxy.config.spdy.enabled");
 
   accept_opt.f_outbound_transparent = port.m_outbound_transparent_p;
   accept_opt.transport_type = port.m_type;
@@ -174,11 +176,13 @@ MakeHttpProxyAcceptor(HttpProxyAcceptor &acceptor, HttpProxyPort &port, unsigned
     probe->registerEndpoint(ProtocolProbeSessionAccept::PROTO_HTTP, http);
   }
 
+  if (enable_spdy & 0x01) {
 #if TS_HAS_SPDY
-  if (port.m_session_protocol_preference.intersects(SPDY_PROTOCOL_SET)) {
-    probe->registerEndpoint(ProtocolProbeSessionAccept::PROTO_SPDY, new SpdySessionAccept(spdy::SESSION_VERSION_3_1));
-  }
+    if (port.m_session_protocol_preference.intersects(SPDY_PROTOCOL_SET)) {
+      probe->registerEndpoint(ProtocolProbeSessionAccept::PROTO_SPDY, new SpdySessionAccept(spdy::SESSION_VERSION_3_1));
+    }
 #endif
+  }
 
   if (port.m_session_protocol_preference.intersects(HTTP2_PROTOCOL_SET)) {
     probe->registerEndpoint(ProtocolProbeSessionAccept::PROTO_HTTP2, new Http2SessionAccept(accept_opt));
@@ -204,15 +208,17 @@ MakeHttpProxyAcceptor(HttpProxyAcceptor &acceptor, HttpProxyPort &port, unsigned
     }
 
 // SPDY
+    if (enable_spdy & 0x02) {
 #if TS_HAS_SPDY
-    if (port.m_session_protocol_preference.contains(TS_NPN_PROTOCOL_INDEX_SPDY_3)) {
-      ssl->registerEndpoint(TS_NPN_PROTOCOL_SPDY_3, new SpdySessionAccept(spdy::SESSION_VERSION_3));
-    }
+      if (port.m_session_protocol_preference.contains(TS_NPN_PROTOCOL_INDEX_SPDY_3)) {
+        ssl->registerEndpoint(TS_NPN_PROTOCOL_SPDY_3, new SpdySessionAccept(spdy::SESSION_VERSION_3));
+      }
 
-    if (port.m_session_protocol_preference.contains(TS_NPN_PROTOCOL_INDEX_SPDY_3_1)) {
-      ssl->registerEndpoint(TS_NPN_PROTOCOL_SPDY_3_1, new SpdySessionAccept(spdy::SESSION_VERSION_3_1));
-    }
+      if (port.m_session_protocol_preference.contains(TS_NPN_PROTOCOL_INDEX_SPDY_3_1)) {
+        ssl->registerEndpoint(TS_NPN_PROTOCOL_SPDY_3_1, new SpdySessionAccept(spdy::SESSION_VERSION_3_1));
+      }
 #endif
+    }
 
     // HTTP2
     if (port.m_session_protocol_preference.contains(TS_NPN_PROTOCOL_INDEX_HTTP_2_0)) {

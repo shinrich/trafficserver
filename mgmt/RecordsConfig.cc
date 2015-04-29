@@ -1990,6 +1990,8 @@ static const RecordElement RecordsConfig[] =
   //# SPDY global configuration.
   //#
   //############
+  {RECT_CONFIG, "proxy.config.spdy.enabled", RECD_INT, "3", RECU_DYNAMIC, RR_NULL, RECC_INT, "[0-3]", RECA_NULL}
+  ,
   {RECT_CONFIG, "proxy.config.spdy.max_concurrent_streams_in", RECD_INT, "100", RECU_DYNAMIC, RR_NULL, RECC_STR, "^[0-9]+$", RECA_NULL}
   ,
   {RECT_CONFIG, "proxy.config.spdy.no_activity_timeout_in", RECD_INT, "115", RECU_DYNAMIC, RR_NULL, RECC_STR, "^[0-9]+$", RECA_NULL}
