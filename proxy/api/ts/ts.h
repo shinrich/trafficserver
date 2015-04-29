@@ -2378,6 +2378,15 @@ tsapi const char *TSHttpHookNameLookup(TSHttpHookID hook);
 */
 tsapi const char *TSHttpEventNameLookup(TSEvent event);
 
+/**
+   Returns the plugin_tag.  The plugin may check if the tag matches
+
+   TS_NPN_PROTOCOL_SPDY_xx (xx = 2/3/3_1) to identify if the client
+
+   connection is over spdy
+*/
+  tsapi const char* TSHttpTxnPluginTagGet(TSHttpTxn txnp);
+
 #ifdef __cplusplus
 }
 #endif /* __cplusplus */
