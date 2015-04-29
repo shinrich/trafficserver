@@ -53,7 +53,7 @@ CONFIG proxy.config.http.transaction_no_activity_timeout_out INT 30
 CONFIG proxy.config.http.transaction_active_timeout_in INT 900
 CONFIG proxy.config.http.transaction_active_timeout_out INT 0
 CONFIG proxy.config.http.accept_no_activity_timeout INT 120
-CONFIG proxy.config.net.default_inactivity_timeout INT 86400
+CONFIG proxy.config.net.default_inactivity_timeout INT 300
 
 ##############################################################################
 # Origin server connect attempts. Docs:
