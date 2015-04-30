@@ -207,14 +207,17 @@ SSLConfigParams::initialize()
 #endif
   }
 
-// Enable ephemeral DH parameters for the case where we use a cipher with DH forward security.
+  // Enable ephemeral DH parameters for the case where we use a cipher with DH forward security.
+  REC_ReadConfigInteger(options, "proxy.config.ssl.disable_single_dh_use");
+  if (!options) {
 #ifdef SSL_OP_SINGLE_DH_USE
-  ssl_ctx_options |= SSL_OP_SINGLE_DH_USE;
+    ssl_ctx_options |= SSL_OP_SINGLE_DH_USE;
 #endif
 
 #ifdef SSL_OP_SINGLE_ECDH_USE
-  ssl_ctx_options |= SSL_OP_SINGLE_ECDH_USE;
+    ssl_ctx_options |= SSL_OP_SINGLE_ECDH_USE;
 #endif
+  }
 
   // Enable all SSL compatibility workarounds.
   ssl_ctx_options |= SSL_OP_ALL;
