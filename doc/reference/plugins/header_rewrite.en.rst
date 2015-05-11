@@ -128,6 +128,11 @@ only be evaluated if the condition(s) are met::
   cond %{CLIENT-IP}                             [condition_flags]
   cond %{INCOMING-PORT}                         [condition_flags]
   cond %{METHOD}                                [condition_flags]
+  cond %{CLIENT-URL:option-name}                [condition_flags]
+  cond %{URL:option-name}                       [condition_flags]
+  cond %{FROM-URL:option-name}                  [condition_flags]
+  cond %{TO-URL:option-name}                    [condition_flags]
+  cond %{TXN-COUNT}                             [condition_flags]
 
 The difference between HEADER and CLIENT-HEADER is that HEADER adapts to the
 hook it's running in, whereas CLIENT-HEADER always applies to the client
