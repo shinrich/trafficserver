@@ -1096,7 +1096,7 @@ HttpSM::state_raw_http_server_open(int event, void *data)
     break;
 
   case EVENT_INTERVAL:
-    Error("[HttpSM::state_raw_http_server_open] event: EVENT_INTERVAL state: %d server_entry: %p", t_state.current.state,
+    DebugSM("http", "[%" PRId64 "] HttpSM::state_raw_http_server_open event: EVENT_INTERVAL state: %d server_entry: %p", sm_id, t_state.current.state,
           server_entry);
     return 0;
 
