@@ -427,7 +427,21 @@ FetchSM::process_fetch_read(int event)
   Debug(DEBUG_TAG, "[%s] I am here read", __FUNCTION__);
   int64_t bytes;
   int bytes_used;
-  int64_t total_bytes_copied = 0;
+  int64_t total_bytes_copied = 0;    
+  
+  HttpClientSession *client_session = NULL;
+  PluginVCCore *core_obj = NULL;
+  PluginVCState *read_state = NULL;
+  Continuation *cont = NULL;
+  if ((core_obj = http_vc->get_core_obj()) && (read_state = core_obj->passive_vc.get_read_state()) && (cont = read_state->vio._cont)) {
+    client_session = dynamic_cast<HttpClientSession *>(cont);
+  }
+  // added to give the child HttpClientSession access to its SpdyClientSession parent for logging purposes
+  // kind of hacky, not my favorite impl
+  if (client_session && contp) {
+    client_session->set_parent_cont(contp);
+    Debug(DEBUG_TAG, "[%s] parent cont=%p", __FUNCTION__, contp); 
+  }
 
   switch (event) {
   case TS_EVENT_VCONN_READ_READY:
@@ -488,6 +502,7 @@ void
 FetchSM::process_fetch_write(int event)
 {
   Debug(DEBUG_TAG, "[%s] calling process write", __FUNCTION__);
+
   switch (event) {
   case TS_EVENT_VCONN_WRITE_COMPLETE:
     req_finished = true;
