@@ -1,5 +1,7 @@
 Changes with Apache Traffic Server 5.3.0
 
+  *) [TS-3597] TLS can fail accecpt / handshake when accept thread is turned off.
+
   *) [TS-3603] Debug Assert due to missing lock when accept_threads are disabled.
 
   *) [TS-3370] header_rewrite plugin uses dead continuation.
