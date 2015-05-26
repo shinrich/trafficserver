@@ -217,6 +217,8 @@ ssl_get_cached_session(SSL *ssl, unsigned char *id, int len, int *copy)
   SSL_SESSION *session = NULL;
 
   if (session_cache->getSession(sid, &session)) {
+    SSLNetVConnection *netvc = (SSLNetVConnection *)SSL_get_app_data(ssl);
+    netvc->setSSLSessionCacheHit(true);
     return session;
   }
 
