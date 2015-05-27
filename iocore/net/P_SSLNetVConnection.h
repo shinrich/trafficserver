@@ -112,6 +112,11 @@ public:
   {
     sslSessionCacheHit = state;
   };
+  virtual bool
+  getSSLSessionCacheHit()
+  {
+    return sslSessionCacheHit;
+  };
   int sslServerHandShakeEvent(int &err);
   int sslClientHandShakeEvent(int &err);
   virtual void net_read_io(NetHandler *nh, EThread *lthread);
