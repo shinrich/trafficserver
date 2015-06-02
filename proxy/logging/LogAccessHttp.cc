@@ -563,6 +563,20 @@ LogAccessHttp::marshal_client_req_body_len(char *buf)
   return INK_MIN_ALIGN;
 }
 
+/*-------------------------------------------------------------------------
+  -------------------------------------------------------------------------*/
+
+int
+LogAccessHttp::marshal_client_req_ssl_reused(char *buf)
+{
+  if (buf) {
+    int64_t ssl_session_reused;
+    ssl_session_reused = m_http_sm->client_ssl_reuse;
+    marshal_int(buf, ssl_session_reused);
+  }
+  return INK_MIN_ALIGN;
+}
+
 int
 LogAccessHttp::marshal_client_finish_status_code(char *buf)
 {
