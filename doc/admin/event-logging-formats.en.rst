@@ -180,7 +180,7 @@ The following list describes Traffic Server custom logging fields.
 
 ``cqtr``
     The TCP reused status; indicates if this request went through an
-    already opened connection.
+    already established connection.
 
 .. _cqssr:
 
