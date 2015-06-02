@@ -359,8 +359,9 @@ HttpSM::HttpSM()
     client_request_hdr_bytes(0), client_request_body_bytes(0), server_request_hdr_bytes(0), server_request_body_bytes(0),
     server_response_hdr_bytes(0), server_response_body_bytes(0), client_response_hdr_bytes(0), client_response_body_bytes(0),
     cache_response_hdr_bytes(0), cache_response_body_bytes(0), pushed_response_hdr_bytes(0), pushed_response_body_bytes(0),
-    plugin_tag(0), plugin_id(0), hooks_set(false), cur_hook_id(TS_HTTP_LAST_HOOK), cur_hook(NULL), cur_hooks(0),
-    callout_state(HTTP_API_NO_CALLOUT), terminate_sm(false), kill_this_async_done(false), parse_range_done(false)
+    client_tcp_reused(false), client_ssl_reused(false), plugin_tag(0), plugin_id(0), hooks_set(false),
+    cur_hook_id(TS_HTTP_LAST_HOOK), cur_hook(NULL), cur_hooks(0), callout_state(HTTP_API_NO_CALLOUT), terminate_sm(false),
+    kill_this_async_done(false), parse_range_done(false)
 {
   static int scatter_init = 0;
 
@@ -562,6 +563,13 @@ HttpSM::attach_client_session(HttpClientSession *client_vc, IOBufferReader *buff
   ink_assert(client_vc != NULL);
 
   ua_session = client_vc;
+
+  // Collect log & stats information
+  client_tcp_reused = (1 < ua_session->get_transact_count()) ? true : false;
+  SSLNetVConnection *ssl_vc = dynamic_cast<SSLNetVConnection *>(ua_session->get_netvc());
+  if (ssl_vc != NULL)
+    client_ssl_reused = ssl_vc->getSSLSessionCacheHit();
+
   ink_release_assert(ua_session->get_half_close_flag() == false);
   mutex = client_vc->mutex;
   if (ua_session->debug())
@@ -1132,8 +1140,8 @@ HttpSM::state_raw_http_server_open(int event, void *data)
     break;
 
   case EVENT_INTERVAL:
-    DebugSM("http", "[%" PRId64 "] HttpSM::state_raw_http_server_open event: EVENT_INTERVAL state: %d server_entry: %p", sm_id, t_state.current.state,
-          server_entry);
+    DebugSM("http", "[%" PRId64 "] HttpSM::state_raw_http_server_open event: EVENT_INTERVAL state: %d server_entry: %p", sm_id,
+            t_state.current.state, server_entry);
     return 0;
 
   default:
@@ -5085,8 +5093,8 @@ HttpSM::release_server_session(bool serve_from_cache)
     return;
   }
 
-  if (TS_SERVER_SESSION_SHARING_MATCH_NONE != t_state.txn_conf->server_session_sharing_match &&
-      t_state.current.server && t_state.current.server->keep_alive == HTTP_KEEPALIVE && t_state.hdr_info.server_response.valid() &&
+  if (TS_SERVER_SESSION_SHARING_MATCH_NONE != t_state.txn_conf->server_session_sharing_match && t_state.current.server &&
+      t_state.current.server->keep_alive == HTTP_KEEPALIVE && t_state.hdr_info.server_response.valid() &&
       t_state.hdr_info.server_request.valid() && (t_state.hdr_info.server_response.status_get() == HTTP_STATUS_NOT_MODIFIED ||
                                                   (t_state.hdr_info.server_request.method_get_wksidx() == HTTP_WKSIDX_HEAD &&
                                                    t_state.www_auth_content != HttpTransact::CACHE_AUTH_NONE)) &&
