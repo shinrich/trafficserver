@@ -70,7 +70,8 @@ public:
   virtual int marshal_client_req_http_version(char *);       // INT
   virtual int marshal_client_req_header_len(char *);         // INT
   virtual int marshal_client_req_body_len(char *);           // INT
-  virtual int marshal_client_req_ssl_reused(char *buf);      //INT
+  virtual int marshal_client_req_tcp_reused(char *buf);      // INT
+  virtual int marshal_client_req_ssl_reused(char *buf);      // INT
   virtual int marshal_client_finish_status_code(char *);     // INT
 
   //
