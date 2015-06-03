@@ -3,6 +3,8 @@ Changes with Apache Traffic Server 6.0.0
 
   *) [TS-3560] Make proxy.config.http.slow.log.threshold overridable
 
+  *) [TS-3378] SpdyRequest used after free()
+
 Changes with Apache Traffic Server 5.3.0
  
   *) [TS-3597] TLS can fail accecpt / handshake when accept thread is turned off.
