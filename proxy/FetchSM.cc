@@ -65,6 +65,7 @@ FetchSM::httpConnect()
 
   Debug(DEBUG_TAG, "[%s] calling httpconnect write", __FUNCTION__);
   http_vc = reinterpret_cast<PluginVC *>(TSHttpConnectWithPluginId(&_addr.sa, tag, id));
+  http_vc->setOwnerCont(contp);
 
   /*
    * TS-2906: We need a way to unset internal request when using FetchSM, the use case for this
@@ -428,21 +429,7 @@ FetchSM::process_fetch_read(int event)
   int64_t bytes;
   int bytes_used;
   int64_t total_bytes_copied = 0;    
-  
-  HttpClientSession *client_session = NULL;
-  PluginVCCore *core_obj = NULL;
-  PluginVCState *read_state = NULL;
-  Continuation *cont = NULL;
-  if ((core_obj = http_vc->get_core_obj()) && (read_state = core_obj->passive_vc.get_read_state()) && (cont = read_state->vio._cont)) {
-    client_session = dynamic_cast<HttpClientSession *>(cont);
-  }
-  // added to give the child HttpClientSession access to its SpdyClientSession parent for logging purposes
-  // kind of hacky, not my favorite impl
-  if (client_session && contp) {
-    client_session->set_parent_cont(contp);
-    Debug(DEBUG_TAG, "[%s] parent cont=%p", __FUNCTION__, contp); 
-  }
-
+ 
   switch (event) {
   case TS_EVENT_VCONN_READ_READY:
     // duplicate the bytes for backward compatibility with TSFetchUrl()
