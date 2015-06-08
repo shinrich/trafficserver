@@ -158,6 +158,12 @@ public:
     plugin_id = id;
   }
   //@}
+  /// Setter for PluginVC owner continuation
+  virtual void
+  setOwnerCont(Continuation *c)
+  {
+    owner_cont = c;
+  }
 
   int main_handler(int event, void *data);
 
@@ -177,6 +183,7 @@ private:
   PluginVCCore *core_obj;
 
   PluginVC *other_side;
+  Continuation *owner_cont;
 
   PluginVCState read_state;
   PluginVCState write_state;
