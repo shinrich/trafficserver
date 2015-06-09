@@ -75,7 +75,6 @@
 #include "P_EventSystem.h"
 #include "P_Net.h"
 #include "Regression.h"
-#include "HttpClientSession.h"
 
 #define PVC_LOCK_RETRY_TIME HRTIME_MSECONDS(10)
 #define PVC_DEFAULT_MAX_BYTES 32768
@@ -87,8 +86,8 @@
 #define PVC_TYPE ((vc_type == PLUGIN_VC_ACTIVE) ? "Active" : "Passive")
 
 PluginVC::PluginVC(PluginVCCore *core_obj)
-  : NetVConnection(), magic(PLUGIN_VC_MAGIC_ALIVE), vc_type(PLUGIN_VC_UNKNOWN), core_obj(core_obj), other_side(NULL),
-    owner_cont(NULL), read_state(), write_state(), need_read_process(false), need_write_process(false), closed(false), sm_lock_retry_event(NULL),
+  : NetVConnection(), magic(PLUGIN_VC_MAGIC_ALIVE), vc_type(PLUGIN_VC_UNKNOWN), core_obj(core_obj), other_side(NULL), read_state(),
+    write_state(), need_read_process(false), need_write_process(false), closed(false), sm_lock_retry_event(NULL),
     core_lock_retry_event(NULL), deletable(false), reentrancy_count(0), active_timeout(0), active_event(NULL), inactive_timeout(0),
     inactive_timeout_at(0), inactive_event(NULL), plugin_tag(NULL), plugin_id(0)
 {
@@ -248,18 +247,6 @@ PluginVC::do_io_read(Continuation *c, int64_t nbytes, MIOBuffer *buf)
   read_state.vio.op = VIO::READ;
 
   Debug("pvc", "[%u] %s: do_io_read for %" PRId64 " bytes", core_obj->id, PVC_TYPE, nbytes);
-  
-  HttpClientSession *client_session = NULL;
-  Continuation *cont = NULL;
-  if ((cont = read_state.vio._cont)) {
-    client_session = dynamic_cast<HttpClientSession *>(cont);
-  }
-  // added to give the child HttpClientSession access to its SpdyClientSession parent for logging purposes
-  // kind of hacky, not my favorite impl
-  if (client_session && core_obj && core_obj->active_vc.owner_cont) {
-    client_session->set_parent_cont(core_obj->active_vc.owner_cont);
-    Debug("pvc", "[%u] %s: Setting HttpClientSession parent cont=%p", core_obj->id, PVC_TYPE, core_obj->active_vc.owner_cont); 
-  }
 
   // Since reentrant callbacks are not allowed on from do_io
   //   functions schedule ourselves get on a different stack
