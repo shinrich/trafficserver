@@ -113,24 +113,7 @@ public:
   {
     return other_side;
   }
-  
-  virtual PluginVCState *
-  get_read_state()
-  {
-    return &read_state;
-  } 
-  
-  virtual PluginVCState *
-  get_write_state()
-  {
-    return &write_state;
-  }
-  
-  virtual PluginVCCore *
-  get_core_obj()
-  {
-    return core_obj;
-  }
+
   //@{ @name Plugin identity.
   /// Override for @c PluginIdentity.
   virtual char const *

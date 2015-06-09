@@ -21,8 +21,8 @@
   limitations under the License.
  */
 
-#ifndef _HTTP_SESSION_ACCEPT_H_
-#define _HTTP_SESSION_ACCEPT_H_
+#if !defined(_HttpSessionAccept_h_)
+#define _HttpSessionAccept_h_
 
 #include "libts.h"
 #include "records/I_RecHttp.h"

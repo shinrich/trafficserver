@@ -27,7 +27,6 @@
 #include "libts.h"
 #include "P_Net.h"
 #include "InkAPIInternal.h"
-#include "I_Continuation.h"
 
 // Emit a debug message conditional on whether this particular client session
 // has debugging enabled. This should only be called from within a client session
@@ -95,19 +94,6 @@ public:
     return this->api_hooks.has_hooks() || http_global_hooks->has_hooks();
   }
 
-  // pointer to parent session. as cont for now
-  Continuation *
-  get_parent_cont()
-  {
-    return parent_cont;
-  }
-
-  void
-  set_parent_cont(Continuation *c)
-  {
-    parent_cont = c;
-  }
-
   // Initiate an API hook invocation.
   void do_api_callout(TSHttpHookID id);
 
@@ -129,8 +115,6 @@ private:
   APIHook *api_current;
   HttpAPIHooks api_hooks;
   void *user_args[HTTP_SSN_TXN_MAX_USER_ARG];
-  // TODO continuation for now pending susan's change making SpdyClientSession a child of ProxyClientSession
-  Continuation *parent_cont;
 
   ProxyClientSession(ProxyClientSession &);                  // noncopyable
   ProxyClientSession &operator=(const ProxyClientSession &); // noncopyable
