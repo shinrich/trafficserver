@@ -113,24 +113,7 @@ public:
   {
     return other_side;
   }
-  
-  virtual PluginVCState *
-  get_read_state()
-  {
-    return &read_state;
-  } 
-  
-  virtual PluginVCState *
-  get_write_state()
-  {
-    return &write_state;
-  }
-  
-  virtual PluginVCCore *
-  get_core_obj()
-  {
-    return core_obj;
-  }
+
   //@{ @name Plugin identity.
   /// Override for @c PluginIdentity.
   virtual char const *
@@ -158,12 +141,6 @@ public:
     plugin_id = id;
   }
   //@}
-  /// Setter for PluginVC owner continuation
-  virtual void
-  setOwnerCont(Continuation *c)
-  {
-    owner_cont = c;
-  }
 
   int main_handler(int event, void *data);
 
@@ -183,7 +160,6 @@ private:
   PluginVCCore *core_obj;
 
   PluginVC *other_side;
-  Continuation *owner_cont;
 
   PluginVCState read_state;
   PluginVCState write_state;

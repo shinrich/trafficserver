@@ -65,7 +65,6 @@ FetchSM::httpConnect()
 
   Debug(DEBUG_TAG, "[%s] calling httpconnect write", __FUNCTION__);
   http_vc = reinterpret_cast<PluginVC *>(TSHttpConnectWithPluginId(&_addr.sa, tag, id));
-  http_vc->setOwnerCont(contp);
 
   /*
    * TS-2906: We need a way to unset internal request when using FetchSM, the use case for this
@@ -428,8 +427,8 @@ FetchSM::process_fetch_read(int event)
   Debug(DEBUG_TAG, "[%s] I am here read", __FUNCTION__);
   int64_t bytes;
   int bytes_used;
-  int64_t total_bytes_copied = 0;    
- 
+  int64_t total_bytes_copied = 0;
+
   switch (event) {
   case TS_EVENT_VCONN_READ_READY:
     // duplicate the bytes for backward compatibility with TSFetchUrl()
@@ -489,7 +488,6 @@ void
 FetchSM::process_fetch_write(int event)
 {
   Debug(DEBUG_TAG, "[%s] calling process write", __FUNCTION__);
-
   switch (event) {
   case TS_EVENT_VCONN_WRITE_COMPLETE:
     req_finished = true;
