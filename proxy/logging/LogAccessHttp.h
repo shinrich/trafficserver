@@ -99,14 +99,15 @@ public:
   //
   // server -> proxy fields
   //
-  virtual int marshal_server_host_ip(char *);           // INT
-  virtual int marshal_server_host_name(char *);         // STR
-  virtual int marshal_server_resp_status_code(char *);  // INT
-  virtual int marshal_server_resp_content_len(char *);  // INT
-  virtual int marshal_server_resp_header_len(char *);   // INT
-  virtual int marshal_server_resp_http_version(char *); // INT
-  virtual int marshal_server_resp_time_ms(char *);      // INT
-  virtual int marshal_server_resp_time_s(char *);       // INT
+  virtual int marshal_server_host_ip(char *);               // INT
+  virtual int marshal_server_host_name(char *);             // STR
+  virtual int marshal_server_resp_status_code(char *);      // INT
+  virtual int marshal_server_resp_content_len(char *);      // INT
+  virtual int marshal_server_resp_header_len(char *);       // INT
+  virtual int marshal_server_resp_http_version(char *);     // INT
+  virtual int marshal_server_resp_time_ms(char *);          // INT
+  virtual int marshal_server_resp_time_s(char *);           // INT
+  virtual int marshal_server_time_to_first_byte_ms(char *); // INT
 
   //
   // cache -> client fields

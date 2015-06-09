@@ -216,14 +216,16 @@ public:
   //
   // server -> proxy fields
   //
-  inkcoreapi virtual int marshal_server_host_ip(char *);           // INT
-  inkcoreapi virtual int marshal_server_host_name(char *);         // STR
-  inkcoreapi virtual int marshal_server_resp_status_code(char *);  // INT
-  inkcoreapi virtual int marshal_server_resp_content_len(char *);  // INT
-  inkcoreapi virtual int marshal_server_resp_header_len(char *);   // INT
-  inkcoreapi virtual int marshal_server_resp_http_version(char *); // INT
-  inkcoreapi virtual int marshal_server_resp_time_ms(char *);      // INT
-  inkcoreapi virtual int marshal_server_resp_time_s(char *);       // INT
+  inkcoreapi virtual int marshal_server_host_ip(char *);               // INT
+  inkcoreapi virtual int marshal_server_host_name(char *);             // STR
+  inkcoreapi virtual int marshal_server_resp_status_code(char *);      // INT
+  inkcoreapi virtual int marshal_server_resp_content_len(char *);      // INT
+  inkcoreapi virtual int marshal_server_resp_header_len(char *);       // INT
+  inkcoreapi virtual int marshal_server_resp_http_version(char *);     // INT
+  inkcoreapi virtual int marshal_server_resp_time_ms(char *);          // INT
+  inkcoreapi virtual int marshal_server_resp_time_s(char *);           // INT
+  inkcoreapi virtual int marshal_server_time_to_first_byte_ms(char *); // INT
+
 
   //
   // cache -> client fields

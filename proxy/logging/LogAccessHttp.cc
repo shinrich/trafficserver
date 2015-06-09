@@ -966,6 +966,19 @@ LogAccessHttp::marshal_server_resp_time_s(char *buf)
 }
 
 /*-------------------------------------------------------------------------
+-------------------------------------------------------------------------*/
+int
+LogAccessHttp::marshal_server_time_to_first_byte_ms(char *buf)
+{
+  if (buf) {
+    ink_hrtime elapsed = m_http_sm->milestones.server_first_read - m_http_sm->milestones.server_connect;
+    int64_t val = (int64_t)ink_hrtime_to_msec(elapsed);
+    marshal_int(buf, val);
+  }
+  return INK_MIN_ALIGN;
+}
+
+/*-------------------------------------------------------------------------
   -------------------------------------------------------------------------*/
 
 int
