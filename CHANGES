@@ -7,6 +7,8 @@ Changes with Apache Traffic Server 6.0.0
 
   *) [TS-3578] Rearrange ProxyClientSession so VC is available in close session hook
 
+  *) [TS-3584] Turn off keep alive for HTTP request headers created from SPDY and H2
+
   *) [TS-3667] Make SSL Handhake read correctly handle EOF and error cases.
 
   *) [TS-3560] Make proxy.config.http.slow.log.threshold overridable
