@@ -468,6 +468,12 @@ The following list describes Traffic Server custom logging fields.
 ``sts``
     The time Traffic Server spends accessing the origin, in seconds.
 
+.. _sttfbms:
+
+``sttfbms``
+    The time Traffic Server spends retrieving the first byte of response
+    from the moment it's trying to connect origin server.
+
 .. _ttms:
 
 ``ttms``
