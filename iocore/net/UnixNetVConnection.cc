@@ -244,7 +244,7 @@ read_from_net(NetHandler *nh, UnixNetVConnection *vc, EThread *thread)
 
   MUTEX_TRY_LOCK_FOR(lock, s->vio.mutex, thread, s->vio._cont);
 
-  if (!lock.is_locked() || lock.get_mutex() != s->vio.mutex.m_ptr) {
+  if (!lock.is_locked()) {
     read_reschedule(nh, vc);
     return;
   }

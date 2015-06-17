@@ -266,12 +266,28 @@ HttpSessionManager::acquire_session(Continuation * /* cont ATS_UNUSED */, sockad
   EThread *ethread = this_ethread();
 
   if (TS_SERVER_SESSION_SHARING_POOL_THREAD == sm->t_state.txn_conf->server_session_sharing_pool) {
-    to_return = ethread->server_session_pool->acquireSession(ip, hostname_hash, match_style);
+    MUTEX_TRY_LOCK(lock, ethread->server_session_pool->mutex, ethread);
+    if (lock.is_locked()) {
+      to_return = ethread->server_session_pool->acquireSession(ip, hostname_hash, match_style);
+      // Clear out the previous read. The read.vio
+      // will be moving to a new mutex/_cont.  Don't want both active
+      // at the same time TS-3266
+      if (to_return)
+        to_return->do_io_read(NULL, 0, NULL);
+    } else {
+      Debug("http_ss", "[acquire session] could not acquire thread pool session due to lock contention");
+      return HSM_RETRY;
+    }
   } else {
     MUTEX_TRY_LOCK(lock, m_g_pool->mutex, ethread);
     if (lock.is_locked()) {
       to_return = m_g_pool->acquireSession(ip, hostname_hash, match_style);
       Debug("http_ss", "[acquire session] pool search %s", to_return ? "successful" : "failed");
+      // Clear out the previous read. The read.vio
+      // will be moving to a new mutex/_cont.  Don't want both active
+      // at the same time TS-3266
+      if (to_return)
+        to_return->do_io_read(NULL, 0, NULL);
     } else {
       Debug("http_ss", "[acquire session] could not acquire session due to lock contention");
       return HSM_RETRY;
