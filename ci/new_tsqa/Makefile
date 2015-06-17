@@ -16,11 +16,13 @@
 
 .PHONY: test clean update
 
-VIRTUALENV_DIR = virtualenv
+MKFILE_PATH := $(abspath $(lastword $(MAKEFILE_LIST)))
+CURRENT_DIR := $(dir $(MKFILE_PATH))
+VIRTUALENV_DIR = $(CURRENT_DIR)/virtualenv
 
 # Run all tests.
 test: $(VIRTUALENV_DIR)
-	@source $(VIRTUALENV_DIR)/bin/activate && $(VIRTUALENV_DIR)/bin/nosetests -sv --logging-level=INFO
+	@source $(VIRTUALENV_DIR)/bin/activate && $(VIRTUALENV_DIR)/bin/nosetests -sv --logging-level=INFO --with-xunit
 
 # Scan and list the tests.
 list: $(VIRTUALENV_DIR)
@@ -29,15 +31,15 @@ list: $(VIRTUALENV_DIR)
 # Construct the virtualenv.
 $(VIRTUALENV_DIR):
 	@if [ ! -d $(VIRTUALENV_DIR) ]; then\
-		virtualenv $(VIRTUALENV_DIR);\
+		/opt/python/bin/virtualenv --python=/opt/python/bin/python $(VIRTUALENV_DIR);\
 	fi
 	@# Update the virtualenv with your dep libraries
-	source $(VIRTUALENV_DIR)/bin/activate && $(VIRTUALENV_DIR)/bin/pip install -r requirements.txt
+	source $(VIRTUALENV_DIR)/bin/activate && $(VIRTUALENV_DIR)/bin/pip install -r $(CURRENT_DIR)/requirements.txt
 	@echo "Virtualenv ready!"
 
 # Update the virtualenv with the latest TSQA package and dependencies.
 update: $(VIRTUALENV_DIR)
-	source $(VIRTUALENV_DIR)/bin/activate && $(VIRTUALENV_DIR)/bin/pip install --upgrade -r requirements.txt
+	source $(VIRTUALENV_DIR)/bin/activate && $(VIRTUALENV_DIR)/bin/pip install --upgrade -r $(CURRENT_DIR)/requirements.txt
 
 clean:
 	rm -rf virtualenv
