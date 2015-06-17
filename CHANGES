@@ -1,6 +1,8 @@
                                                         -*- coding: utf-8 -*-
 Changes with Apache Traffic Server 6.0.0
 
+  *) [TS-3266] core dump in connect_re_internal
+
   *) [TS-3584] Turn off keep alive for HTTP request headers created from SPDY and H2
 
   *) [TS-3640] Drupal auth fails over SPDY.
