@@ -1707,7 +1707,7 @@ TSdrandom()
 ink_hrtime
 TShrtime()
 {
-  return ink_get_based_hrtime();
+  return Thread::get_hrtime();
 }
 
 ////////////////////////////////////////////////////////////////////
@@ -6225,7 +6225,7 @@ TSVConnFdCreate(int fd)
   vc->action_ = &a;
 
   vc->id = net_next_connection_number();
-  vc->submit_time = ink_get_hrtime();
+  vc->submit_time = Thread::get_hrtime();
   vc->set_is_transparent(false);
   vc->mutex = new_ProxyMutex();
 
