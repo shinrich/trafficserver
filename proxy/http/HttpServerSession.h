@@ -42,7 +42,7 @@
 *
 * IMPORTANT NOTE: enable/disable LAZY_BUF_ALLOC in HttpSM.h as well.
 */
-#define LAZY_BUF_ALLOC
+//#define LAZY_BUF_ALLOC
 
 #include "P_Net.h"
 

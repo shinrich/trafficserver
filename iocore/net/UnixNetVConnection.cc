@@ -632,9 +632,11 @@ UnixNetVConnection::do_io_close(int alerrno /* = -1 */)
   read.vio.buffer.clear();
   read.vio.nbytes = 0;
   read.vio.op = VIO::NONE;
+  read.vio._cont = NULL;
   write.vio.buffer.clear();
   write.vio.nbytes = 0;
   write.vio.op = VIO::NONE;
+  write.vio._cont = NULL;
 
   EThread *t = this_ethread();
   bool close_inline = !recursion && nh->mutex->thread_holding == t;
