@@ -78,43 +78,31 @@ HSMresult_t
 ServerSessionPool::acquireSession(sockaddr const *addr, INK_MD5 const &hostname_hash, TSServerSessionSharingMatchType match_style, HttpServerSession *&to_return)
 {
   HSMresult_t zret = HSM_NOT_FOUND;
-  EThread *ethread = this_ethread();
-  MUTEX_TRY_LOCK(lock, this->mutex, ethread);
-  if (lock.is_locked()) {
-    if (TS_SERVER_SESSION_SHARING_MATCH_HOST == match_style) {
-      // This is broken out because only in this case do we check the host hash first.
-      HostHashTable::Location loc = m_host_pool.find(hostname_hash);
-      in_port_t port = ats_ip_port_cast(addr);
-      while (loc && port != ats_ip_port_cast(loc->server_ip))
-        ++loc; // scan for matching port.
-      if (loc) {
-        to_return = loc;
-        m_host_pool.remove(loc);
-        m_ip_pool.remove(m_ip_pool.find(loc));
-      }
-    } else if (TS_SERVER_SESSION_SHARING_MATCH_NONE != match_style) { // matching is not disabled.
-      IPHashTable::Location loc = m_ip_pool.find(addr);
-      // If we're matching on the IP address we're done, this one is good enough.
-      // Otherwise we need to scan further matches to match the host name as well.
-      // Note we don't have to check the port because it's checked as part of the IP address key.
-      if (TS_SERVER_SESSION_SHARING_MATCH_IP != match_style) {
-        while (loc && loc->hostname_hash != hostname_hash)
-          ++loc;
-      }
-      if (loc) {
-        to_return = loc;
-        m_ip_pool.remove(loc);
-        m_host_pool.remove(m_host_pool.find(loc));
-      }
+  if (TS_SERVER_SESSION_SHARING_MATCH_HOST == match_style) {
+    // This is broken out because only in this case do we check the host hash first.
+    HostHashTable::Location loc = m_host_pool.find(hostname_hash);
+    in_port_t port = ats_ip_port_cast(addr);
+    while (loc && port != ats_ip_port_cast(loc->server_ip))
+      ++loc; // scan for matching port.
+    if (loc) {
+      to_return = loc;
+      m_host_pool.remove(loc);
+      m_ip_pool.remove(m_ip_pool.find(loc));
     }
-    if (to_return) {
-      // Clear out the previous read. The read.vio
-      // will be moving to a new mutex/_cont.  Don't want both active
-      // at the same time TS-3266
-      to_return->do_io_read(NULL, 0, NULL);
+  } else if (TS_SERVER_SESSION_SHARING_MATCH_NONE != match_style) { // matching is not disabled.
+    IPHashTable::Location loc = m_ip_pool.find(addr);
+    // If we're matching on the IP address we're done, this one is good enough.
+    // Otherwise we need to scan further matches to match the host name as well.
+    // Note we don't have to check the port because it's checked as part of the IP address key.
+    if (TS_SERVER_SESSION_SHARING_MATCH_IP != match_style) {
+      while (loc && loc->hostname_hash != hostname_hash)
+        ++loc;
     }
-  } else {
-    zret = HSM_RETRY;
+    if (loc) {
+      to_return = loc;
+      m_ip_pool.remove(loc);
+      m_host_pool.remove(m_host_pool.find(loc));
+    }
   }
   return zret;
 }
@@ -276,22 +264,29 @@ HttpSessionManager::acquire_session(Continuation * /* cont ATS_UNUSED */, sockad
 
   // Now check to see if we have a connection in our shared connection pool
   EThread *ethread = this_ethread();
+  ProxyMutex * pool_mutex = (TS_SERVER_SESSION_SHARING_POOL_THREAD == sm->t_state.txn_conf->server_session_sharing_pool) ? ethread->server_session_pool->mutex : m_g_pool->mutex;
+  MUTEX_TRY_LOCK(lock, pool_mutex, ethread);
+  if (lock.is_locked()) {
+    if (TS_SERVER_SESSION_SHARING_POOL_THREAD == sm->t_state.txn_conf->server_session_sharing_pool) {
+      retval = ethread->server_session_pool->acquireSession(ip, hostname_hash, match_style, to_return);
+      Debug("http_ss", "[acquire session] thread pool search %s", to_return ? "successful" : "failed");
+    } else {
+      retval = m_g_pool->acquireSession(ip, hostname_hash, match_style, to_return);
+      Debug("http_ss", "[acquire session] global pool search %s", to_return ? "successful" : "failed");
+    }
 
-  if (TS_SERVER_SESSION_SHARING_POOL_THREAD == sm->t_state.txn_conf->server_session_sharing_pool) {
-    retval = ethread->server_session_pool->acquireSession(ip, hostname_hash, match_style, to_return);
-    Debug("http_ss", "[acquire session] thread pool search %s", to_return ? "successful" : "failed");
+    if (to_return) {
+      Debug("http_ss", "[%" PRId64 "] [acquire session] return session from shared pool", to_return->con_id);
+      to_return->state = HSS_ACTIVE;
+      // Holding the pool lock and the sm lock 
+      // the attach_server_session will issue the do_io_read under the sm lock
+      // Must be careful to transfer the lock for the read vio because 
+      // the server VC may be moving between threads TS-3266
+      sm->attach_server_session(to_return);
+      retval = HSM_DONE;
+    }
   } else {
-    retval = m_g_pool->acquireSession(ip, hostname_hash, match_style, to_return);
-    Debug("http_ss", "[acquire session] global pool search %s", to_return ? "successful" : "failed");
-  }
-
-  if (to_return) {
-    Debug("http_ss", "[%" PRId64 "] [acquire session] "
-                     "return session from shared pool",
-          to_return->con_id);
-    to_return->state = HSS_ACTIVE;
-    sm->attach_server_session(to_return);
-    return HSM_DONE;
+    retval = HSM_RETRY;
   }
   return retval;
 }

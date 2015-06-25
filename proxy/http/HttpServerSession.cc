@@ -168,12 +168,7 @@ HttpServerSession::release()
     return;
   }
 
-  // Drop the read on the VC before we transfer control to the session pool
-  // TS-3266
-  this->do_io_read(NULL,  0, NULL);
-
   HSMresult_t r = httpSessionManager.release_session(this);
-
 
   if (r == HSM_RETRY) {
     // Session could not be put in the session manager
