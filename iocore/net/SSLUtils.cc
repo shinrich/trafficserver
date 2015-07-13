@@ -1,7 +1,5 @@
 /** @file
-
   @section license License
-
   Licensed to the Apache Software Foundation (ASF) under one
   or more contributor license agreements.  See the NOTICE file
   distributed with this work for additional information
@@ -9,9 +7,7 @@
   to you under the Apache License, Version 2.0 (the
   "License"); you may not use this file except in compliance
   with the License.  You may obtain a copy of the License at
-
       http://www.apache.org/licenses/LICENSE-2.0
-
   Unless required by applicable law or agreed to in writing, software
   distributed under the License is distributed on an "AS IS" BASIS,
   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -197,7 +193,6 @@ SSL_CTX_add_extra_chain_cert_file(SSL_CTX *ctx, const char *chainfile)
       return false;
     }
   }
-
   return true;
 }
 
@@ -1536,25 +1531,21 @@ SSLInitClientContext(const SSLConfigParams *params)
     }
   }
 
-  if (params->clientVerify) {
-    int client_verify_server;
+  // Not setting the verify at this point because that is an overridable value
+  // We will set that at the point we create the ssl object
+  SSL_CTX_set_verify_depth(client_ctx, params->client_verify_depth);
 
-    client_verify_server = params->clientVerify ? SSL_VERIFY_PEER : SSL_VERIFY_NONE;
-    SSL_CTX_set_verify(client_ctx, client_verify_server, NULL);
-    SSL_CTX_set_verify_depth(client_ctx, params->client_verify_depth);
-
-    if (params->clientCACertFilename != NULL && params->clientCACertPath != NULL) {
-      if (!SSL_CTX_load_verify_locations(client_ctx, params->clientCACertFilename, params->clientCACertPath)) {
-        SSLError("invalid client CA Certificate file (%s) or CA Certificate path (%s)", params->clientCACertFilename,
-                 params->clientCACertPath);
-        goto fail;
-      }
-    }
-
-    if (!SSL_CTX_set_default_verify_paths(client_ctx)) {
-      SSLError("failed to set the default verify paths");
+  if (params->clientCACertFilename != NULL && params->clientCACertPath != NULL) {
+    if (!SSL_CTX_load_verify_locations(client_ctx, params->clientCACertFilename, params->clientCACertPath)) {
+      SSLError("invalid client CA Certificate file (%s) or CA Certificate path (%s)", params->clientCACertFilename,
+               params->clientCACertPath);
       goto fail;
     }
+  }
+
+  if (!SSL_CTX_set_default_verify_paths(client_ctx)) {
+    SSLError("failed to set the default verify paths");
+    goto fail;
   }
 
   if (SSLConfigParams::init_ssl_ctx_cb) {

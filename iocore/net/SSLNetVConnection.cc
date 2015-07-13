@@ -794,6 +794,7 @@ void
 SSLNetVConnection::free(EThread *t)
 {
   NET_SUM_GLOBAL_DYN_STAT(net_connections_currently_open_stat, -1);
+  clientVerifyEnable = false;
   got_remote_addr = 0;
   got_local_addr = 0;
   read.vio.mutex.clear();
@@ -833,7 +834,6 @@ SSLNetVConnection::free(EThread *t)
     THREAD_FREE(this, sslNetVCAllocator, t);
   }
 }
-
 int
 SSLNetVConnection::sslStartHandShake(int event, int &err)
 {
@@ -885,6 +885,15 @@ SSLNetVConnection::sslStartHandShake(int event, int &err)
   case SSL_EVENT_CLIENT:
     if (this->ssl == NULL) {
       this->ssl = make_ssl_connection(ssl_NetProcessor.client_ctx, this);
+      // Making the check here instead of later, so we only
+      // do this setting immediately after we create the SSL object
+      if (this->ssl != NULL) {
+        int clientVerify=this->getClientVerifyEnable();
+        //REC_ReadConfigInt32(clientVerify, "proxy.config.ssl.client.verify.server");
+        int verifyValue = clientVerify ? SSL_VERIFY_PEER : SSL_VERIFY_NONE;
+        SSL_set_verify(this->ssl, verifyValue, NULL);
+        Debug("skh", "Verify Value is 0x%x", verifyValue);
+      }
     }
 
     if (this->ssl == NULL) {
