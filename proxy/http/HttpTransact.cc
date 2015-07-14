@@ -1504,7 +1504,6 @@ HttpTransact::PPDNSLookup(State *s)
     // lookup succeeded, open connection to p.p.
     ats_ip_copy(&s->parent_info.addr, s->host_db_info.ip());
     get_ka_info_from_host_db(s, &s->parent_info, &s->client_info, &s->host_db_info);
-    s->parent_info.dns_round_robin = s->host_db_info.round_robin;
 
     char addrbuf[INET6_ADDRSTRLEN];
     DebugTxn("http_trans", "[PPDNSLookup] DNS lookup for sm_id[%" PRId64 "] successful IP: %s", s->state_machine->sm_id,
@@ -1560,7 +1559,6 @@ HttpTransact::ReDNSRoundRobin(State *s)
     ats_ip_copy(&s->server_info.addr, s->host_db_info.ip());
     ats_ip_copy(&s->request_data.dest_ip, &s->server_info.addr);
     get_ka_info_from_host_db(s, &s->server_info, &s->client_info, &s->host_db_info);
-    s->server_info.dns_round_robin = s->host_db_info.round_robin;
 
     char addrbuf[INET6_ADDRSTRLEN];
     DebugTxn("http_trans", "[ReDNSRoundRobin] DNS lookup for O.S. successful IP: %s",
@@ -1704,7 +1702,6 @@ HttpTransact::OSDNSLookup(State *s)
   ats_ip_copy(&s->server_info.addr, s->host_db_info.ip());
   ats_ip_copy(&s->request_data.dest_ip, &s->server_info.addr);
   get_ka_info_from_host_db(s, &s->server_info, &s->client_info, &s->host_db_info);
-  s->server_info.dns_round_robin = s->host_db_info.round_robin;
 
   char addrbuf[INET6_ADDRSTRLEN];
   DebugTxn("http_trans", "[OSDNSLookup] DNS lookup for O.S. successful "
@@ -3626,7 +3623,7 @@ HttpTransact::handle_response_from_server(State *s)
         // families - that is locked in by the client source address.
         s->state_machine->ua_session->host_res_style = ats_host_res_match(&s->current.server->addr.sa);
         TRANSACT_RETURN(SM_ACTION_DNS_LOOKUP, OSDNSLookup);
-      } else if ((s->dns_info.srv_lookup_success || s->server_info.dns_round_robin) &&
+      } else if ((s->dns_info.srv_lookup_success || s->host_db_info.is_rr_elt()) &&
                  (s->txn_conf->connect_attempts_rr_retries > 0) &&
                  (s->current.attempts % s->txn_conf->connect_attempts_rr_retries == 0)) {
         delete_server_rr_entry(s, max_connect_retries);
