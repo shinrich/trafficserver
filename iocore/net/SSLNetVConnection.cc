@@ -834,6 +834,7 @@ SSLNetVConnection::free(EThread *t)
     THREAD_FREE(this, sslNetVCAllocator, t);
   }
 }
+
 int
 SSLNetVConnection::sslStartHandShake(int event, int &err)
 {
@@ -894,11 +895,10 @@ SSLNetVConnection::sslStartHandShake(int event, int &err)
         SSL_set_verify(this->ssl, verifyValue, NULL);
         Debug("skh", "Verify Value is 0x%x", verifyValue);
       }
-    }
-
-    if (this->ssl == NULL) {
-      SSLErrorVC(this, "failed to create SSL client session");
-      return EVENT_ERROR;
+      else {
+        SSLErrorVC(this, "failed to create SSL client session");
+        return EVENT_ERROR;
+      }
     }
 
     return sslClientHandShakeEvent(err);

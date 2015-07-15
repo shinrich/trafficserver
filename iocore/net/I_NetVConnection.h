@@ -249,7 +249,7 @@ public:
     @param buf buffer to put the data into
     @return vio
 
-  */   
+  */
   virtual VIO *do_io_read(Continuation *c, int64_t nbytes, MIOBuffer *buf) = 0;
 
   /**
@@ -544,6 +544,7 @@ public:
   {
     is_transparent = state;
   }
+
 private:
   NetVConnection(const NetVConnection &);
   NetVConnection &operator=(const NetVConnection &);

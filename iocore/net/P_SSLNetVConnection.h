@@ -218,14 +218,14 @@ public:
   bool calledHooks(TSHttpHookID /* eventId */) { return (this->sslHandshakeHookState != HANDSHAKE_HOOKS_PRE); }
 
   bool 
-  getClientVerifyEnable()
+  getClientVerifyEnable() const
   {
     return clientVerifyEnable;
   }
   void
-  setClientVerifyEnable(int enable)
+  setClientVerifyEnable(bool enable)
   {
-    clientVerifyEnable = enable != 0;
+    clientVerifyEnable = enable;
   }
 
 private:
