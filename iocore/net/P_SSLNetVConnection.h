@@ -217,6 +217,17 @@ public:
   // least some of the hooks
   bool calledHooks(TSHttpHookID /* eventId */) { return (this->sslHandshakeHookState != HANDSHAKE_HOOKS_PRE); }
 
+  bool 
+  getClientVerifyEnable() const
+  {
+    return clientVerifyEnable;
+  }
+  void
+  setClientVerifyEnable(bool enable)
+  {
+    clientVerifyEnable = enable;
+  }
+
 private:
   SSLNetVConnection(const SSLNetVConnection &);
   SSLNetVConnection &operator=(const SSLNetVConnection &);
@@ -231,7 +242,7 @@ private:
   int handShakeBioStored;
 
   bool transparentPassThrough;
-
+  bool clientVerifyEnable;
   /// The current hook.
   /// @note For @C SSL_HOOKS_INVOKE, this is the hook to invoke.
   class APIHook *curHook;

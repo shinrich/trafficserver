@@ -1536,25 +1536,21 @@ SSLInitClientContext(const SSLConfigParams *params)
     }
   }
 
-  if (params->clientVerify) {
-    int client_verify_server;
+  // Not setting the verify at this point because that is an overridable value
+  // We will set that at the point we create the ssl object
+  SSL_CTX_set_verify_depth(client_ctx, params->client_verify_depth);
 
-    client_verify_server = params->clientVerify ? SSL_VERIFY_PEER : SSL_VERIFY_NONE;
-    SSL_CTX_set_verify(client_ctx, client_verify_server, NULL);
-    SSL_CTX_set_verify_depth(client_ctx, params->client_verify_depth);
-
-    if (params->clientCACertFilename != NULL && params->clientCACertPath != NULL) {
-      if (!SSL_CTX_load_verify_locations(client_ctx, params->clientCACertFilename, params->clientCACertPath)) {
-        SSLError("invalid client CA Certificate file (%s) or CA Certificate path (%s)", params->clientCACertFilename,
-                 params->clientCACertPath);
-        goto fail;
-      }
-    }
-
-    if (!SSL_CTX_set_default_verify_paths(client_ctx)) {
-      SSLError("failed to set the default verify paths");
+  if (params->clientCACertFilename != NULL && params->clientCACertPath != NULL) {
+    if (!SSL_CTX_load_verify_locations(client_ctx, params->clientCACertFilename, params->clientCACertPath)) {
+      SSLError("invalid client CA Certificate file (%s) or CA Certificate path (%s)", params->clientCACertFilename,
+               params->clientCACertPath);
       goto fail;
     }
+  }
+
+  if (!SSL_CTX_set_default_verify_paths(client_ctx)) {
+    SSLError("failed to set the default verify paths");
+    goto fail;
   }
 
   if (SSLConfigParams::init_ssl_ctx_cb) {
