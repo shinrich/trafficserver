@@ -893,7 +893,6 @@ SSLNetVConnection::sslStartHandShake(int event, int &err)
         //REC_ReadConfigInt32(clientVerify, "proxy.config.ssl.client.verify.server");
         int verifyValue = clientVerify ? SSL_VERIFY_PEER : SSL_VERIFY_NONE;
         SSL_set_verify(this->ssl, verifyValue, NULL);
-        Debug("skh", "Verify Value is 0x%x", verifyValue);
       }
       else {
         SSLErrorVC(this, "failed to create SSL client session");
