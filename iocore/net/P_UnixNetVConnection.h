@@ -332,6 +332,7 @@ UnixNetVConnection::set_inactivity_timeout(ink_hrtime timeout)
       inactivity_timeout = 0;
   } else
     inactivity_timeout = 0;
+#endif
 }
 
 TS_INLINE void
