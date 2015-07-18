@@ -35,5 +35,6 @@ SSL_CTX *SSLInitClientContext(const struct SSLConfigParams *param);
 
 // Returns the index used to store our data on the SSL
 int get_ssl_client_data_index();
+int verify_callback(int preverify_ok, X509_STORE_CTX *ctx);
 
 #endif /* IOCORE_NET_P_SSLCLIENTUTILS_H_ */

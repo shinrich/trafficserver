@@ -26,6 +26,7 @@
 #include "P_SSLNextProtocolSet.h"
 #include "P_SSLUtils.h"
 #include "InkAPIInternal.h" // Added to include the ssl_hook definitions
+#include "P_SSLClientUtils.h"
 
 // Defined in SSLInternal.c, should probably make a separate include
 // file for this at some point
@@ -892,7 +893,7 @@ SSLNetVConnection::sslStartHandShake(int event, int &err)
         int clientVerify=this->getClientVerifyEnable();
         //REC_ReadConfigInt32(clientVerify, "proxy.config.ssl.client.verify.server");
         int verifyValue = clientVerify ? SSL_VERIFY_PEER : SSL_VERIFY_NONE;
-        SSL_set_verify(this->ssl, verifyValue, NULL);
+        SSL_set_verify(this->ssl, verifyValue, verify_callback);
       }
       else {
         SSLErrorVC(this, "failed to create SSL client session");
