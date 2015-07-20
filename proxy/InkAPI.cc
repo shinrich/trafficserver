@@ -1707,7 +1707,7 @@ TSdrandom()
 ink_hrtime
 TShrtime()
 {
-  return ink_get_based_hrtime();
+  return Thread::get_hrtime();
 }
 
 ////////////////////////////////////////////////////////////////////
@@ -5921,74 +5921,12 @@ TSHttpTxnMilestoneGet(TSHttpTxn txnp, TSMilestonesType milestone, ink_hrtime *ti
   HttpSM *sm = (HttpSM *)txnp;
   TSReturnCode ret = TS_SUCCESS;
 
-  switch (milestone) {
-  case TS_MILESTONE_UA_BEGIN:
-    *time = sm->milestones.ua_begin;
-    break;
-  case TS_MILESTONE_UA_READ_HEADER_DONE:
-    *time = sm->milestones.ua_read_header_done;
-    break;
-  case TS_MILESTONE_UA_BEGIN_WRITE:
-    *time = sm->milestones.ua_begin_write;
-    break;
-  case TS_MILESTONE_UA_CLOSE:
-    *time = sm->milestones.ua_close;
-    break;
-  case TS_MILESTONE_SERVER_FIRST_CONNECT:
-    *time = sm->milestones.server_first_connect;
-    break;
-  case TS_MILESTONE_SERVER_CONNECT:
-    *time = sm->milestones.server_connect;
-    break;
-  case TS_MILESTONE_SERVER_CONNECT_END:
-    *time = sm->milestones.server_connect_end;
-    break;
-  case TS_MILESTONE_SERVER_BEGIN_WRITE:
-    *time = sm->milestones.server_begin_write;
-    break;
-  case TS_MILESTONE_SERVER_FIRST_READ:
-    *time = sm->milestones.server_first_read;
-    break;
-  case TS_MILESTONE_SERVER_READ_HEADER_DONE:
-    *time = sm->milestones.server_read_header_done;
-    break;
-  case TS_MILESTONE_SERVER_CLOSE:
-    *time = sm->milestones.server_close;
-    break;
-  case TS_MILESTONE_CACHE_OPEN_READ_BEGIN:
-    *time = sm->milestones.cache_open_read_begin;
-    break;
-  case TS_MILESTONE_CACHE_OPEN_READ_END:
-    *time = sm->milestones.cache_open_read_end;
-    break;
-  case TS_MILESTONE_CACHE_OPEN_WRITE_BEGIN:
-    *time = sm->milestones.cache_open_write_begin;
-    break;
-  case TS_MILESTONE_CACHE_OPEN_WRITE_END:
-    *time = sm->milestones.cache_open_write_end;
-    break;
-  case TS_MILESTONE_DNS_LOOKUP_BEGIN:
-    *time = sm->milestones.dns_lookup_begin;
-    break;
-  case TS_MILESTONE_DNS_LOOKUP_END:
-    *time = sm->milestones.dns_lookup_end;
-    break;
-  case TS_MILESTONE_SM_START:
-    *time = sm->milestones.sm_start;
-    break;
-  case TS_MILESTONE_SM_FINISH:
-    *time = sm->milestones.sm_finish;
-    break;
-  case TS_MILESTONE_PLUGIN_ACTIVE:
-    *time = sm->milestones.plugin_active;
-    break;
-  case TS_MILESTONE_PLUGIN_TOTAL:
-    *time = sm->milestones.plugin_total;
-    break;
-  default:
+  if ((milestone < (TSMilestonesType)TransactionMilestones::UA_BEGIN) ||
+      (milestone >= (TSMilestonesType)TransactionMilestones::LAST_ENTRY)) {
     *time = -1;
     ret = TS_ERROR;
-    break;
+  } else {
+    *time = sm->milestones[(TransactionMilestones::Milestone)milestone];
   }
 
   return ret;
@@ -6287,7 +6225,7 @@ TSVConnFdCreate(int fd)
   vc->action_ = &a;
 
   vc->id = net_next_connection_number();
-  vc->submit_time = ink_get_hrtime();
+  vc->submit_time = Thread::get_hrtime();
   vc->set_is_transparent(false);
   vc->mutex = new_ProxyMutex();
 
@@ -7917,7 +7855,10 @@ _conf_to_memberp(TSOverridableConfigKey conf, OverridableHttpConfigParams *overr
     typ = OVERRIDABLE_TYPE_INT;
     ret = &overridableHttpConfig->slow_log_threshold;
     break;
-
+  case TS_CONFIG_SSL_CLIENT_VERIFY_SERVER:
+    typ = OVERRIDABLE_TYPE_INT;
+    ret = &overridableHttpConfig->ssl_client_verify_server;
+    break;
   // This helps avoiding compiler warnings, yet detect unhandled enum members.
   case TS_CONFIG_NULL:
   case TS_CONFIG_LAST_ENTRY:
@@ -8222,6 +8163,9 @@ TSHttpTxnConfigFind(const char *name, int length, TSOverridableConfigKey *conf, 
       if (!strncmp(name, "proxy.config.http.response_server_str", length)) {
         cnf = TS_CONFIG_HTTP_RESPONSE_SERVER_STR;
         typ = TS_RECORDDATATYPE_STRING;
+      }
+      else if (!strncmp(name, "proxy.config.ssl.client.verify.server", length)) {
+        cnf = TS_CONFIG_SSL_CLIENT_VERIFY_SERVER;
       }
       break;
     case 't':

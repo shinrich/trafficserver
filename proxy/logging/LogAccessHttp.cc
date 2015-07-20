@@ -535,6 +535,43 @@ LogAccessHttp::marshal_client_req_http_version(char *buf)
   -------------------------------------------------------------------------*/
 
 int
+LogAccessHttp::marshal_client_req_protocol_version(char *buf)
+{
+  int len = INK_MIN_ALIGN;
+  char const *tag = m_http_sm->plugin_tag;
+
+  if (!tag) {
+    if (m_client_request) {
+      HTTPVersion versionObject = m_client_request->version_get();
+      int64_t major = HTTP_MAJOR(versionObject.m_version);
+      int64_t minor = HTTP_MINOR(versionObject.m_version);
+      if (major == 1 && minor == 1) {
+        tag = "http/1.1";
+      } else if (major == 1 && minor == 0) {
+        tag = "http/1.0";
+      } else if (major == 0 && minor == 9) {
+        tag = "http/0.9";
+      } // else invalid http version
+      len = LogAccess::strlen(tag);
+    } else {
+      tag = "*";
+    }
+  } else {
+    len = LogAccess::strlen(tag);
+  }
+
+  if (buf) {
+    marshal_str(buf, tag, len);
+  }
+
+  return len; 
+}
+
+
+/*-------------------------------------------------------------------------
+  -------------------------------------------------------------------------*/
+
+int
 LogAccessHttp::marshal_client_req_header_len(char *buf)
 {
   if (buf) {
@@ -947,7 +984,8 @@ int
 LogAccessHttp::marshal_server_resp_time_ms(char *buf)
 {
   if (buf) {
-    ink_hrtime elapsed = m_http_sm->milestones.server_close - m_http_sm->milestones.server_connect;
+    ink_hrtime elapsed =
+      m_http_sm->milestones[TransactionMilestones::SERVER_CLOSE] - m_http_sm->milestones[TransactionMilestones::SERVER_CONNECT];
     int64_t val = (int64_t)ink_hrtime_to_msec(elapsed);
     marshal_int(buf, val);
   }
@@ -958,7 +996,8 @@ int
 LogAccessHttp::marshal_server_resp_time_s(char *buf)
 {
   if (buf) {
-    ink_hrtime elapsed = m_http_sm->milestones.server_close - m_http_sm->milestones.server_connect;
+    ink_hrtime elapsed =
+      m_http_sm->milestones[TransactionMilestones::SERVER_CLOSE] - m_http_sm->milestones[TransactionMilestones::SERVER_CONNECT];
     int64_t val = (int64_t)ink_hrtime_to_sec(elapsed);
     marshal_int(buf, val);
   }
@@ -971,7 +1010,8 @@ int
 LogAccessHttp::marshal_server_time_to_first_byte_ms(char *buf)
 {
   if (buf) {
-    ink_hrtime elapsed = m_http_sm->milestones.server_first_read - m_http_sm->milestones.server_connect;
+    ink_hrtime elapsed =
+      m_http_sm->milestones[TransactionMilestones::SERVER_FIRST_READ] - m_http_sm->milestones[TransactionMilestones::SERVER_CONNECT];
     int64_t val = (int64_t)ink_hrtime_to_msec(elapsed);
     marshal_int(buf, val);
   }
@@ -1119,7 +1159,8 @@ int
 LogAccessHttp::marshal_transfer_time_ms(char *buf)
 {
   if (buf) {
-    ink_hrtime elapsed = m_http_sm->milestones.sm_finish - m_http_sm->milestones.sm_start;
+    ink_hrtime elapsed =
+      m_http_sm->milestones[TransactionMilestones::SM_FINISH] - m_http_sm->milestones[TransactionMilestones::SM_START];
     int64_t val = (int64_t)ink_hrtime_to_msec(elapsed);
     marshal_int(buf, val);
   }
@@ -1130,7 +1171,8 @@ int
 LogAccessHttp::marshal_transfer_time_s(char *buf)
 {
   if (buf) {
-    ink_hrtime elapsed = m_http_sm->milestones.sm_finish - m_http_sm->milestones.sm_start;
+    ink_hrtime elapsed =
+      m_http_sm->milestones[TransactionMilestones::SM_FINISH] - m_http_sm->milestones[TransactionMilestones::SM_START];
     int64_t val = (int64_t)ink_hrtime_to_sec(elapsed);
     marshal_int(buf, val);
   }
@@ -1374,4 +1416,27 @@ LogAccessHttp::marshal_http_header_field_escapify(LogField::Container container,
   }
 
   return (padded_len);
+}
+
+
+int
+LogAccessHttp::marshal_milestone(TransactionMilestones::Milestone ms, char *buf)
+{
+  if (buf) {
+    int64_t val = ink_hrtime_to_msec(m_http_sm->milestones[ms]);
+    marshal_int(buf, val);
+  }
+  return INK_MIN_ALIGN;
+}
+
+
+int
+LogAccessHttp::marshal_milestone_diff(TransactionMilestones::Milestone ms1, TransactionMilestones::Milestone ms2, char *buf)
+{
+  if (buf) {
+    ink_hrtime elapsed = m_http_sm->milestones.elapsed(ms2, ms1);
+    int64_t val = (int64_t)ink_hrtime_to_msec(elapsed);
+    marshal_int(buf, val);
+  }
+  return INK_MIN_ALIGN;
 }

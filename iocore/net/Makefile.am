@@ -47,6 +47,7 @@ test_certlookup_SOURCES = \
   SSLCertLookup.cc
 
 test_certlookup_LDADD = \
+  @OPENSSL_LIBS@ \
   $(top_builddir)/lib/ts/libtsutil.la \
   $(top_builddir)/iocore/eventsystem/libinkevent.a
 
@@ -79,6 +80,7 @@ libinknet_a_SOURCES = \
   P_SSLNextProtocolAccept.h \
   P_SSLNextProtocolSet.h \
   P_SSLUtils.h \
+  P_SSLClientUtils.h \
   P_OCSPStapling.h \
   P_Socks.h \
   P_UDPConnection.h \
@@ -103,6 +105,7 @@ libinknet_a_SOURCES = \
   SSLNextProtocolAccept.cc \
   SSLNextProtocolSet.cc \
   SSLUtils.cc \
+  SSLClientUtils.cc \
   OCSPStapling.cc \
   Socks.cc \
   UDPIOEvent.cc \

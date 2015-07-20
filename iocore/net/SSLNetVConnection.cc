@@ -27,6 +27,7 @@
 #include "P_SSLUtils.h"
 #include "InkAPIInternal.h"	// Added to include the ssl_hook definitions
 #include "P_SSLConfig.h"
+#include "P_SSLClientUtils.h"
 #include "Log.h"
 
 #include <climits>
@@ -852,6 +853,7 @@ void
 SSLNetVConnection::free(EThread *t)
 {
   NET_SUM_GLOBAL_DYN_STAT(net_connections_currently_open_stat, -1);
+  clientVerifyEnable = false;
   got_remote_addr = 0;
   got_local_addr = 0;
   read.vio.mutex.clear();
@@ -952,11 +954,18 @@ SSLNetVConnection::sslStartHandShake(int event, int &err)
   case SSL_EVENT_CLIENT:
     if (this->ssl == NULL) {
       this->ssl = make_ssl_connection(ssl_NetProcessor.client_ctx, this);
-    }
-
-    if (this->ssl == NULL) {
-      SSLErrorVC(this, "failed to create SSL client session");
-      return EVENT_ERROR;
+      // Making the check here instead of later, so we only
+      // do this setting immediately after we create the SSL object
+      if (this->ssl != NULL) {
+        int clientVerify=this->getClientVerifyEnable();
+        //REC_ReadConfigInt32(clientVerify, "proxy.config.ssl.client.verify.server");
+        int verifyValue = clientVerify ? SSL_VERIFY_PEER : SSL_VERIFY_NONE;
+        SSL_set_verify(this->ssl, verifyValue, verify_callback);
+      }
+      else {
+        SSLErrorVC(this, "failed to create SSL client session");
+        return EVENT_ERROR;
+      }
     }
 
     return sslClientHandShakeEvent(err);
@@ -1078,7 +1087,7 @@ SSLNetVConnection::sslServerHandShakeEvent(int &err)
     // do we want to include cert info in trace?
 
     if (sslHandshakeBeginTime) {
-      const ink_hrtime ssl_handshake_time = ink_get_hrtime() - sslHandshakeBeginTime;
+      const ink_hrtime ssl_handshake_time = Thread::get_hrtime() - sslHandshakeBeginTime;
       Debug("ssl", "ssl handshake time:%" PRId64, ssl_handshake_time);
       sslHandshakeBeginTime = 0;
       SSL_INCREMENT_DYN_STAT_EX(ssl_total_handshake_time_stat, ssl_handshake_time);
@@ -1208,8 +1217,10 @@ SSLNetVConnection::sslClientHandShakeEvent(int &err)
       SSL_INCREMENT_DYN_STAT(ssl_sni_name_set_failure);
     }
   }
+
 #endif
 
+  SSL_set_ex_data(ssl, get_ssl_client_data_index(), this);
   ssl_error_t ssl_error = SSLConnect(ssl);
   bool trace = getSSLTrace();
   Debug("ssl", "trace=%s", trace ? "TRUE" : "FALSE");
@@ -1289,6 +1300,8 @@ SSLNetVConnection::sslClientHandShakeEvent(int &err)
   case SSL_ERROR_SSL:
   default:
     err = errno;
+    // FIXME -- This triggers a retry on cases of cert validation errors....
+    Debug("ssl", "SSLNetVConnection::sslClientHandShakeEvent, SSL_ERROR_SSL");
     SSL_CLR_ERR_INCR_DYN_STAT(this, ssl_error_ssl, "SSLNetVConnection::sslClientHandShakeEvent, SSL_ERROR_SSL errno=%d", errno);
     Debug("ssl.error", "SSLNetVConnection::sslClientHandShakeEvent, SSL_ERROR_SSL");
     TraceIn(trace, get_remote_addr(), get_remote_port(),

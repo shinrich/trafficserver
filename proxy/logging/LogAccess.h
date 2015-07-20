@@ -183,6 +183,7 @@ public:
   inkcoreapi virtual int marshal_client_req_url_path(char *);           // STR
   inkcoreapi virtual int marshal_client_req_url_scheme(char *);         // STR
   inkcoreapi virtual int marshal_client_req_http_version(char *);       // INT
+  inkcoreapi virtual int marshal_client_req_protocol_version(char *);   // STR
   inkcoreapi virtual int marshal_client_req_header_len(char *);         // INT
   inkcoreapi virtual int marshal_client_req_body_len(char *);           // INT
   inkcoreapi virtual int marshal_client_req_tcp_reused(char *);         // INT
@@ -283,6 +284,13 @@ public:
   // generic record access
   //
   int marshal_record(char *record, char *buf);
+
+  //
+  // milestones access
+  //
+  inkcoreapi virtual int marshal_milestone(TransactionMilestones::Milestone ms, char *buf);
+  inkcoreapi virtual int marshal_milestone_diff(TransactionMilestones::Milestone ms1, TransactionMilestones::Milestone ms2,
+                                                char *buf);
 
   //
   // unmarshalling routines

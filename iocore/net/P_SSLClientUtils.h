@@ -1,7 +1,5 @@
 /** @file
 
-  A brief file description
-
   @section license License
 
   Licensed to the Apache Software Foundation (ASF) under one
@@ -21,36 +19,22 @@
   limitations under the License.
  */
 
-/****************************************************************************
+#ifndef IOCORE_NET_P_SSLCLIENTUTILS_H_
+#define IOCORE_NET_P_SSLCLIENTUTILS_H_
 
-  Basic Threads
+#include "ink_config.h"
+#include "Diags.h"
+#include "P_SSLUtils.h"
+#include "P_SSLConfig.h"
 
+#include <openssl/opensslconf.h>
+#include <openssl/ssl.h>
 
+// Create and initialize a SSL client context.
+SSL_CTX *SSLInitClientContext(const struct SSLConfigParams *param);
 
-****************************************************************************/
-#ifndef _P_Thread_h_
-#define _P_Thread_h_
+// Returns the index used to store our data on the SSL
+int get_ssl_client_data_index();
+int verify_callback(int preverify_ok, X509_STORE_CTX *ctx);
 
-#include "I_Thread.h"
-
-///////////////////////////////////////////////
-// Common Interface impl                     //
-///////////////////////////////////////////////
-TS_INLINE
-Thread::~Thread()
-{
-}
-
-TS_INLINE void
-Thread::set_specific()
-{
-  ink_thread_setspecific(Thread::thread_data_key, this);
-}
-
-TS_INLINE Thread *
-this_thread()
-{
-  return (Thread *)ink_thread_getspecific(Thread::thread_data_key);
-}
-
-#endif //_P_Thread_h_
+#endif /* IOCORE_NET_P_SSLCLIENTUTILS_H_ */

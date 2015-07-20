@@ -318,6 +318,11 @@ Log::init_fields()
   LogField *field;
 
   //
+  // Initializes material to find a milestone name from their
+  // name in a rapid manner.
+  field->init_milestone_container();
+
+  //
   // Create a hash table that will be used to find the global field
   // objects from their symbol names in a rapid manner.
   //
@@ -433,6 +438,11 @@ Log::init_fields()
                        &LogAccess::unmarshal_http_version);
   global_field_list.add(field, false);
   ink_hash_table_insert(field_symbol_hash, "cqhv", field);
+
+  field = new LogField("client_req_protocol_version", "cqpv", LogField::dINT, &LogAccess::marshal_client_req_protocol_version,
+                       (LogField::UnmarshalFunc) &LogAccess::unmarshal_str);
+  global_field_list.add(field, false);
+  ink_hash_table_insert(field_symbol_hash, "cqpv", field);
 
   field = new LogField("client_req_header_len", "cqhl", LogField::sINT, &LogAccess::marshal_client_req_header_len,
                        &LogAccess::unmarshal_int_to_str);
@@ -1193,11 +1203,11 @@ Log::flush_thread_main(void * /* args ATS_UNUSED */)
 
     // Time to work on periodic events??
     //
-    now = ink_get_hrtime() / HRTIME_SECOND;
+    now = Thread::get_hrtime() / HRTIME_SECOND;
     if (now >= last_time + PERIODIC_TASKS_INTERVAL) {
       Debug("log-preproc", "periodic tasks for %" PRId64, (int64_t)now);
       periodic_tasks(now);
-      last_time = ink_get_hrtime() / HRTIME_SECOND;
+      last_time = Thread::get_hrtime() / HRTIME_SECOND;
     }
 
     // wait for more work; a spurious wake-up is ok since we'll just

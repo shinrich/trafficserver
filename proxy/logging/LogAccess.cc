@@ -211,6 +211,15 @@ LogAccess::marshal_client_req_http_version(char *buf)
   -------------------------------------------------------------------------*/
 
 int
+LogAccess::marshal_client_req_protocol_version(char *buf)
+{
+  DEFAULT_STR_FIELD;
+}
+
+/*-------------------------------------------------------------------------
+  -------------------------------------------------------------------------*/
+
+int
 LogAccess::marshal_client_req_header_len(char *buf)
 {
   DEFAULT_INT_FIELD;
@@ -660,6 +669,25 @@ LogAccess::marshal_config_str_var(char *config_var, char *buf)
   ats_free(str);
   return len;
 }
+
+/*-------------------------------------------------------------------------
+  -------------------------------------------------------------------------*/
+
+int
+LogAccess::marshal_milestone(TransactionMilestones::Milestone ms, char *buf)
+{
+  DEFAULT_INT_FIELD;
+}
+
+/*-------------------------------------------------------------------------
+  -------------------------------------------------------------------------*/
+
+int
+LogAccess::marshal_milestone_diff(TransactionMilestones::Milestone ms1, TransactionMilestones::Milestone ms2, char *buf)
+{
+  DEFAULT_INT_FIELD;
+}
+
 
 // To allow for a generic marshal_record function, rather than
 // multiple functions (one per data type) we always marshal a record
