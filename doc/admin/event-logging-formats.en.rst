@@ -179,8 +179,14 @@ The following list describes Traffic Server custom logging fields.
 .. _cqtr:
 
 ``cqtr``
-    The TCP reused status; indicates if this request went through an
-    already established connection.
+    The TCP reused status; indicates if this client request went through
+    an already established connection.
+
+.. _cqssl:
+
+``cqssl``
+    The SSL client request status indicates if this client connection
+    is over SSL.
 
 .. _cqssr:
 
