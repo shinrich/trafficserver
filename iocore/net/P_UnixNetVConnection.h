@@ -131,6 +131,9 @@ public:
   }
 
   virtual void do_io_close(int lerrno = -1);
+  // do_io_schedule_close is like do_io_close, but we know that we are on a 
+  // different thread, so we don't even attempt to close inline.
+  void do_io_schedule_close();
   virtual void do_io_shutdown(ShutdownHowTo_t howto);
 
   ////////////////////////////////////////////////////////////
@@ -214,6 +217,12 @@ public:
   void readReschedule(NetHandler *nh);
   void writeReschedule(NetHandler *nh);
   void netActivity(EThread *lthread);
+  /**
+   * If the current object's thread does not match the t argument, create a new 
+   * NetVC in the thread t context based on the socket and ssl information in the
+   * current NetVC and mark the current NetVC to be closed.  
+   */
+  UnixNetVConnection *migrateToCurrentThread(Continuation *c, EThread *t);
 
   Action action_;
   volatile int closed;
@@ -267,6 +276,12 @@ public:
   int acceptEvent(int event, Event *e);
   int mainEvent(int event, Event *e);
   virtual int connectUp(EThread *t, int fd);
+  /**
+   * Populate the current object based on the socket information in in the 
+   * con parameter.
+   * This is logic is invoked when the NetVC object is created in a new thread context
+   */
+  virtual int populate(Connection &con, Continuation *c, void *arg);
   virtual void free(EThread *t);
 
   virtual ink_hrtime get_inactivity_timeout();

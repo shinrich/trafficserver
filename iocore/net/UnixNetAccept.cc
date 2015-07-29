@@ -448,10 +448,11 @@ NetAccept::acceptFastEvent(int event, void *ep)
 
     if (vc->ep.start(pd, vc, EVENTIO_READ | EVENTIO_WRITE) < 0) {
       Warning("[NetAccept::acceptFastEvent]: Error in inserting fd[%d] in kevent\n", vc->con.fd);
-      close_UnixNetVConnection(vc, e->ethread);
+      vc->do_io_close();
       return EVENT_DONE;
     }
 
+    ink_assert(vc->nh->mutex->thread_holding == this_ethread());
     vc->nh->open_list.enqueue(vc);
 
 #ifdef USE_EDGE_TRIGGER
@@ -466,7 +467,7 @@ NetAccept::acceptFastEvent(int event, void *ep)
       MUTEX_LOCK(lock, vc->mutex, e->ethread);
       action_->continuation->handleEvent(NET_EVENT_ACCEPT, vc);
     } else
-      close_UnixNetVConnection(vc, e->ethread);
+      vc->do_io_close();
   } while (loop);
 
 Ldone:
