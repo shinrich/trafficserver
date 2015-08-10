@@ -273,6 +273,30 @@ HttpSessionManager::acquire_session(Continuation * /* cont ATS_UNUSED */, sockad
     } else {
       retval = m_g_pool->acquireSession(ip, hostname_hash, match_style, to_return);
       Debug("http_ss", "[acquire session] global pool search %s", to_return ? "successful" : "failed");
+      // At this point to_return has been removed from the pool. Do we need to move it 
+      // to the same thread? 
+      if (to_return) {
+        UnixNetVConnection *server_vc = dynamic_cast<UnixNetVConnection *>(to_return->get_netvc());
+        if (server_vc) {
+          UnixNetVConnection *new_vc = server_vc->migrateToCurrentThread(sm, ethread);
+          // The VC moved, free up the original one
+          if (new_vc != server_vc) {
+            ink_assert(new_vc == NULL || new_vc->nh != NULL);
+            to_return->set_netvc(new_vc);
+            if (!new_vc) {
+              // Close out to_return, we were't able to get a connection
+              to_return->do_io_close();
+              to_return = NULL;
+            } else {
+              // Keep things from timing out on us
+              new_vc->set_inactivity_timeout(new_vc->get_inactivity_timeout());
+            }
+          } else {
+            // Keep things from timing out on us
+            server_vc->set_inactivity_timeout(server_vc->get_inactivity_timeout());
+          }
+        }
+      }
     }
 
     if (to_return) {

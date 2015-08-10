@@ -429,6 +429,13 @@ SSLNetVConnection::net_read_io(NetHandler *nh, EThread *lthread)
     readReschedule(nh);
     return;
   }
+  // Got closed by the HttpSessionManager thread during a migration
+  // The closed flag should be stable once we get the s->vio.mutex in that case
+  // (the global session pool mutex).
+  if (this->closed) {
+    this->super::net_read_io(nh, lthread);
+    return;
+  }
   // If it is not enabled, lower its priority.  This allows
   // a fast connection to speed match a slower connection by
   // shifting down in priority even if it could read.
@@ -866,6 +873,7 @@ SSLNetVConnection::free(EThread *t)
   write.triggered = 0;
   options.reset();
   closed = 0;
+  con.close();
   ink_assert(con.fd == NO_FD);
   if (ssl != NULL) {
     SSL_free(ssl);
@@ -889,8 +897,11 @@ SSLNetVConnection::free(EThread *t)
   sslTrace=false;
 
   if (from_accept_thread) {
+    ink_assert(*(void **)this == *(void **)&sslNetVCAllocator.proto.typeObject);
     sslNetVCAllocator.free(this);
   } else {
+    ink_assert(*(void **)this == *(void **)&sslNetVCAllocator.proto.typeObject);
+    ink_assert(con.fd == NO_FD);
     THREAD_FREE(this, sslNetVCAllocator, t);
   }
 }
@@ -1496,3 +1507,18 @@ SSLNetVConnection::computeSSLTrace()
 
   return trace;
 } 
+
+int 
+SSLNetVConnection::populate(Connection &con, Continuation *c, void *arg)
+{
+  int retval = UnixNetVConnection::populate(con, c, arg);
+  if (retval != EVENT_DONE) return retval;
+  // Add in the SSL data
+  this->ssl = (SSL *)arg;
+  // Maybe bring over the stats?
+  
+  this->sslHandShakeComplete = true;
+  this->sslClientConnection = true;
+  SSL_set_ex_data(this->ssl, get_ssl_client_data_index(), this);
+  return EVENT_DONE;
+}
