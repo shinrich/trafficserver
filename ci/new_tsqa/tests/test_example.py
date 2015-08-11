@@ -62,6 +62,8 @@ class TestNoOp(helpers.EnvironmentCase):
         You are passed in cls (which is the instance of this class) and env (which
         is an environment object)
         '''
+        super(TestNoOp, cls).setUpEnv(env)
+        
         # we can modify any/all configs (note: all pre-daemon start)
         cls.configs['remap.config'].add_line('map / http://http://trafficserver.readthedocs.org/')
 
@@ -124,6 +126,8 @@ class TestServerIntercept(helpers.EnvironmentCase, tsqa.test_cases.DynamicHTTPEn
     endpoint_port = 60000
     @classmethod
     def setUpEnv(cls, env):
+        super(TestServerIntercept, cls).setUpEnv(env)
+
         cls.configs['remap.config'].add_line('map / http://127.0.0.1:{0}'.format(cls.endpoint_port))
 
         cls.configs['plugin.config'].add_line('intercept.so')
@@ -147,6 +151,8 @@ class TestLogs(helpers.EnvironmentCase):
         This funciton is responsible for setting up the environment for this fixture
         This includes everything pre-daemon start
         '''
+        super(TestLogs, cls).setUpEnv(env)
+
         # only add server headers when there weren't any
         cls.configs['records.config']['CONFIG'].update({
             'proxy.config.diags.debug.tags': 'log-.*',
@@ -178,6 +184,8 @@ class TestLogRefCounting(tsqa.test_cases.DynamicHTTPEndpointCase, helpers.Enviro
         This funciton is responsible for setting up the environment for this fixture
         This includes everything pre-daemon start
         '''
+        super(TestLogRefCounting, cls).setUpEnv(env)
+
         cls.configs['remap.config'].add_line('map / http://127.0.0.1:{0}/\n'.format(cls.http_endpoint.address[1]))
 
         cls.configs['plugin.config'].add_lines([
@@ -221,6 +229,8 @@ class TestDynamicHTTPEndpointCase(tsqa.test_cases.DynamicHTTPEndpointCase, helpe
         This funciton is responsible for setting up the environment for this fixture
         This includes everything pre-daemon start
         '''
+        super(TestDynamicHTTPEndpointCase, cls).setUpEnv(env)
+
         cls.configs['remap.config'].add_line('map / http://127.0.0.1:{0}/\n'.format(cls.http_endpoint.address[1]))
 
         # only add server headers when there weren't any

@@ -29,6 +29,7 @@ class TestSSL(helpers.EnvironmentCase):
         This function is responsible for setting up the environment for this fixture
         This includes everything pre-daemon start
         '''
+        super(TestSSL, cls).setUpEnv(env)
 
         # add an SSL port to ATS
         cls.ssl_port = tsqa.utils.bind_unused_port()[1]

@@ -33,6 +33,8 @@ class TestHostDBPartiallyFailedDNS(helpers.EnvironmentCase):
     '''
     @classmethod
     def setUpEnv(cls, env):
+        super(TestHostDBPartiallyFailedDNS, cls).setUpEnv(env)
+
         resolv_conf_path = os.path.join(env.layout.prefix, 'resolv.conf')
 
         cls.configs['records.config']['CONFIG'].update({
@@ -48,6 +50,7 @@ class TestHostDBPartiallyFailedDNS(helpers.EnvironmentCase):
             fh.write('nameserver 8.8.8.8\n')  # some REAL nameserver
 
     def test_working(self):
+        raise helpers.unittest.SkipTest('skipping test until fixed')
         start = time.time()
         ret = requests.get('http://trafficserver.readthedocs.org',
                            proxies=self.proxies,
@@ -62,6 +65,8 @@ class TestHostDBFailedDNS(helpers.EnvironmentCase):
     '''
     @classmethod
     def setUpEnv(cls, env):
+        super(TestHostDBFailedDNS, cls).setUpEnv(env)
+        
         resolv_conf_path = os.path.join(env.layout.prefix, 'resolv.conf')
 
         cls.configs['records.config']['CONFIG'].update({

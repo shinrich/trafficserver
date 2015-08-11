@@ -56,6 +56,8 @@ class TestSPDY(helpers.EnvironmentCase):
         This function is responsible for setting up the environment for this fixture
         This includes everything pre-daemon start
         '''
+        super(TestSPDY, cls).setUpEnv(env)
+
         # set up spdycat
         cls.client = which('spdycat')
         if cls.client is None:
