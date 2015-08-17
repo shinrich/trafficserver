@@ -230,7 +230,7 @@ Http2DynamicTable::set_dynamic_table_size(uint32_t new_size)
   return true;
 }
 
-void
+bool
 Http2DynamicTable::add_header_field(const MIMEField *field)
 {
   int name_len, value_len;
@@ -247,7 +247,7 @@ Http2DynamicTable::add_header_field(const MIMEField *field)
     _mhdr->fields_clear();
   } else {
     _current_size += header_size;
-    while (_current_size > _settings_dynamic_table_size) {
+    while (_current_size > _settings_dynamic_table_size && _headers.length() > 0) {
       int last_name_len, last_value_len;
       MIMEField *last_field = _headers.last();
 
@@ -259,11 +259,18 @@ Http2DynamicTable::add_header_field(const MIMEField *field)
       _mhdr->field_delete(last_field, false);
     }
 
+    if (_headers.length() == 0 && _current_size - header_size != 0) {
+      Error("No headers in dynamic table, but the size is: %u", _current_size);
+      return false; // this will close the connection
+    }
+
     MIMEField *new_field = _mhdr->field_create(name, name_len);
     new_field->value_set(_mhdr->m_heap, _mhdr->m_mime, value, value_len);
     // XXX Because entire Vec instance is copied, Its too expensive!
     _headers.insert(0, new_field);
   }
+
+  return true;
 }
 
 // The first byte of an HPACK field unambiguously tells us what
@@ -658,7 +665,9 @@ decode_literal_header_field(MIMEFieldWrapper &header, const uint8_t *buf_start, 
 
   // Incremental Indexing adds header to header table as new entry
   if (isIncremental) {
-    dynamic_table.add_header_field(header.field_get());
+    if (dynamic_table.add_header_field(header.field_get()) == false) {
+      return HPACK_ERROR_COMPRESSION_ERROR;
+    }
   }
 
   // Print decoded header field
