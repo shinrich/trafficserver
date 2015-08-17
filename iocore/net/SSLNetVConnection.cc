@@ -898,10 +898,8 @@ SSLNetVConnection::free(EThread *t)
   sslTrace=false;
 
   if (from_accept_thread) {
-    ink_assert(*(void **)this == *(void **)&sslNetVCAllocator.proto.typeObject);
     sslNetVCAllocator.free(this);
   } else {
-    ink_assert(*(void **)this == *(void **)&sslNetVCAllocator.proto.typeObject);
     ink_assert(con.fd == NO_FD);
     THREAD_FREE(this, sslNetVCAllocator, t);
   }

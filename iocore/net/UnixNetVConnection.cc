@@ -663,24 +663,6 @@ UnixNetVConnection::do_io_write(Continuation *c, int64_t nbytes, IOBufferReader 
 }
 
 void
-UnixNetVConnection::do_io_schedule_close() 
-{
-  disable_read(this);
-  disable_write(this);
-  read.vio.buffer.clear();
-  read.vio.nbytes = 0;
-  read.vio.op = VIO::NONE;
-  read.vio._cont = NULL;
-  write.vio.buffer.clear();
-  write.vio.nbytes = 0;
-  write.vio.op = VIO::NONE;
-  write.vio._cont = NULL;
-
-  INK_WRITE_MEMORY_BARRIER;
-  closed = 1;
-}
-
-void
 UnixNetVConnection::do_io_close(int alerrno /* = -1 */)
 {
   disable_read(this);
@@ -1378,7 +1360,7 @@ UnixNetVConnection::migrateToCurrentThread(Continuation *cont, EThread *t)
 
   // Do_io_close will signal the VC to be freed on the original thread
   // Since we moved the con context, the fd will not be closed
-  this->do_io_schedule_close(); 
+  this->do_io_close(); 
   
   // Create new VC:
   NetVConnection *new_vc = NULL;

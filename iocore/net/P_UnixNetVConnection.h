@@ -131,9 +131,6 @@ public:
   }
 
   virtual void do_io_close(int lerrno = -1);
-  // do_io_schedule_close is like do_io_close, but we know that we are on a 
-  // different thread, so we don't even attempt to close inline.
-  void do_io_schedule_close();
   virtual void do_io_shutdown(ShutdownHowTo_t howto);
 
   ////////////////////////////////////////////////////////////
