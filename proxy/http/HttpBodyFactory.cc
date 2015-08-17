@@ -398,9 +398,12 @@ HttpBodyFactory::fabricate(StrList *acpt_language_list, StrList *acpt_charset_li
   char *buffer;
   const char *pType = context->txn_conf->body_factory_template_base;
   const char *set;
-  HttpBodyTemplate *t;
+  HttpBodyTemplate *t = NULL;
   HttpBodySet *body_set;
   char template_base[PATH_NAME_MAX];
+
+  if (NULL != pType && (0 == *pType || 0 == strcasecmp(pType, "NONE")))
+    pType = NULL; // not valid so clear it.
 
   if (set_return)
     *set_return = "???";
@@ -428,15 +431,24 @@ HttpBodyFactory::fabricate(StrList *acpt_language_list, StrList *acpt_charset_li
 
   if (set_return)
     *set_return = set;
-  if (pType != NULL && 0 != *pType && 0 != strncmp(pType, "NONE", 4)) {
+
+  // Check for specific alternate.
+  if (pType != NULL) {
     sprintf(template_base, "%s_%s", pType, type);
-  } else {
-    sprintf(template_base, "%s", type);
+    t = find_template(set, template_base, &body_set);
+    // Check for default alternate.
+    if (t == NULL) {
+      sprintf(template_base, "%s_default", pType);
+      t = find_template(set, template_base, &body_set);
+    }
   }
+
+  // Check base customizations.
+  if (t == NULL) {
+    t = find_template(set, type, &body_set);
+  }
+
   // see if we have a custom error page template
-  t = find_template(set, template_base, &body_set);
-  if (t == NULL)
-    t = find_template(set, type, &body_set); // this executes if the template_base is wrong and doesn't exist
   if (t == NULL) {
     Debug("body_factory", "  can't find template, returning NULL template");
     return (NULL);
@@ -665,6 +677,7 @@ HttpBodyFactory::load_body_set_from_directory(char *set_name, char *tmpl_dir)
   struct stat stat_buf;
   char path[MAXPATHLEN + 1];
   struct dirent *entry_buffer, *result;
+  static const char BASED_DEFAULT[] = "_default";
 
   ////////////////////////////////////////////////
   // ensure we can open tmpl_dir as a directory //
@@ -700,12 +713,19 @@ HttpBodyFactory::load_body_set_from_directory(char *set_name, char *tmpl_dir)
 
   while ((readdir_r(dir, entry_buffer, &result) == 0) && (result != NULL)) {
     HttpBodyTemplate *tmpl;
+    size_t d_len = strlen(entry_buffer->d_name);
 
     ///////////////////////////////////////////////////////////////
-    // all template files have name of the form <type>#<subtype> //
+    // all template files must have a file name of the form      //
+    // - <type>#<subtype>                                        //
+    // - <base>_<type>#<subtype>                                 //
+    // - <base>_default   [based default]                        //
+    // - default          [global default]                       //
     ///////////////////////////////////////////////////////////////
 
-    if ((strchr(entry_buffer->d_name, '#') == NULL) && (strcmp(entry_buffer->d_name, "default") != 0))
+    if (! (NULL != strchr(entry_buffer->d_name, '#') ||
+           (0 == strcmp(entry_buffer->d_name, "default")) ||
+           (d_len >= sizeof(BASED_DEFAULT) && 0 == strcmp(entry_buffer->d_name + d_len - (sizeof(BASED_DEFAULT)-1), BASED_DEFAULT))))
       continue;
 
     snprintf(path, sizeof(path), "%s/%s", tmpl_dir, entry_buffer->d_name);
