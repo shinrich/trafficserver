@@ -30,6 +30,8 @@ log = logging.getLogger(__name__)
 class TestRemapHTTP(tsqa.test_cases.DynamicHTTPEndpointCase, helpers.EnvironmentCase):
     @classmethod
     def setUpEnv(cls, env):
+        super(TestRemapHTTP, cls).setUpEnv(env)
+
         cls.configs['records.config']['CONFIG'].update({
             'proxy.config.diags.debug.enabled': 1,
             'proxy.config.diags.debug.tags': 'url.*',
@@ -75,6 +77,8 @@ class TestRemapHTTP(tsqa.test_cases.DynamicHTTPEndpointCase, helpers.Environment
 class TestRemapHTTPS(tsqa.test_cases.DynamicHTTPEndpointCase, helpers.EnvironmentCase):
     @classmethod
     def setUpEnv(cls, env):
+        super(TestRemapHTTPS, cls).setUpEnv(env)
+
         # set an SSL port to ATS
         cls.ssl_port = tsqa.utils.bind_unused_port()[1]
         cls.configs['records.config']['CONFIG']['proxy.config.http.server_ports'] += ' {0}:ssl'.format(cls.ssl_port)

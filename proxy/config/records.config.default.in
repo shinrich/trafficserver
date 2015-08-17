@@ -200,7 +200,7 @@ CONFIG proxy.config.cluster.mc_group_addr STRING 224.0.1.37
 ##############################################################################
 # Extra Yahoo ATS Defaults
 ##############################################################################
-CONFIG proxy.config.ssl.session_cache.size    INT 512000
+CONFIG proxy.config.ssl.session_cache.size INT 512000
 CONFIG proxy.config.ssl.session_cache.timeout INT 7200
-CONFIG proxy.config.ssl.max_record_size       INT 0
+CONFIG proxy.config.ssl.max_record_size INT 0
 CONFIG proxy.config.net.default_inactivity_timeout INT 300

@@ -19,6 +19,7 @@
 MKFILE_PATH := $(abspath $(lastword $(MAKEFILE_LIST)))
 CURRENT_DIR := $(dir $(MKFILE_PATH))
 VIRTUALENV_DIR = $(CURRENT_DIR)/virtualenv
+LD_LIBRARY_PATH = /home/y/lib64:/home/y/libexec64:$(LD_LIBARY_PATH)
 
 # Run all tests.
 test: $(VIRTUALENV_DIR)

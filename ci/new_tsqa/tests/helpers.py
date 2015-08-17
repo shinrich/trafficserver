@@ -15,6 +15,7 @@
 #  limitations under the License.
 import os
 import tempfile
+import subprocess
 
 import tsqa.environment
 import tsqa.test_cases
@@ -54,3 +55,12 @@ class EnvironmentCase(tsqa.test_cases.EnvironmentCase):
             return ef.get_environment(cls.environment_factory.get('configure'), cls.environment_factory.get('env'))
         except Exception as e:
             raise unittest.SkipTest(e)
+    
+    @classmethod
+    def setUpEnv(cls, env):
+        # This is unique to Yahoo! to get TSQA working w/ Yahoo Connection
+        cls.configs['records.config']['CONFIG']['proxy.config.proxy_name'] = 'localhost'
+        proc = subprocess.Popen(["cp", "/home/y/libexec64/trafficserver/yahoo_connection.so",
+          "{0}/yahoo_connection.so".format(cls.environment.layout.plugindir)], stdout=subprocess.PIPE,
+          stderr=subprocess.PIPE)
+        subprocess.Popen(["chmod", "755", "{0}/yahoo_connection.so".format(cls.environment.layout.plugindir)])
