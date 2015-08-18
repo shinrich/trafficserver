@@ -499,6 +499,8 @@ LogBuffer::resolve_custom_entry(LogFieldList *fieldlist, char *printf_str, char 
   //
 
   LogField *field = fieldlist->first();
+  LogField *lastField = NULL; // For debug message.
+  int markCount = 0; // For debug message.
   int printf_len = (int)::strlen(printf_str); // OPTIMIZE
   int bytes_written = 0;
   int res, i;
@@ -508,6 +510,7 @@ LogBuffer::resolve_custom_entry(LogFieldList *fieldlist, char *printf_str, char 
 
   for (i = 0; i < printf_len; i++) {
     if (printf_str[i] == LOG_FIELD_MARKER) {
+      ++markCount;
       if (field != NULL) {
         char *to = &write_to[bytes_written];
 
@@ -610,10 +613,11 @@ LogBuffer::resolve_custom_entry(LogFieldList *fieldlist, char *printf_str, char 
         }
 
         bytes_written += res;
+        lastField = field;
         field = fieldlist->next(field);
       } else {
         Note("There are more field markers than fields;"
-             " cannot process log entry");
+             " cannot process log entry '%.*s'. Last field = '%s' printf_str='%s' pos=%d/%d count=%d alt_printf_str='%s'", bytes_written, write_to, lastField == NULL ? "*" : lastField->symbol(), printf_str == NULL ? "*NULL*" : printf_str, i, printf_len, markCount, alt_printf_str == NULL ? "*NULL*" : alt_printf_str);
         bytes_written = 0;
         break;
       }
