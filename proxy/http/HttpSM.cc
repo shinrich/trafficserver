@@ -2455,9 +2455,25 @@ HttpSM::state_cache_open_write(int event, void *data)
   case CACHE_EVENT_OPEN_WRITE_FAILED:
     // Failed on the write lock and retrying the vector
     //  for reading
-    t_state.cache_info.write_lock_state = HttpTransact::CACHE_WL_FAIL;
-    break;
-
+    if (t_state.redirect_info.redirect_in_process) {
+      DebugSM("http_redirect", "[%" PRId64 "] CACHE_EVENT_OPEN_WRITE_FAILED during redirect follow", sm_id);
+      t_state.cache_open_write_fail_action = HttpTransact::CACHE_OPEN_WRITE_FAIL_DEFAULT;
+      t_state.cache_info.write_lock_state = HttpTransact::CACHE_WL_FAIL;
+      break;
+    }
+    if (t_state.txn_conf->cache_open_write_fail_action == HttpTransact::CACHE_OPEN_WRITE_FAIL_DEFAULT) {
+      t_state.cache_info.write_lock_state = HttpTransact::CACHE_WL_FAIL;
+      break;
+    } else {
+      t_state.cache_open_write_fail_action = t_state.txn_conf->cache_open_write_fail_action;
+      if (!t_state.cache_info.object_read) {
+        // cache miss, set wl_state to fail
+        t_state.cache_info.write_lock_state = HttpTransact::CACHE_WL_FAIL;
+        break;
+      }
+    }
+    // INTENTIONAL FALL THROUGH
+    // Allow for stale object to be served
   case CACHE_EVENT_OPEN_READ:
     // The write vector was locked and the cache_sm retried
     // and got the read vector again.
