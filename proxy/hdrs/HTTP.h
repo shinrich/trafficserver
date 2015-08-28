@@ -505,7 +505,7 @@ public:
   mutable URL m_url_cached;
   mutable MIMEField *m_host_mime;
   mutable int m_host_length;    ///< Length of hostname.
-  mutable in_port_t m_port;           ///< Target port.
+  mutable int m_port;           ///< Target port.
   mutable bool m_target_cached; ///< Whether host name and port are cached.
   mutable bool m_target_in_url; ///< Whether host name and port are in the URL.
   /// Set if the port was effectively specified in the header.
