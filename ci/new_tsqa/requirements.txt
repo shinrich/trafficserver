@@ -4,3 +4,8 @@
 https://github.com/apache/trafficserver-qa/archive/master.zip
 pyyaml
 pyOpenSSL
+
+# Things that seem to be missing on rhel7
+werkzeug
+jinja2
+six

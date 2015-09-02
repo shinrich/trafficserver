@@ -20,6 +20,8 @@ MKFILE_PATH := $(abspath $(lastword $(MAKEFILE_LIST)))
 CURRENT_DIR := $(dir $(MKFILE_PATH))
 VIRTUALENV_DIR = $(CURRENT_DIR)/virtualenv
 LD_LIBRARY_PATH = /home/y/lib64:/home/y/libexec64:$(LD_LIBARY_PATH)
+VIRTUALENV_BINARY=/opt/python/bin/virtualenv
+PYTHON_BINARY=/opt/python/bin/python
 
 # Run all tests.
 test: $(VIRTUALENV_DIR)
@@ -32,7 +34,7 @@ list: $(VIRTUALENV_DIR)
 # Construct the virtualenv.
 $(VIRTUALENV_DIR):
 	@if [ ! -d $(VIRTUALENV_DIR) ]; then\
-		/opt/python/bin/virtualenv --python=/opt/python/bin/python $(VIRTUALENV_DIR);\
+		$(VIRTUALENV_BINARY) --python=$(PYTHON_BINARY) $(VIRTUALENV_DIR);\
 	fi
 	@# Update the virtualenv with your dep libraries
 	source $(VIRTUALENV_DIR)/bin/activate && $(VIRTUALENV_DIR)/bin/pip install -r $(CURRENT_DIR)/requirements.txt
@@ -44,3 +46,4 @@ update: $(VIRTUALENV_DIR)
 
 clean:
 	rm -rf virtualenv
+

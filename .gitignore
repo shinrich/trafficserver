@@ -141,3 +141,5 @@ tools/trafficserver.pc
 BUILDS
 DEBUG
 RELEASE
+
+ci/new_tsqa/virtualenv/
