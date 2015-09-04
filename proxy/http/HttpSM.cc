@@ -5272,7 +5272,9 @@ HttpSM::handle_server_setup_error(int event, void *data)
         tunnel.handleEvent(VC_EVENT_ERROR, c->write_vio);
       }
     } else {
-      tunnel.handleEvent(event, c->write_vio);
+      // c could be null here as well
+      if (c != NULL) 
+        tunnel.handleEvent(event, c->write_vio);
     }
     return;
   } else {
