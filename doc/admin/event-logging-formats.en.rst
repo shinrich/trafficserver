@@ -432,6 +432,12 @@ The following list describes Traffic Server custom logging fields.
 ``pssc``
     The HTTP response status code from Traffic Server to the client.
 
+.. _pqssl:
+
+``pqssl``
+    Indicates whether the connection from Traffic Server to the origin
+    was over SSL or not.
+
 .. _shi:
 
 ``shi``
