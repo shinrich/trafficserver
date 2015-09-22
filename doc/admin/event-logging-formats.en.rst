@@ -513,9 +513,11 @@ The following list describes Traffic Server custom logging fields.
 .. _sstc:
 
 ``sstc``
-    The number of transactions between Traffic Server and the origin server
-    from a single server session. A value greater than 0 indicates connection
-    reuse.
+    The number of times a connection between Traffic Server and the origin
+    is reused. This represents the number of transactions beyond the first
+    on thes same connection. Therefore, a value greater than zero indicates
+    connection reuse. This mirrors the behavior of the client-side boolean
+    flag for connection reuse, ``cqtr``.
 
 .. _ttms:
 
