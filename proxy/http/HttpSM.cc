@@ -337,8 +337,9 @@ HttpSM::HttpSM()
     server_response_hdr_bytes(0), server_response_body_bytes(0), client_response_hdr_bytes(0), client_response_body_bytes(0),
     cache_response_hdr_bytes(0), cache_response_body_bytes(0), pushed_response_hdr_bytes(0), pushed_response_body_bytes(0),
     client_tcp_reused(false), client_ssl_reused(false), client_connection_is_ssl(false), client_sec_protocol("-"),
-    client_cipher_suite("-"), plugin_tag(0), plugin_id(0), hooks_set(false), cur_hook_id(TS_HTTP_LAST_HOOK), cur_hook(NULL),
-    cur_hooks(0), callout_state(HTTP_API_NO_CALLOUT), terminate_sm(false), kill_this_async_done(false), parse_range_done(false)
+    client_cipher_suite("-"), server_transact_count(0), plugin_tag(0), plugin_id(0), hooks_set(false), cur_hook_id(TS_HTTP_LAST_HOOK), 
+    server_connection_is_ssl(false), cur_hook(NULL), cur_hooks(0), callout_state(HTTP_API_NO_CALLOUT), terminate_sm(false), 
+    kill_this_async_done(false), parse_range_done(false)
 {
   static int scatter_init = 0;
 
@@ -5657,7 +5658,7 @@ HttpSM::attach_server_session(HttpServerSession *s)
   hsm_release_assert(server_entry == NULL);
   hsm_release_assert(s->state == HSS_ACTIVE);
   server_session = s;
-  server_session->transact_count++;
+  server_transact_count = server_session->transact_count++;
 
   // Set the mutex so that we have something to update
   //   stats with
@@ -5671,7 +5672,7 @@ HttpSM::attach_server_session(HttpServerSession *s)
   server_entry->vc = server_session;
   server_entry->vc_type = HTTP_SERVER_VC;
   server_entry->vc_handler = &HttpSM::state_send_server_request_header;
- 
+  
   // es - is this a concern here in HttpSM?  Does it belong somewhere else?
   // Get server and client connections
   UnixNetVConnection *server_vc = (UnixNetVConnection *)(server_session->get_netvc());
@@ -5696,6 +5697,9 @@ HttpSM::attach_server_session(HttpServerSession *s)
     server_vc->setOriginTraceAddr(NULL);
     server_vc->setOriginTracePort(0);
   }
+
+  // set flag for server session is SSL
+  server_connection_is_ssl = (NULL != dynamic_cast<SSLNetVConnection *>(server_vc));
 
   // Initiate a read on the session so that the SM and not
   //  session manager will get called back if the timeout occurs

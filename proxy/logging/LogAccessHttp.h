@@ -99,6 +99,7 @@ public:
   virtual int marshal_proxy_req_server_ip(char *);   // INT
   virtual int marshal_proxy_hierarchy_route(char *); // INT
   virtual int marshal_proxy_host_port(char *);       // INT
+  virtual int marshal_proxy_req_is_ssl(char *);      // INT
 
   //
   // server -> proxy fields
@@ -112,6 +113,7 @@ public:
   virtual int marshal_server_resp_time_ms(char *);          // INT
   virtual int marshal_server_resp_time_s(char *);           // INT
   virtual int marshal_server_time_to_first_byte_ms(char *); // INT
+  virtual int marshal_server_transact_count(char *);        // INT
 
   //
   // cache -> client fields

@@ -444,6 +444,14 @@ LogAccess::marshal_proxy_host_ip(char *buf)
   return marshal_ip(buf, &Machine::instance()->ip.sa);
 }
 
+/*-------------------------------------------------------------------------
+  -------------------------------------------------------------------------*/
+
+int
+LogAccess::marshal_proxy_req_is_ssl(char *buf)
+{
+  DEFAULT_INT_FIELD;
+}
 
 /*-------------------------------------------------------------------------
   -------------------------------------------------------------------------*/
@@ -524,6 +532,14 @@ LogAccess::marshal_server_resp_time_s(char *buf)
 -------------------------------------------------------------------------*/
 int
 LogAccess::marshal_server_time_to_first_byte_ms(char *buf)
+{
+  DEFAULT_INT_FIELD;
+}
+
+/*-------------------------------------------------------------------------
+-------------------------------------------------------------------------*/
+int
+LogAccess::marshal_server_transact_count(char *buf)
 {
   DEFAULT_INT_FIELD;
 }

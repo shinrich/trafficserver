@@ -900,6 +900,20 @@ LogAccessHttp::marshal_proxy_req_server_ip(char *buf)
   -------------------------------------------------------------------------*/
 
 int
+LogAccessHttp::marshal_proxy_req_is_ssl(char *buf)
+{
+  if (buf) {
+    int64_t is_ssl;
+    is_ssl = m_http_sm->server_connection_is_ssl;
+    marshal_int(buf, is_ssl);
+  }
+  return INK_MIN_ALIGN;
+}
+
+/*-------------------------------------------------------------------------
+  -------------------------------------------------------------------------*/
+
+int
 LogAccessHttp::marshal_proxy_hierarchy_route(char *buf)
 {
   if (buf) {
@@ -1056,6 +1070,20 @@ LogAccessHttp::marshal_server_time_to_first_byte_ms(char *buf)
       m_http_sm->milestones[TS_MILESTONE_SERVER_FIRST_READ] - m_http_sm->milestones[TS_MILESTONE_SERVER_CONNECT];
     int64_t val = (int64_t)ink_hrtime_to_msec(elapsed);
     marshal_int(buf, val);
+  }
+  return INK_MIN_ALIGN;
+}
+
+/*-------------------------------------------------------------------------
+  -------------------------------------------------------------------------*/
+
+int
+LogAccessHttp::marshal_server_transact_count(char *buf)
+{
+  if (buf) {
+    int64_t count;
+    count = m_http_sm->server_transact_count;
+    marshal_int(buf, count);
   }
   return INK_MIN_ALIGN;
 }

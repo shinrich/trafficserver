@@ -432,6 +432,12 @@ The following list describes Traffic Server custom logging fields.
 ``pssc``
     The HTTP response status code from Traffic Server to the client.
 
+.. _pqssl:
+
+``pqssl``
+    Indicates whether the connection from Traffic Server to the origin
+    was over SSL or not.
+
 .. _shi:
 
 ``shi``
@@ -503,6 +509,15 @@ The following list describes Traffic Server custom logging fields.
 ``sttfbms``
     The time Traffic Server spends retrieving the first byte of response
     from the moment it's trying to connect origin server.
+
+.. _sstc:
+
+``sstc``
+    The number of times a connection between Traffic Server and the origin
+    is reused. This represents the number of transactions beyond the first
+    on thes same connection. Therefore, a value greater than zero indicates
+    connection reuse. This mirrors the behavior of the client-side boolean
+    flag for connection reuse, ``cqtr``.
 
 .. _ttms:
 
