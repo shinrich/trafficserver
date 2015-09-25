@@ -337,8 +337,8 @@ HttpSM::HttpSM()
     server_response_hdr_bytes(0), server_response_body_bytes(0), client_response_hdr_bytes(0), client_response_body_bytes(0),
     cache_response_hdr_bytes(0), cache_response_body_bytes(0), pushed_response_hdr_bytes(0), pushed_response_body_bytes(0),
     client_tcp_reused(false), client_ssl_reused(false), client_connection_is_ssl(false), client_sec_protocol("-"),
-    client_cipher_suite("-"), server_transact_count(0), plugin_tag(0), plugin_id(0), hooks_set(false), cur_hook_id(TS_HTTP_LAST_HOOK), 
-    server_connection_is_ssl(false), cur_hook(NULL), cur_hooks(0), callout_state(HTTP_API_NO_CALLOUT), terminate_sm(false), 
+    client_cipher_suite("-"), server_transact_count(0), server_connection_is_ssl(false), plugin_tag(0), plugin_id(0),  hooks_set(false), cur_hook_id(TS_HTTP_LAST_HOOK), 
+    cur_hook(NULL), cur_hooks(0), callout_state(HTTP_API_NO_CALLOUT), terminate_sm(false), 
     kill_this_async_done(false), parse_range_done(false)
 {
   static int scatter_init = 0;
