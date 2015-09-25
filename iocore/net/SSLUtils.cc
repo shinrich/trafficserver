@@ -841,13 +841,13 @@ void *tmp;
 	else numTimesCalledBefore++;
 	
 	if (((void *)SSL_locking_callback) !=  (tmp = (void *) CRYPTO_get_locking_callback())) {
-    		Warning("CRYPTO locking_callback() changed. FIXING! bad callback address=0x%08x, suppose to be 0x%08x. May have misbehaving plugin\n",
+    		Warning("CRYPTO locking_callback() changed. FIXING! bad callback address=0x%p, suppose to be 0x%p. May have misbehaving plugin\n",
 			tmp, SSL_locking_callback);
     		CRYPTO_set_locking_callback(SSL_locking_callback);
 	}
 
 	if (((void *)SSL_pthreads_thread_id) !=  (tmp = (void *) CRYPTO_get_id_callback())) {
-    		Warning("CRYPTO id_callback() changed. FIXING! bad callback address=0x%08x, suppose to be 0x%08x. May have misbehaving plugin\n",
+    		Warning("CRYPTO id_callback() changed. FIXING! bad callback address=0x%p, suppose to be 0x%p. May have misbehaving plugin\n",
 			tmp, SSL_pthreads_thread_id);
 		CRYPTO_set_id_callback(SSL_pthreads_thread_id);
 	}
