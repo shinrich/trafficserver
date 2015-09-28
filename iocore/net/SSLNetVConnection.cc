@@ -858,6 +858,14 @@ SSLNetVConnection::do_io_close(int lerrno)
       // Send the close-notify
       int ret = SSL_shutdown(ssl);
       Debug("ssl-shutdown", "SSL_shutdown %s", (ret) ? "success" : "failed");
+    } else { // x == 0
+      // If we've received a FIN, we still need to set SSL_SENT_SHUTDOWN, otheriwse
+      // openssl will dump a perfectly good session in SSL_SESS_CACHE_SERVER mode
+      // Since we do not rely on the openssl caching, not clear whether this is an issue for 
+      // ATS, but it doesn't seem to hurt
+      if ((SSL_RECEIVED_SHUTDOWN | SSL_SENT_SHUTDOWN) != SSL_get_shutdown(ssl)) {
+        SSL_set_shutdown(ssl, (SSL_RECEIVED_SHUTDOWN | SSL_SENT_SHUTDOWN));
+      }
     }
   }
   // Go on and do the unix socket cleanups
