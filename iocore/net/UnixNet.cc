@@ -540,6 +540,7 @@ NetHandler::mainNetEvent(int event, Event *e)
 #if defined(USE_EDGE_TRIGGER)
   // UnixNetVConnection *
   while ((vc = read_ready_list.dequeue())) {
+    diags->set_override(vc->debug_override);
     if (vc->closed)
       close_UnixNetVConnection(vc, trigger_event->ethread);
     else if (vc->read.enabled && vc->read.triggered)
@@ -556,6 +557,7 @@ NetHandler::mainNetEvent(int event, Event *e)
     }
   }
   while ((vc = write_ready_list.dequeue())) {
+    diags->set_override(vc->debug_override);
     if (vc->closed)
       close_UnixNetVConnection(vc, trigger_event->ethread);
     else if (vc->write.enabled && vc->write.triggered)
@@ -573,6 +575,7 @@ NetHandler::mainNetEvent(int event, Event *e)
   }
 #else  /* !USE_EDGE_TRIGGER */
   while ((vc = read_ready_list.dequeue())) {
+    diags->set_override(vc->debug_override);
     if (vc->closed)
       close_UnixNetVConnection(vc, trigger_event->ethread);
     else if (vc->read.enabled && vc->read.triggered)
@@ -581,6 +584,7 @@ NetHandler::mainNetEvent(int event, Event *e)
       vc->ep.modify(-EVENTIO_READ);
   }
   while ((vc = write_ready_list.dequeue())) {
+    diags->set_override(vc->debug_override);
     if (vc->closed)
       close_UnixNetVConnection(vc, trigger_event->ethread);
     else if (vc->write.enabled && vc->write.triggered)

@@ -40,6 +40,8 @@
 #include "ink_mutex.h"
 #include "Regex.h"
 #include "ink_apidefs.h"
+#include "ink_thread.h"
+#include "ink_inet.h"
 
 #define DIAGS_MAGIC 0x12345678
 
@@ -158,17 +160,38 @@ public:
   ///////////////////////////
   // conditional debugging //
   ///////////////////////////
+  
+
+  bool
+  get_override() const
+  {
+    return ink_thread_getspecific(this->debug_override_key) != NULL;
+  }
+
+  bool
+  test_override_ip(IpEndpoint const & test_ip)
+  {
+    bool set_value = this->debug_client_ip == test_ip;
+    this->set_override(set_value);
+    return set_value;
+  }
+
+  void 
+  set_override(bool override) 
+  {
+    ink_thread_setspecific(this->debug_override_key, (void *)override);
+  }
 
   bool
   on(DiagsTagType mode = DiagsTagType_Debug) const
   {
-    return (config.enabled[mode]);
+    return ((config.enabled[mode] == 1) || (config.enabled[mode] == 2 && this->get_override()));
   }
 
   bool
   on(const char *tag, DiagsTagType mode = DiagsTagType_Debug) const
   {
-    return (config.enabled[mode] && tag_activated(tag, mode));
+    return this->on(mode) && tag_activated(tag, mode);
   }
 
   /////////////////////////////////////
@@ -241,6 +264,9 @@ public:
 
   const char *base_debug_tags;  // internal copy of default debug tags
   const char *base_action_tags; // internal copy of default action tags
+ 
+  IpAddr debug_client_ip;
+  ink_thread_key debug_override_key;
 
 private:
   mutable ink_mutex tag_table_lock; // prevents reconfig/read races
@@ -256,6 +282,7 @@ private:
   {
     ink_mutex_release(&tag_table_lock);
   }
+
 };
 
 //////////////////////////////////////////////////////////////////////////

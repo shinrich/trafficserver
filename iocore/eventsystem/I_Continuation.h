@@ -127,6 +127,11 @@ public:
   LINK(Continuation, link);
 
   /**
+    Set to true to enable debugging for the continuation even if the global debug is off.
+  */
+  bool debug_override;
+
+  /**
     Receives the event code and data for an Event.
 
     This function receives the event code and data for an event and
@@ -190,6 +195,8 @@ inline Continuation::Continuation(ProxyMutex *amutex)
 #endif
     mutex(amutex)
 {
+  // Pick up the debug_override from the creating thread
+  this->debug_override = diags ? diags->get_override(): false;
 }
 
 #endif /*_Continuation_h_*/
