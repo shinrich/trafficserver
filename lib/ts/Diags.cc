@@ -44,7 +44,7 @@
 #include "Diags.h"
 
 int diags_on_for_plugins = 0;
-bool DiagsConfigState::enabled[2] = {false, false};
+int DiagsConfigState::enabled[2] = {0, 0};
 
 // Global, used for all diagnostics
 inkcoreapi Diags *diags = NULL;
