@@ -5659,6 +5659,9 @@ HttpSM::attach_server_session(HttpServerSession *s)
   hsm_release_assert(s->state == HSS_ACTIVE);
   server_session = s;
   server_transact_count = server_session->transact_count++;
+  // Propagate the per client IP debugging
+  if (ua_session)
+    s->get_netvc()->debug_override = diags->get_override();
 
   // Set the mutex so that we have something to update
   //   stats with

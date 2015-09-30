@@ -138,6 +138,8 @@ Diags::Diags(const char *bdt, const char *bat, FILE *_diags_log_fp)
   activated_tags[DiagsTagType_Debug] = NULL;
   activated_tags[DiagsTagType_Action] = NULL;
   prefix_str = "";
+
+  ink_thread_key_create(&this->debug_override_key, NULL);
 }
 
 Diags::~Diags()
