@@ -83,7 +83,7 @@ typedef void (*DiagsCleanupFunc)();
 
 struct DiagsConfigState {
   // this is static to eliminate many loads from the critical path
-  static bool enabled[2];                    // one debug, one action
+  static int enabled[2];                    // one debug, one action
   DiagsModeOutput outputs[DiagsLevel_Count]; // where each level prints
 };
 
