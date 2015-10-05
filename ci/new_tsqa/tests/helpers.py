@@ -13,6 +13,9 @@
 #  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
+
+#JAVAPLATF-1900, we need this to detect rhel7
+import platform
 import os
 import tempfile
 import subprocess
@@ -60,7 +63,15 @@ class EnvironmentCase(tsqa.test_cases.EnvironmentCase):
     def setUpEnv(cls, env):
         # This is unique to Yahoo! to get TSQA working w/ Yahoo Connection
         cls.configs['records.config']['CONFIG']['proxy.config.proxy_name'] = 'localhost'
-        proc = subprocess.Popen(["cp", "/home/y/libexec64/trafficserver/yahoo_connection.so",
-          "{0}/yahoo_connection.so".format(cls.environment.layout.plugindir)], stdout=subprocess.PIPE,
-          stderr=subprocess.PIPE)
-        subprocess.Popen(["chmod", "755", "{0}/yahoo_connection.so".format(cls.environment.layout.plugindir)])
+        # JAVAPLATF-1900, rhel7 moves things
+        if (platform.platform().find("redhat-7")==-1):
+            proc = subprocess.Popen(["cp", "/home/y/libexec64/trafficserver/yahoo_connection.so",
+              "{0}/yahoo_connection.so".format(cls.environment.layout.plugindir)], stdout=subprocess.PIPE,
+              stderr=subprocess.PIPE)
+            subprocess.Popen(["chmod", "755", "{0}/yahoo_connection.so".format(cls.environment.layout.plugindir)])
+        else:
+            # oops. root was screwed up.
+            proc = subprocess.Popen(["cp", "/usr/local/libexec64/trafficserver/yahoo_connection.so",
+              "{0}/yahoo_connection.so".format(cls.environment.layout.plugindir)], stdout=subprocess.PIPE,
+              stderr=subprocess.PIPE)
+            subprocess.Popen(["chmod", "755", "{0}/yahoo_connection.so".format(cls.environment.layout.plugindir)])
