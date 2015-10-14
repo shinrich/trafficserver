@@ -5836,7 +5836,7 @@ HttpSM::setup_server_read_response_header()
   ink_assert(server_entry->read_vio);
 
   // The tunnel from OS to UA is now setup.  Ready to read the response
-  server_entry->read_vio = server_session->do_io_read(this, INT64_MAX, server_buffer_reader->mbuf);
+  server_entry->read_vio = server_session->do_io_read(this, INT64_MAX, server_session->read_buffer);
 
   // If there is anything in the buffer call the parsing routines
   //  since if the response is finished, we won't get any
