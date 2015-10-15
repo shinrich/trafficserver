@@ -733,6 +733,22 @@ HttpSM::state_read_client_request_header(int event, void *data)
     }
   }
 
+  // Verify the scheme matches the security of the connection
+  if (state == PARSE_DONE) {
+    int scheme = t_state.hdr_info.client_request.url_get()->scheme_get_wksidx();
+    if (scheme != -1) {
+      // Scheme is in the request line
+      if ((client_connection_is_ssl == true && !(scheme == URL_WKSIDX_HTTPS || scheme == URL_WKSIDX_WSS)) ||
+          (client_connection_is_ssl == false && !(scheme == URL_WKSIDX_HTTP || scheme == URL_WKSIDX_WS))) {
+        int scheme_length = 0;
+        const char *scheme_str = t_state.hdr_info.client_request.url_get()->scheme_get(&scheme_length);
+        DebugSM("http", "invalid request, client request has a scheme of %.*s and the connection %s TLS", scheme_length, scheme_str,
+                client_connection_is_ssl ? "is" : "is not");
+        state = PARSE_ERROR;
+      }
+    }
+  }
+
   // Check to see if we are done parsing the header
   if (state != PARSE_CONT || ua_entry->eos || (state == PARSE_CONT && event == VC_EVENT_READ_COMPLETE)) {
     if (ua_raw_buffer_reader != NULL) {
