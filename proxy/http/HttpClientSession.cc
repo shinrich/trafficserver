@@ -398,14 +398,11 @@ HttpClientSession::state_keep_alive(int event, void *data)
   case VC_EVENT_EOS:
     // If there is data in the buffer, start a new
     //  transaction, otherwise the client gave up
-    //  SKH - A bit odd starting a transaction when the client has closed
-    //  already.  At a minimum, should have to do some half open connection
-    //  tracking
-    //if (sm_reader->read_avail() > 0) {
-    //  new_transaction();
-    //} else {
+    if (sm_reader->read_avail() > 0) {
+      new_transaction();
+    } else {
       this->do_io_close();
-    //}
+    }
     break;
 
   case VC_EVENT_READ_COMPLETE:
