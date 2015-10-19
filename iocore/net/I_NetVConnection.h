@@ -532,6 +532,18 @@ public:
     is_internal_request = val;
   }
 
+  bool
+  get_is_fetchsm() const
+  {
+    return is_fetchsm;
+  }
+
+  void
+  set_is_fetchsm(bool val = false)
+  {
+    is_fetchsm = val;
+  }
+
   /// Get the transparency state.
   bool
   get_is_transparent() const
@@ -559,13 +571,15 @@ protected:
   bool is_internal_request;
   /// Set if this connection is transparent.
   bool is_transparent;
+  /// Set if this is coming from FetchSM
+  bool is_fetchsm;
   /// Set if the next write IO that empties the write buffer should generate an event.
   int write_buffer_empty_event;
 };
 
 inline NetVConnection::NetVConnection()
   : VConnection(NULL), attributes(0), thread(NULL), got_local_addr(0), got_remote_addr(0), is_internal_request(false),
-    is_transparent(false), write_buffer_empty_event(0)
+    is_transparent(false), is_fetchsm(false), write_buffer_empty_event(0)
 {
   ink_zero(local_addr);
   ink_zero(remote_addr);

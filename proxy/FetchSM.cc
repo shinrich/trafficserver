@@ -75,6 +75,7 @@ FetchSM::httpConnect()
     PluginVC *other_side = reinterpret_cast<PluginVC *>(http_vc)->get_other_side();
     if (other_side != NULL) {
       other_side->set_is_internal_request(false);
+      other_side->set_is_fetchsm(true);
     }
   }
 

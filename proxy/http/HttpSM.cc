@@ -736,7 +736,8 @@ HttpSM::state_read_client_request_header(int event, void *data)
   // Verify the scheme matches the security of the connection
   if (state == PARSE_DONE) {
     int scheme = t_state.hdr_info.client_request.url_get()->scheme_get_wksidx();
-    if (scheme != -1) {
+    if (scheme != -1 && ua_session->get_netvc()->get_is_fetchsm() == false &&
+        ua_session->get_netvc()->get_is_internal_request() == false) {
       // Scheme is in the request line
       if ((client_connection_is_ssl == true && !(scheme == URL_WKSIDX_HTTPS || scheme == URL_WKSIDX_WSS)) ||
           (client_connection_is_ssl == false && !(scheme == URL_WKSIDX_HTTP || scheme == URL_WKSIDX_WS))) {
