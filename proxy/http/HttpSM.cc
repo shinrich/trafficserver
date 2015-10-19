@@ -5694,10 +5694,10 @@ HttpSM::attach_server_session(HttpServerSession *s)
   
   // es - is this a concern here in HttpSM?  Does it belong somewhere else?
   // Get server and client connections
-  UnixNetVConnection *server_vc = (UnixNetVConnection *)(server_session->get_netvc());
+  UnixNetVConnection *server_vc = dynamic_cast<UnixNetVConnection *>(server_session->get_netvc());
   UnixNetVConnection *client_vc = (UnixNetVConnection *)(ua_session->get_netvc());
   SSLNetVConnection *ssl_vc = dynamic_cast<SSLNetVConnection *>(client_vc);
-  if(ssl_vc != NULL) { //if incoming connection is SSL
+  if(ssl_vc && server_vc) { //if incoming connection is SSL and server_vc isn't a PluginVC
     bool client_trace = ssl_vc->getSSLTrace();
     if(client_trace) {
       // get remote address and port to mark corresponding traces
