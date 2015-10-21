@@ -153,6 +153,7 @@ read_signal_and_update(int event, UnixNetVConnection *vc)
     case VC_EVENT_ACTIVE_TIMEOUT:
     case VC_EVENT_INACTIVITY_TIMEOUT:
       Debug("inactivity_cop", "event %d: null read.vio cont, closing vc %p", event, vc);
+      if (!vc->closed && vc->action_.continuation) vc->action_.continuation->handleEvent(event, vc);
       vc->closed = 1;
       break;
     default:
@@ -184,6 +185,7 @@ write_signal_and_update(int event, UnixNetVConnection *vc)
     case VC_EVENT_ACTIVE_TIMEOUT:
     case VC_EVENT_INACTIVITY_TIMEOUT:
       Debug("inactivity_cop", "event %d: null write.vio cont, closing vc %p", event, vc);
+      if (!vc->closed && vc->action_.continuation) vc->action_.continuation->handleEvent(event, vc);
       vc->closed = 1;
       break;
     default:
@@ -1176,6 +1178,7 @@ UnixNetVConnection::mainEvent(int event, Event *e)
       reader_cont != write.vio._cont && writer_cont == write.vio._cont)
     if (write_signal_and_update(signal_event, this) == EVENT_DONE)
       return EVENT_DONE;
+
   return EVENT_DONE;
 }
 

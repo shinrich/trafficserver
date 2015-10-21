@@ -135,6 +135,8 @@ private:
   int state_wait_for_close(int event, void *data);
   void set_tcp_init_cwnd();
 
+  bool handle_api_event(int event, void* data);
+
   enum C_Read_State {
     HCS_INIT,
     HCS_ACTIVE_READER,

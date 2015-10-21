@@ -115,11 +115,28 @@ HttpClientSession::ssn_hook_prepend(TSHttpHookID id, INKContInternal *cont)
   }
 }
 
+bool
+HttpClientSession::handle_api_event(int event, void* data) {
+  bool zret = true;
+  if (VC_EVENT_INACTIVITY_TIMEOUT == event) {
+    client_vc = NULL;
+  } else {
+    zret = super::handle_api_event(event, data);
+  }
+  return zret;
+}
+
 void
 HttpClientSession::new_transaction()
 {
   ink_assert(current_reader == NULL);
   PluginIdentity *pi = dynamic_cast<PluginIdentity *>(client_vc);
+
+  // If the client connection terminated during API callouts we're done.
+  if (NULL == client_vc) {
+    this->do_io_close(); // calls the SSN_CLOSE hooks to match the SSN_START hooks.
+    return;
+  }
 
   // Defensive programming, make sure nothing persists across
   // connection re-use

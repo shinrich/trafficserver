@@ -71,6 +71,7 @@ HttpSessionAccept::accept(NetVConnection *netvc, MIOBuffer *iobuf, IOBufferReade
   new_session->host_res_style = ats_host_res_from(client_ip->sa_family, host_res_preference);
   new_session->acl_record = acl_record;
 
+  netvc->set_action(new_session);
   new_session->new_connection(netvc, iobuf, reader, backdoor);
 
   return;
