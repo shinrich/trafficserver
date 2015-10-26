@@ -100,6 +100,18 @@ public:
   // Initiate an API hook invocation.
   void do_api_callout(TSHttpHookID id);
 
+  /** Secondary event handling while hooks are active.
+
+      This is called for events that are not handled by this class in @c state_api_callout.  To
+      handle such events override the @c state_api_callout method and chain.
+
+      This is needed because frequently the data needed to deal with the event is in the subclass
+      and not this one.
+
+      @return @c true if the event was handled / expected, @c false otherwise.
+  */
+  virtual bool handle_api_event(int event, void* data) { return false; }
+
   static int64_t next_connection_id();
 
 protected:
@@ -109,6 +121,19 @@ protected:
   // Session specific debug flag.
   bool debug_on;
   bool hooks_on;
+
+protected:
+  /** Handle events while hooks are active.
+
+      Subclasses should override this only if the current handling of an event is unacceptable
+      either because it is incorrect or insufficient. In the latter case the subclass should chain
+      this method.
+
+      For events that are not handled use @c handle_api_event
+
+      @return 0
+  */
+  virtual int state_api_callout(int event, void *edata);
 
 private:
   APIHookScope api_scope;
@@ -120,7 +145,6 @@ private:
   ProxyClientSession(ProxyClientSession &);                  // noncopyable
   ProxyClientSession &operator=(const ProxyClientSession &); // noncopyable
 
-  int state_api_callout(int event, void *edata);
   void handle_api_return(int event);
 
   friend void TSHttpSsnDebugSet(TSHttpSsn, int);

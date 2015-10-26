@@ -118,6 +118,8 @@ struct ProtocolProbeTrampoline : public Continuation, public ProtocolProbeSessio
       goto done;
     }
 
+    // Done with accept object / logic, clear it from the netVC.
+    netvc->set_action(NULL);
     // Directly invoke the session acceptor, letting it take ownership of the input buffer.
     probeParent->endpoint[key]->accept(netvc, this->iobuf, reader);
     delete this;

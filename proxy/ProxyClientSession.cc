@@ -73,7 +73,7 @@ ProxyClientSession::destroy()
 }
 
 int
-ProxyClientSession::state_api_callout(int event, void * /* data ATS_UNUSED */)
+ProxyClientSession::state_api_callout(int event, void *data)
 {
   switch (event) {
   case EVENT_NONE:
@@ -123,9 +123,10 @@ ProxyClientSession::state_api_callout(int event, void * /* data ATS_UNUSED */)
     this->handle_api_return(event);
     break;
 
-  // coverity[unterminated_default]
   default:
-    ink_assert(false);
+    bool handled_p = this->handle_api_event(event, data);
+    ink_assert(handled_p);
+    break;
   }
 
   return 0;

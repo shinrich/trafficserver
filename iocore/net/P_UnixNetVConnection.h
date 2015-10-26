@@ -150,6 +150,7 @@ public:
   virtual void set_inactivity_timeout(ink_hrtime timeout_in);
   virtual void cancel_active_timeout();
   virtual void cancel_inactivity_timeout();
+  virtual void set_action(Continuation* c);
   virtual void add_to_keep_alive_lru();
   virtual void remove_from_keep_alive_lru();
 
@@ -445,6 +446,12 @@ TS_INLINE SOCKET
 UnixNetVConnection::get_socket()
 {
   return con.fd;
+}
+
+TS_INLINE void
+UnixNetVConnection::set_action(Continuation* c)
+{
+  action_ = c;
 }
 
 // declarations for local use (within the net module)
