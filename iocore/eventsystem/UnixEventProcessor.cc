@@ -29,6 +29,54 @@
 #endif
 #include "ink_defs.h"
 
+namespace {
+int
+EventMetricStatSync(const char *, RecDataT, RecData *, RecRawStatBlock *rsb, int)
+{
+  int id = 0;
+  EThread::EventMetrics summary[EThread::N_EVENT_TIMESCALES];
+
+  // scan the thread local values
+  for (int i = 0; i < eventProcessor.n_ethreads; ++i) {
+    eventProcessor.all_ethreads[i]->summarize_stats(summary);
+  }
+
+  ink_mutex_acquire(&(rsb->mutex));
+
+  for (int ts_idx = 0 ; ts_idx < EThread::N_EVENT_TIMESCALES ; ++ts_idx, id += EThread::N_EVENT_STATS) {
+    EThread::EventMetrics* m = summary + ts_idx;
+    // Discarding the atomic swaps for global writes, doesn't seem to actually do anything useful.
+    rsb->global[id + EThread::STAT_LOOP_COUNT]->sum = m->_count;
+    rsb->global[id + EThread::STAT_LOOP_COUNT]->count = 1;
+    RecRawStatUpdateSum(rsb, id + EThread::STAT_LOOP_COUNT);
+
+    rsb->global[id + EThread::STAT_LOOP_WAIT]->sum = m->_wait;
+    rsb->global[id + EThread::STAT_LOOP_WAIT]->count = 1;
+    RecRawStatUpdateSum(rsb, id + EThread::STAT_LOOP_WAIT);
+
+    rsb->global[id + EThread::STAT_LOOP_TIME_MIN]->sum = m->_loop_time._min;
+    rsb->global[id + EThread::STAT_LOOP_TIME_MIN]->count = 1;
+    RecRawStatUpdateSum(rsb, id + EThread::STAT_LOOP_TIME_MIN);
+    rsb->global[id+ EThread::STAT_LOOP_TIME_MAX]->sum = m->_loop_time._max;
+    rsb->global[id+ EThread::STAT_LOOP_TIME_MAX]->count = 1;
+    RecRawStatUpdateSum(rsb, id+ EThread::STAT_LOOP_TIME_MAX);
+
+    rsb->global[id + EThread::STAT_LOOP_EVENTS]->sum = m->_events._total;
+    rsb->global[id + EThread::STAT_LOOP_EVENTS]->count = 1;
+    RecRawStatUpdateSum(rsb, id + EThread::STAT_LOOP_EVENTS);
+    rsb->global[id + EThread::STAT_LOOP_EVENTS_MIN]->sum = m->_events._min;
+    rsb->global[id + EThread::STAT_LOOP_EVENTS_MIN]->count = 1;
+    RecRawStatUpdateSum(rsb, id + EThread::STAT_LOOP_EVENTS_MIN);
+    rsb->global[id + EThread::STAT_LOOP_EVENTS_MAX]->sum = m->_events._max;
+    rsb->global[id + EThread::STAT_LOOP_EVENTS_MAX]->count = 1;
+    RecRawStatUpdateSum(rsb, id + EThread::STAT_LOOP_EVENTS_MAX);
+  }
+
+  ink_mutex_release(&(rsb->mutex));
+  return REC_ERR_OKAY;
+}
+}
+
 EventType
 EventProcessor::spawn_event_threads(int n_threads, const char *et_name, size_t stacksize)
 {
@@ -82,12 +130,27 @@ EventProcessor::start(int n_event_threads, size_t stacksize)
 
   int first_thread = 1;
 
+  // Get our statistics set up
+  RecRawStatBlock *rsb = RecAllocateRawStatBlock(EThread::N_EVENT_STATS * EThread::N_EVENT_TIMESCALES);
+  char name[256];
+
+  for (int ts_idx = 0 ; ts_idx < EThread::N_EVENT_TIMESCALES ; ++ts_idx) {
+    for (int id = 0 ; id < EThread::N_EVENT_STATS ; ++id ) {
+      
+      snprintf(name, sizeof(name), "%s.%ds", EThread::STAT_NAME[id], EThread::SAMPLE_COUNT[ts_idx]);
+      RecRegisterRawStat(rsb, RECT_PROCESS, name, RECD_INT, RECP_NON_PERSISTENT, id + (ts_idx*EThread::N_EVENT_STATS), NULL);
+    }
+  }
+
+  // Name must be that of a stat, pick one at random since we do all of them in one pass/callback.
+  RecRegisterRawStatSyncCb(name, EventMetricStatSync, rsb, 0);
+  
   for (i = 0; i < n_event_threads; i++) {
     EThread *t = new EThread(REGULAR, i);
     if (first_thread && !i) {
       ink_thread_setspecific(Thread::thread_data_key, t);
       global_mutex = t->mutex;
-      t->cur_time = ink_get_based_hrtime_internal();
+      t->update_hrtime();
     }
     all_ethreads[i] = t;
 
@@ -138,8 +201,9 @@ EventProcessor::start(int n_event_threads, size_t stacksize)
   for (i = first_thread; i < n_ethreads; i++) {
     snprintf(thr_name, MAX_THREAD_NAME_LENGTH, "[ET_NET %d]", i);
     ink_thread tid = all_ethreads[i]->start(thr_name, stacksize);
+#if ! TS_USE_HWLOC
     (void)tid;
-#if TS_USE_HWLOC
+#else // use HWLOC
     if (obj_count > 0) {
       obj = hwloc_get_obj_by_type(ink_get_topology(), obj_type, i % obj_count);
 #if HWLOC_API_VERSION >= 0x00010100

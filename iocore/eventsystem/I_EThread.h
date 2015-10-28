@@ -25,7 +25,7 @@
 #ifndef _EThread_h_
 #define _EThread_h_
 
-#include "libts.h"
+#include <ts/ts_lambda.h>
 #include "I_Thread.h"
 #include "I_PriorityEventQueue.h"
 #include "I_ProtectedQueue.h"
@@ -253,6 +253,38 @@ public:
   */
   Event *schedule_every_local(Continuation *c, ink_hrtime aperiod, int callback_event = EVENT_INTERVAL, void *cookie = NULL);
 
+  /** Set the event loop tail handling.
+
+      @a tail_cb is called at the end of the event loop. It is responsible for waiting for an amount
+      of time and providing the ability to cancel the wait externally. The signature for @a tail_cb
+      is
+
+      @code
+      void tail_cb(ink_hrtime t);
+      @endcode
+
+      The time to wait is specified by @a t in nanoseconds. The @a cookie is the same @a cookie
+      passed in to this method. The @a tail_signal is used to wake up the @a tail_cb and should
+      cancel the wait. Its signatures is
+
+      @code
+      void tail_signal(EThread*);
+      @endcode
+
+      The argument will be the @c EThread that should be signaled, that is the current @a tail_cb call
+      (if any) should be terminated.
+  */
+  template < typename C >
+    void set_tail_handling(C* c, void (C::*tail_cb)(ink_hrtime), void (*tail_signal)());
+
+  template < typename C >
+    void set_tail_handling(void (*tail_cb)(ink_hrtime), C* c, void (C::*tail_signal)());
+
+  template < typename C1, typename C2 >
+    void set_tail_handling(C1* c1, void (C1::*tail_cb)(ink_hrtime), C2* c2, void (C2::*tail_signal)());
+
+  void set_tail_handling(void (*tail_cb)(ink_hrtime), void (*tail_signal)());
+
   /* private */
 
   Event *schedule_local(Event *e);
@@ -260,7 +292,7 @@ public:
   InkRand generator;
 
 private:
-  // prevent unauthorized copies (Not implemented)
+  // prevent unauthorized copies (Not implemented by design)
   EThread(const EThread &);
   EThread &operator=(const EThread &);
 
@@ -303,9 +335,14 @@ public:
   // Private Interface
 
   void execute();
+  void execute_regular();
   void process_event(Event *e, int calling_code);
   void free_event(Event *e);
-  void (*signal_hook)(EThread *);
+  /// Function that is called at the end of the event loop to create an interruptible pause.
+  Lambda_1<void, ink_hrtime> tail_cb;
+  /// Function to interrupt @a tail_cb
+  Lambda_0<void> tail_signal;
+  //  void (*signal_hook)(EThread *);
 
 #if HAVE_EVENTFD
   int evfd;
@@ -318,6 +355,80 @@ public:
   Event *oneevent; // For dedicated event thread
 
   ServerSessionPool *server_session_pool;
+
+  /// Statistics data for event dispatching.
+  struct EventMetrics {
+    /// Time the loop was active, not including wait time but including event dispatch time.
+    struct LoopTimes {
+      ink_hrtime _start; ///< The time of the first loop for this sample. Used to mark valid entries.
+      ink_hrtime _min;   ///< Shortest loop time.
+      ink_hrtime _max;   ///< Longest loop time.
+      LoopTimes() : _start(0), _min(INT64_MAX), _max(0) {}
+    } _loop_time;
+
+    struct Events {
+      int _min;
+      int _max;
+      int _total;
+      Events() : _min(INT_MAX), _max(0), _total(0) {}
+    } _events;
+
+    int _count;        ///< # of times the loop executed.
+    int _wait;              ///< # of timed wait for events
+
+    /// Add @a that to @a this data.
+    /// This embodies the custom logic per member concerning whether each is a sum, min, or max.
+    EventMetrics& operator += (EventMetrics const& that);
+
+  EventMetrics() : _count(0), _wait(0) {}
+  };
+
+  /** The number of metric blocks kept.
+      This is a circular buffer, with one block per second. We have a bit more than the required 1000
+      to provide sufficient slop for cross thread reading of the data (as only the current metric block
+      is being updated).
+  */
+  static int const N_EVENT_METRICS = 1024;
+
+  volatile EventMetrics* current_metric; ///< The current element of @a metrics
+  EventMetrics metrics[N_EVENT_METRICS];
+
+  /** The various stats provided to the administrator.
+      THE ORDER IS VERY SENSITIVE.
+      More than one part of the code depends on this exact order. Be careful and thorough when changing.
+  */
+  enum STAT_ID {
+    STAT_LOOP_COUNT,        ///< # of event loops executed.
+    STAT_LOOP_EVENTS,       ///< # of events
+    STAT_LOOP_EVENTS_MIN,         ///< min # of events dispatched in a loop
+    STAT_LOOP_EVENTS_MAX,         ///< max # of events dispatched in a loop
+    STAT_LOOP_WAIT,        ///< # of loops that did a conditional wait.
+    STAT_LOOP_TIME_MIN,          ///< Shortest time spent in loop.
+    STAT_LOOP_TIME_MAX,          ///< Longest time spent in loop.
+    N_EVENT_STATS           ///< NOT A VALID STAT INDEX - # of different stat types.
+  };
+
+  static char const * const STAT_NAME[N_EVENT_STATS];
+
+  /** The number of time scales used in the event statistics.
+      Currently these are 10s, 100s, 1000s.
+  */
+  static int const N_EVENT_TIMESCALES = 3;
+  /// # of samples for each time scale.
+  static int const SAMPLE_COUNT[N_EVENT_TIMESCALES];
+
+  /// Process the last 1000s of data and write out the summaries to @a summary.
+  void summarize_stats(EventMetrics summary[N_EVENT_TIMESCALES]);
+  /// Back up the metric pointer, wrapping as needed.
+  EventMetrics* prev(EventMetrics volatile* current)
+  {
+    return const_cast<EventMetrics*>(--current < metrics ? &metrics[N_EVENT_METRICS-1] : current); // cast to remove volatile
+  }
+  /// Advance the metric pointer, wrapping as needed.
+  EventMetrics* next(EventMetrics volatile* current)
+  {
+    return const_cast<EventMetrics*>(++current > &metrics[N_EVENT_METRICS-1] ? metrics : current); // cast to remove volatile
+  }
 };
 
 /**
