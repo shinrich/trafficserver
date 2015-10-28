@@ -257,4 +257,42 @@ private:
   Value _ds_value;
 };
 
+// Debug operators, used for testing.
+
+/// Sleep for a fixed number of milliseconds.
+class OperatorSleep : public Operator
+{
+public:
+  OperatorSleep() { TSDebug(PLUGIN_NAME_DBG, "Calling CTOR for OperatorSleep"); }
+  void initialize(Parser &p);
+
+protected:
+  void initialize_hooks();
+  void exec(const Resources &res) const;
+
+private:
+  DISALLOW_COPY_AND_ASSIGN(OperatorSleep);
+
+  struct timespec _t;
+};
+
+/// Return a different value to TSHttpTxnReenable
+class OperatorTxnReenable : public Operator
+{
+public:
+  OperatorTxnReenable() { TSDebug(PLUGIN_NAME_DBG, "Calling CTOR for OperatorTxnReenable"); }
+  void initialize(Parser &p);
+
+protected:
+  void initialize_hooks();
+  void exec(const Resources &res) const;
+
+private:
+  DISALLOW_COPY_AND_ASSIGN(OperatorTxnReenable);
+
+  TSEvent _event;
+};
+
+
+
 #endif // __OPERATORS_H
