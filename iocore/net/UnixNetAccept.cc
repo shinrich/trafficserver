@@ -58,6 +58,7 @@ send_throttle_message(NetAccept *na)
     int res = 0;
     if ((res = na->server.accept(&con[n])) < 0)
       return res;
+    NET_SUM_GLOBAL_DYN_STAT(net_tcp_accept_stat, 1);
     n++;
   }
   safe_delay(NET_THROTTLE_DELAY / 2);
@@ -113,6 +114,7 @@ net_accept(NetAccept *na, void *ep, bool blockable)
       goto Ldone;
     }
     count++;
+    NET_SUM_GLOBAL_DYN_STAT(net_tcp_accept_stat, 1);
     na->alloc_cache = NULL;
 
     vc->submit_time = Thread::get_hrtime();
@@ -289,6 +291,7 @@ NetAccept::do_blocking_accept(EThread *t)
     check_emergency_throttle(con);
 
     NET_SUM_GLOBAL_DYN_STAT(net_connections_currently_open_stat, 1);
+    NET_SUM_GLOBAL_DYN_STAT(net_tcp_accept_stat, 1);
     vc->submit_time = now;
     ats_ip_copy(&vc->server_addr, &vc->con.addr);
     vc->set_is_transparent(server.f_inbound_transparent);
@@ -370,6 +373,7 @@ NetAccept::acceptFastEvent(int event, void *ep)
 
     if (likely(fd >= 0)) {
       Debug("iocore_net", "accepted a new socket: %d", fd);
+      NET_SUM_GLOBAL_DYN_STAT(net_tcp_accept_stat, 1);
       if (send_bufsize > 0) {
         if (unlikely(socketManager.set_sndbuf_size(fd, send_bufsize))) {
           bufsz = ROUNDUP(send_bufsize, 1024);

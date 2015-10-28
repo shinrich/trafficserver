@@ -122,6 +122,10 @@ register_net_stats()
   RecRegisterRawStat(net_rsb, RECT_PROCESS, "proxy.process.net.default_inactivity_timeout_applied", RECD_INT, RECP_NON_PERSISTENT,
                      (int)default_inactivity_timeout_stat, RecRawStatSyncSum);
   NET_CLEAR_DYN_STAT(default_inactivity_timeout_stat);
+
+  RecRegisterRawStat(net_rsb, RECT_PROCESS, "proxy.process.net.tcp.accept", RECD_INT, RECP_NON_PERSISTENT,
+                     static_cast<int>(net_tcp_accept_stat), RecRawStatSyncSum);
+  NET_CLEAR_DYN_STAT(net_tcp_accept_stat);
 }
 
 void
