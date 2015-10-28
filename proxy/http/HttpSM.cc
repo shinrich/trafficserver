@@ -6864,6 +6864,7 @@ HttpSM::update_stats()
           "dns_lookup_begin: %.3f "
           "dns_lookup_end: %.3f "
           "server_connect: %.3f "
+          "server_connect_end: %.3f"
           "server_first_read: %.3f "
           "server_read_header_done: %.3f "
           "server_close: %.3f "
@@ -6880,6 +6881,7 @@ HttpSM::update_stats()
           milestones.difference(TS_MILESTONE_SM_START, TS_MILESTONE_DNS_LOOKUP_BEGIN),
           milestones.difference(TS_MILESTONE_SM_START, TS_MILESTONE_DNS_LOOKUP_END),
           milestones.difference(TS_MILESTONE_SM_START, TS_MILESTONE_SERVER_CONNECT),
+          milestones.difference(TS_MILESTONE_SM_START, TS_MILESTONE_SERVER_CONNECT_END),
           milestones.difference(TS_MILESTONE_SM_START, TS_MILESTONE_SERVER_FIRST_READ),
           milestones.difference(TS_MILESTONE_SM_START, TS_MILESTONE_SERVER_READ_HEADER_DONE),
           milestones.difference(TS_MILESTONE_SM_START, TS_MILESTONE_SERVER_CLOSE),
