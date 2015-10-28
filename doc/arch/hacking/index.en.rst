@@ -29,4 +29,5 @@ to inspect the state of the core with a debugger.
    :maxdepth: 2
 
    config-var-impl.en
+   event-processing.en
    release-process.en
