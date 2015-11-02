@@ -487,11 +487,10 @@ LogAccessHttp::marshal_client_req_url_path(char *buf)
 int
 LogAccessHttp::marshal_client_req_url_scheme(char *buf)
 {
-  char *str = NULL;
-  int alen = 0;
+  int scheme = m_http_sm->t_state.orig_scheme;
+  const char *str = hdrtoken_index_to_wks(scheme);
+  int alen = hdrtoken_index_to_length(scheme);
   int plen = INK_MIN_ALIGN;
-
-  str = (char *)m_client_request->scheme_get(&alen);
 
   // calculate the the padded length only if the actual length
   // is not zero. We don't want the padded length to be zero
