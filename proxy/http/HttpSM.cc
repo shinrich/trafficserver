@@ -39,6 +39,7 @@
 #include "RemapProcessor.h"
 #include "Transform.h"
 #include "P_SSLConfig.h"
+#include "Diags.h"
 
 #include "HttpPages.h"
 
@@ -4792,6 +4793,8 @@ HttpSM::do_http_server_open(bool raw)
     if (connections->getCount((t_state.current.server->addr)) >= t_state.txn_conf->origin_max_connections) {
       DebugSM("http", "[%" PRId64 "] over the number of connection for this host: %s", sm_id,
               ats_ip_ntop(&t_state.current.server->addr.sa, addrbuf, sizeof(addrbuf)));
+      Warning("[%" PRId64 "] over the max number of connections for this host: %s", sm_id,
+              addrbuf);
       ink_assert(pending_action == NULL);
       pending_action = eventProcessor.schedule_in(this, HRTIME_MSECONDS(100));
       return;
