@@ -170,4 +170,32 @@ EThread::free_event(Event *e)
   EVENT_FREE(e, eventAllocator, this);
 }
 
+template < typename C >
+TS_INLINE void EThread::set_tail_handling(C* c, void (C::*cb)(ink_hrtime), void (*func)())
+{
+  tail_cb.assign(c, cb);
+  tail_signal.assign(func);
+}
+
+template < typename C >
+TS_INLINE void EThread::set_tail_handling(void (*func)(ink_hrtime), C* c, void (C::*cb)())
+{
+  tail_cb.assign(func);
+  tail_signal.assign(c, cb);
+}
+
+template < typename C1, typename C2 >
+  TS_INLINE void EThread::set_tail_handling(C1* c1, void (C1::*cb1)(ink_hrtime), C2* c2, void (C2::*cb2)())
+{
+  tail_cb.assign(c1, cb1);
+  tail_signal.assign(c2, cb2);
+}
+
+TS_INLINE void EThread::set_tail_handling(void (*f1)(ink_hrtime), void (*f2)())
+{
+  tail_cb.assign(f1);
+  tail_signal.assign(f2);
+}
+
+
 #endif /*_EThread_h_*/

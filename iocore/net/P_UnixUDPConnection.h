@@ -34,6 +34,8 @@
 #include "P_UDPConnection.h"
 #include "P_UDPPacket.h"
 
+#define UDP_NET_PERIOD -HRTIME_MSECONDS(5)
+
 class UnixUDPConnection : public UDPConnectionInternal
 {
 public:

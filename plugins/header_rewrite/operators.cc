@@ -595,3 +595,67 @@ OperatorSetConnDSCP::exec(const Resources &res) const
     TSHttpTxnClientPacketDscpSet(res.txnp, _ds_value.get_int_value());
   }
 }
+
+void
+OperatorSleep::initialize(Parser &p)
+{
+  Value x;
+  int64_t v;
+  Operator::initialize(p);
+
+  x.set_value(p.get_arg());
+  v = x.get_int_value();
+  _t.tv_sec = v / 1000;
+  _t.tv_nsec = (v - _t.tv_sec) * 1000000; // ms -> ns;
+}
+
+void
+OperatorSleep::initialize_hooks()
+{
+  add_allowed_hook(TS_HTTP_READ_REQUEST_HDR_HOOK);
+  add_allowed_hook(TS_HTTP_READ_REQUEST_PRE_REMAP_HOOK);
+  add_allowed_hook(TS_HTTP_SEND_REQUEST_HDR_HOOK); 
+  add_allowed_hook(TS_HTTP_READ_RESPONSE_HDR_HOOK);
+  add_allowed_hook(TS_HTTP_SEND_RESPONSE_HDR_HOOK);
+  add_allowed_hook(TS_REMAP_PSEUDO_HOOK);
+}
+
+void
+OperatorSleep::exec(const Resources &res) const
+{
+  if (res.txnp) {
+    timespec x;
+    int r = nanosleep(&_t, &x);
+    if (r < 0) TSDebug(PLUGIN_NAME, "OperatorSleep interrupted - r = %d errno = %d remain=%ld.%ld", r, errno, x.tv_sec, x.tv_nsec);
+  }
+}
+
+void
+OperatorTxnReenable::initialize(Parser &p)
+{
+  Value v;
+  Operator::initialize(p);
+
+  v.set_value(p.get_arg());
+  _event = static_cast<TSEvent>(v.get_int_value());
+}
+
+void
+OperatorTxnReenable::initialize_hooks()
+{
+  add_allowed_hook(TS_HTTP_READ_REQUEST_HDR_HOOK);
+  add_allowed_hook(TS_HTTP_READ_REQUEST_PRE_REMAP_HOOK);
+  add_allowed_hook(TS_HTTP_SEND_REQUEST_HDR_HOOK); 
+  add_allowed_hook(TS_HTTP_READ_RESPONSE_HDR_HOOK);
+  add_allowed_hook(TS_HTTP_SEND_RESPONSE_HDR_HOOK);
+  add_allowed_hook(TS_REMAP_PSEUDO_HOOK);
+}
+
+void
+OperatorTxnReenable::exec(const Resources &res) const
+{
+  if (res.txnp) {
+    res.changed_txn_return_code = true;
+    res.txn_return_code = _event;
+  }
+}

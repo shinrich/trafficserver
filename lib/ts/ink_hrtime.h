@@ -82,7 +82,7 @@ get_hrtime_rdtsc()
 #define HRTIME_SECOND (1000 * HRTIME_MSECOND)
 #define HRTIME_MSECOND (1000 * HRTIME_USECOND)
 #define HRTIME_USECOND (1000 * HRTIME_NSECOND)
-#define HRTIME_NSECOND (1LL)
+#define HRTIME_NSECOND (static_cast<ink_hrtime>(1))
 
 #define HRTIME_APPROX_SECONDS(_x) ((_x) >> 30) // off by 7.3%
 #define HRTIME_APPROX_FACTOR (((float)(1 << 30)) / (((float)HRTIME_SECOND)))
@@ -250,7 +250,7 @@ ink_get_hrtime_internal()
 {
 #if defined(USE_TIME_STAMP_COUNTER_HRTIME)
   return get_hrtime_rdtsc();
-#elif defined(freebsd)
+#elif defined(freebsd) || HAVE_CLOCK_GETTIME
   timespec ts;
   clock_gettime(CLOCK_REALTIME, &ts);
   return ink_hrtime_from_timespec(&ts);
@@ -276,7 +276,6 @@ ink_get_based_hrtime_internal()
   return ink_hrtime_from_timespec(&ts);
 #endif
 }
-
 
 static inline struct timeval
 ink_gettimeofday()

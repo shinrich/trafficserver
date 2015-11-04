@@ -131,8 +131,8 @@ ClusterProcessor::internal_invoke_remote(ClusterHandler *ch, int cluster_fn, voi
 
       MUTEX_TRY_LOCK(lock, ch->mutex, tt);
       if (!lock.is_locked()) {
-        if (ch->thread && ch->thread->signal_hook)
-          ch->thread->signal_hook(ch->thread);
+        if (ch->thread && ch->thread->tail_signal)
+          ch->thread->tail_signal();
         return 1;
       }
       if (steal)
@@ -261,8 +261,8 @@ ClusterProcessor::open_local(Continuation *cont, ClusterMachine * /* m ATS_UNUSE
     }
     vc->action_ = cont;
     ink_atomiclist_push(&ch->external_incoming_open_local, (void *)vc);
-    if (ch->thread && ch->thread->signal_hook)
-      ch->thread->signal_hook(ch->thread);
+    if (ch->thread && ch->thread->tail_signal)
+      ch->thread->tail_signal();
     return CLUSTER_DELAYED_OPEN;
 
 #ifdef CLUSTER_THREAD_STEALING

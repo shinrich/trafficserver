@@ -156,9 +156,35 @@ public:
   {
   }
 
+  /** Get the current ATS high resolution time.
+      This gets a cached copy of the time so it is very fast and reasonably accurate.
+      The cached time is updated every time the actual operating system time is fetched which is
+      at least every 10ms and generally more frequently.
+  */
   static ink_hrtime get_hrtime();
+
+  /** Get the operating system high resolution time.
+
+      Get the current time at high resolution from the operating system.  This is more expensive
+      than @c get_hrtime and should be used only wher very precise timing is required.
+
+      @note This also updates the cached time.
+  */
+  static ink_hrtime update_hrtime();
 };
 
 extern Thread *this_thread();
+
+TS_INLINE ink_hrtime
+Thread::get_hrtime()
+{
+  return cur_time;
+}
+
+TS_INLINE ink_hrtime
+Thread::update_hrtime()
+{
+  return cur_time = ink_get_based_hrtime_internal();
+}
 
 #endif /*_I_Thread_h*/

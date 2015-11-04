@@ -53,6 +53,7 @@ enum Net_Stats {
   keep_alive_lru_timeout_total_stat,
   keep_alive_lru_timeout_count_stat,
   default_inactivity_timeout_stat,
+  net_tcp_accept_stat,
   Net_Stat_Count
 };
 

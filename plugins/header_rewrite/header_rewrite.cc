@@ -276,6 +276,12 @@ cont_rewrite_headers(TSCont contp, TSEvent event, void *edata)
       }
       rule = rule->next;
     }
+
+    // Debugging support - control how the transaction is reenabled.
+    if (res.changed_txn_return_code) {
+      if (res.txn_return_code >= 0) TSHttpTxnReenable(txnp, res.txn_return_code);
+      return 0;
+    }
   }
 
   TSHttpTxnReenable(txnp, TS_EVENT_HTTP_CONTINUE);

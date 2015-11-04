@@ -50,7 +50,7 @@ class Resources
 public:
   explicit Resources(TSHttpTxn txnptr, TSCont contptr)
     : txnp(txnptr), contp(contptr), bufp(NULL), hdr_loc(NULL), client_bufp(NULL), client_hdr_loc(NULL),
-      resp_status(TS_HTTP_STATUS_NONE), _rri(NULL), changed_url(false), _ready(false)
+    resp_status(TS_HTTP_STATUS_NONE), _rri(NULL), changed_url(false), changed_txn_return_code(false), _ready(false)
   {
     TSDebug(PLUGIN_NAME_DBG, "Calling CTOR for Resources (InkAPI)");
   }
@@ -80,6 +80,8 @@ public:
   TSHttpStatus resp_status;
   TSRemapRequestInfo *_rri;
   bool changed_url;
+  mutable bool changed_txn_return_code;
+  mutable TSEvent txn_return_code;
 
 private:
   void destroy();

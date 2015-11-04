@@ -151,7 +151,6 @@ extern int http_accept_port_number;
 #define NET_THROTTLE_ACCEPT_HEADROOM 1.1  // 10%
 #define NET_THROTTLE_CONNECT_HEADROOM 1.0 // 0%
 #define NET_THROTTLE_MESSAGE_EVERY HRTIME_MINUTES(10)
-#define NET_PERIOD -HRTIME_MSECONDS(5)
 #define ACCEPT_PERIOD -HRTIME_MSECONDS(4)
 #define NET_THROTTLE_DELAY 50 /* mseconds */
 
@@ -183,6 +182,9 @@ struct PollCont : public Continuation {
 class NetHandler : public Continuation
 {
 public:
+  // @a thread and @a trigger_event are redundant - you can get the former from the latter.
+  // If we don't get rid of @a trigger_event we should remove @a thread.
+  EThread* thread;
   Event *trigger_event;
   QueM(UnixNetVConnection, NetState, read, ready_link) read_ready_list;
   QueM(UnixNetVConnection, NetState, write, ready_link) write_ready_list;
@@ -198,10 +200,13 @@ public:
 
   int startNetEvent(int event, Event *data);
   int mainNetEvent(int event, Event *data);
-  int mainNetEventExt(int event, Event *data);
+  void handleIO(ink_hrtime timeout);
   void process_enabled_list(NetHandler *);
 
   NetHandler();
+
+  /// Signal the epoll_wait to terminate.
+  void signal();
 };
 
 static inline NetHandler *
