@@ -1116,6 +1116,7 @@ HttpConfig::startup()
   //#
   //##############################################################################
   HttpEstablishStaticConfigByte(c.redirection_enabled, "proxy.config.http.redirection_enabled");
+  HttpEstablishStaticConfigByte(c.oride.redirect_use_orig_cache_key, "proxy.config.http.redirect_use_orig_cache_key");
   HttpEstablishStaticConfigByte(c.redirection_host_no_port, "proxy.config.http.redirect_host_no_port");
   HttpEstablishStaticConfigLongLong(c.number_of_redirections, "proxy.config.http.number_of_redirections");
   HttpEstablishStaticConfigLongLong(c.post_copy_size, "proxy.config.http.post_copy_size");
@@ -1376,6 +1377,7 @@ HttpConfig::reconfigure()
   //##############################################################################
 
   params->redirection_enabled = INT_TO_BOOL(m_master.redirection_enabled);
+  params->oride.redirect_use_orig_cache_key = INT_TO_BOOL(m_master.oride.redirect_use_orig_cache_key);
   params->redirection_host_no_port = INT_TO_BOOL(m_master.redirection_host_no_port);
   params->number_of_redirections = m_master.number_of_redirections;
   params->post_copy_size = m_master.post_copy_size;

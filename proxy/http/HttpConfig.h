@@ -365,7 +365,8 @@ struct OverridableHttpConfigParams {
       // Strings / floats must come last
       body_factory_template_base(NULL), body_factory_template_base_len(0), proxy_response_server_string(NULL),
       proxy_response_server_string_len(0), global_user_agent_header(NULL), global_user_agent_header_size(0),
-      cache_heuristic_lm_factor(0.10), freshness_fuzz_prob(0.005), background_fill_threshold(0.5), cache_open_write_fail_action(0)
+      cache_heuristic_lm_factor(0.10), freshness_fuzz_prob(0.005), background_fill_threshold(0.5), cache_open_write_fail_action(0),
+      redirect_use_orig_cache_key(0)
   {
   }
 
@@ -555,6 +556,7 @@ struct OverridableHttpConfigParams {
   MgmtFloat freshness_fuzz_prob;
   MgmtFloat background_fill_threshold;
   MgmtInt cache_open_write_fail_action;
+  MgmtByte redirect_use_orig_cache_key;
 };
 
 
