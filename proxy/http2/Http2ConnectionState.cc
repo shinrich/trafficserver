@@ -1114,7 +1114,8 @@ Http2Stream::init_fetcher(Http2ConnectionState &cstate)
   extern ClassAllocator<FetchSM> FetchSMAllocator;
 
   // Convert header to HTTP/1.1 format
-  convert_from_2_to_1_1_header(&_req_header);
+  cstate.increment_stream_requests();
+  convert_from_2_to_1_1_header(&_req_header, cstate.get_stream_requests());
 
   // Get null-terminated URL and method
   Arena arena;
@@ -1136,6 +1137,7 @@ Http2Stream::init_fetcher(Http2ConnectionState &cstate)
     const char *name = field->name_get(&name_len);
     const char *value = field->value_get(&value_len);
 
+    DebugSsn(cstate.ua_session, "http2_stream", "Header: %s, Value: %s", name, value);
     _fetch_sm->ext_add_header(name, name_len, value, value_len);
   }
 
