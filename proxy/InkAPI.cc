@@ -6472,7 +6472,7 @@ TSNetVConnRemoteAddrGet(TSVConn connp)
 }
 
 void
-TSNetVConnSSLSessionCachedHitSet(TSVConn connp, int state)
+TSNetVConnSSLCachedHitSet(TSVConn connp, int state)
 {
   sdk_assert(sdk_sanity_check_iocore_structure(connp) == TS_SUCCESS);
   SSLNetVConnection *vc = reinterpret_cast<SSLNetVConnection *>(connp);
