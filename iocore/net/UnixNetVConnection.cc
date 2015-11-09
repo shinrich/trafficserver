@@ -491,7 +491,7 @@ write_to_net_io(NetHandler *nh, UnixNetVConnection *vc, EThread *thread)
   int signalled = 0;
 
   // signal write ready to allow user to fill the buffer
-  if (towrite && towrite != ntodo && buf.writer()->write_avail()) {
+  if (towrite != ntodo && buf.writer()->write_avail()) {
     if (write_signal_and_update(VC_EVENT_WRITE_READY, vc) != EVENT_CONT) {
       return;
     }
