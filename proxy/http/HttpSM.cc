@@ -596,7 +596,7 @@ HttpSM::attach_client_session(HttpClientSession *client_vc, IOBufferReader *buff
   //  this hook maybe asynchronous, we need to disable IO on
   //  client but set the continuation to be the state machine
   //  so if we get an timeout events the sm handles them
-  ua_entry->read_vio = client_vc->do_io_read(this, 0, ua_session->read_buffer);
+  ua_entry->read_vio = client_vc->do_io_read(this, 0, buffer_reader->mbuf);
 
   /////////////////////////
   // set up timeouts     //
@@ -624,7 +624,7 @@ HttpSM::setup_client_read_request_header()
 {
   ink_assert(ua_entry->vc_handler == &HttpSM::state_read_client_request_header);
 
-  ua_entry->read_vio = ua_session->do_io_read(this, INT64_MAX, ua_session->read_buffer);
+  ua_entry->read_vio = ua_session->do_io_read(this, INT64_MAX, ua_buffer_reader->mbuf);
   // The header may already be in the buffer if this
   //  a request from a keep-alive connection
   if (ua_buffer_reader->read_avail() > 0)
@@ -3514,7 +3514,7 @@ HttpSM::tunnel_handler_post_ua(int event, HttpTunnelProducer *p)
     // Initiate another read to watch catch aborts and
     //   timeouts
     ua_entry->vc_handler = &HttpSM::state_watch_for_client_abort;
-    ua_entry->read_vio = p->vc->do_io_read(this, INT64_MAX, ua_session->read_buffer);
+    ua_entry->read_vio = p->vc->do_io_read(this, INT64_MAX, ua_buffer_reader->mbuf);
     break;
   default:
     ink_release_assert(0);

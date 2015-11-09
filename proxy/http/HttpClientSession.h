@@ -156,6 +156,7 @@ private:
 
   HttpServerSession *bound_ss;
 
+  MIOBuffer *read_buffer;
   IOBufferReader *sm_reader;
   HttpSM *current_reader;
   C_Read_State read_state;
@@ -166,8 +167,6 @@ private:
   Link<HttpClientSession> debug_link;
 
 public:
-  MIOBuffer *read_buffer;
-
   /// Local address for outbound connection.
   IpAddr outbound_ip4;
   /// Local address for outbound connection.
