@@ -87,6 +87,11 @@ Http2ClientSession::start()
 
   MUTEX_LOCK(lock, this->mutex, this_ethread());
 
+  if (NULL == client_vc) { // connection timed out before it could start.
+    this->do_io_close();
+    return;
+  }
+
   SET_HANDLER(&Http2ClientSession::main_event_handler);
   HTTP2_SET_SESSION_HANDLER(&Http2ClientSession::state_read_connection_preface);
 
@@ -132,6 +137,22 @@ Http2ClientSession::new_connection(NetVConnection *new_vc, MIOBuffer *iobuf, IOB
   this->sm_writer = this->write_buffer->alloc_reader();
 
   do_api_callout(TS_HTTP_SSN_START_HOOK);
+}
+
+bool
+Http2ClientSession::handle_api_event(int event, void* data) {
+  bool zret = true;
+  if (VC_EVENT_INACTIVITY_TIMEOUT == event) {
+    client_vc = NULL;
+  } else if (TS_EVENT_VCONN_WRITE_READY == event ||
+	     TS_EVENT_ERROR == event) {
+    // If the SSN_START processing takes a while then we can get these events here.
+    // It's an failure if that happens (the user agent disconnected) but that will
+    // handled by @c start so they are ignored here.
+  } else {
+    zret = super::handle_api_event(event, data);
+  }
+  return zret;
 }
 
 void
