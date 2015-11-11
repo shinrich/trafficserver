@@ -36,6 +36,7 @@ struct Lambda {
     virtual void method() = 0; // force virtual method to get sizing correct.
     Lambda *_obj;
     void (Lambda::*_ptom)();
+    virtual ~Generic() {} // Make compiler shut up.
   };
 
 protected:
@@ -44,6 +45,7 @@ protected:
   uint8_t data[sizeof(Generic)];
 
   Lambda() { ink_zero(data); }
+  virtual ~Lambda() {} // make compiler shut up.
 
 public:
   operator bool() const { return 0 != reinterpret_cast<void const *>(data); }
@@ -59,6 +61,7 @@ private:
   /// Internal base that isolates invocation from the object and member pointer types.
   struct L {
     virtual R invoke() = 0;
+    virtual ~L() {} // make compiler shut up.
   };
 
 public:
@@ -116,6 +119,7 @@ private:
   /// Internal base that isolates invocation from the object and member pointer types.
   struct L {
     virtual R invoke(A1) = 0;
+    virtual ~L() {} // make compiler shut up.
   };
 
 public:
