@@ -2420,7 +2420,7 @@ ClusterHandler::mainClusterEvent(int event, Event *e)
     /////////////////////////////////////////
     if (!on_stolen_thread) {
       if (do_open_local_requests())
-        thread->tail_signal();
+        thread->tail_cb->signalActivity();
     }
   }
 

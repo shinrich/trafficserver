@@ -358,7 +358,7 @@ initialize_thread_for_net(EThread *thread)
   thread->schedule_every(inactivityCop, HRTIME_SECONDS(1));
 #endif
 
-  thread->set_tail_handling(nh, &NetHandler::handleIO, nh, &NetHandler::signal);
+  thread->set_tail_handler(nh);
   thread->ep = (EventIO *)ats_malloc(sizeof(EventIO));
   thread->ep->type = EVENTIO_ASYNC_SIGNAL;
 #if HAVE_EVENTFD
@@ -429,13 +429,12 @@ NetHandler::mainNetEvent(int event, Event *e)
   ink_assert(trigger_event == e && (event == EVENT_INTERVAL || event == EVENT_POLL));
   (void)event;
   (void)e;
-  this->handleIO(-1);
-  return EVENT_CONT;
+  return this->waitForActivity(-1);
 }
 
 // Perform all I/O operations.
-void
-NetHandler::handleIO(ink_hrtime timeout)
+int
+NetHandler::waitForActivity(ink_hrtime timeout)
 {
   int poll_timeout;
   EventIO* epd = NULL;
@@ -594,10 +593,11 @@ NetHandler::handleIO(ink_hrtime timeout)
       vc->ep.modify(-EVENTIO_WRITE);
   }
 #endif /* !USE_EDGE_TRIGGER */
+  return EVENT_CONT;
 }
 
 void
-NetHandler::signal()
+NetHandler::signalActivity()
 {
 #if HAVE_EVENTFD
   uint64_t counter = 1;

@@ -55,8 +55,8 @@ ProtectedQueue::enqueue(Event *e, bool fast_signal)
   if (was_empty) {
     EThread *inserting_thread = this_ethread();
     // inserting_thread == 0 means it is not a regular EThread
-    if (inserting_thread != e_ethread && e_ethread->tail_signal)
-      e_ethread->tail_signal();
+    if (inserting_thread != e_ethread)
+      e_ethread->tail_cb->signalActivity();
   }
 }
 
@@ -71,8 +71,7 @@ flush_signals(EThread *thr)
 
   for (i = 0; i < n; i++) {
     if (thr->ethreads_to_be_signalled[i]) {
-      if (thr->ethreads_to_be_signalled[i]->tail_signal)
-        thr->ethreads_to_be_signalled[i]->tail_signal();
+      thr->ethreads_to_be_signalled[i]->tail_cb->signalActivity();
       thr->ethreads_to_be_signalled[i] = 0;
     }
   }
