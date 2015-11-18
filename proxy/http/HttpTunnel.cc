@@ -71,7 +71,7 @@ VcTypeCode(HttpTunnelType_t t)
 }
 
 ChunkedHandler::ChunkedHandler()
-  : chunked_reader(NULL), dechunked_buffer(NULL), dechunked_size(0), dechunked_reader(NULL), chunked_buffer(NULL), chunked_size(0),
+  : action(ACTION_UNSET), chunked_reader(NULL), dechunked_buffer(NULL), dechunked_size(0), dechunked_reader(NULL), chunked_buffer(NULL), chunked_size(0),
     truncation(false), skip_bytes(0), state(CHUNK_READ_CHUNK), cur_chunk_size(0), bytes_left(0), last_server_event(VC_EVENT_NONE),
     running_sum(0), num_digits(0), max_chunk_size(DEFAULT_MAX_CHUNK_SIZE), max_chunk_header_len(0)
 {
@@ -476,7 +476,7 @@ HttpTunnelConsumer::HttpTunnelConsumer()
 {
 }
 
-HttpTunnel::HttpTunnel() : Continuation(NULL), num_producers(0), num_consumers(0), sm(NULL), active(false), postbuf(NULL)
+HttpTunnel::HttpTunnel() : Continuation(NULL), num_producers(0), num_consumers(0), sm(NULL), active(false), postbuf(NULL), reentrancy_count(0), call_sm(false)
 {
 }
 
@@ -487,6 +487,7 @@ HttpTunnel::init(HttpSM *sm_arg, ProxyMutex *amutex)
   sm = sm_arg;
   active = false;
   mutex = amutex;
+  ink_release_assert(reentrancy_count == 0);
   SET_HANDLER(&HttpTunnel::main_handler);
   flow_state.enabled_p = params->oride.flow_control_enabled;
   if (params->oride.flow_low_water_mark > 0)
@@ -905,7 +906,7 @@ HttpTunnel::producer_run(HttpTunnelProducer *p)
       // the amount to read since we know it.  We will forward the FIN
       // to the server on VC_EVENT_WRITE_COMPLETE.
       if (p->vc_type == HT_HTTP_CLIENT) {
-        HttpClientSession *ua_vc = static_cast<HttpClientSession *>(p->vc);
+        ProxyClientTransaction *ua_vc = static_cast<ProxyClientTransaction *>(p->vc);
         if (ua_vc->get_half_close_flag()) {
           c_write = c->buffer_reader->read_avail();
           p->alive = false;
@@ -947,7 +948,7 @@ HttpTunnel::producer_run(HttpTunnelProducer *p)
     producer_handler(VC_EVENT_READ_READY, p);
   } else if (p->do_dechunking || p->do_chunked_passthru) {
     // remove the dechunked reader marker so that it doesn't act like a buffer guard
-    if (p->do_dechunking)
+    if (p->do_dechunking && dechunked_buffer_start)
       p->chunked_handler.dechunked_buffer->dealloc_reader(dechunked_buffer_start);
 
     // bz57413
@@ -998,7 +999,8 @@ HttpTunnel::producer_run(HttpTunnelProducer *p)
 
   // Now that the tunnel has started, we must remove producer's reader so
   // that it doesn't act like a buffer guard
-  p->read_buffer->dealloc_reader(p->buffer_start);
+  if (p->read_buffer && p->buffer_start)
+    p->read_buffer->dealloc_reader(p->buffer_start);
   p->buffer_start = NULL;
 }
 
@@ -1151,26 +1153,17 @@ HttpTunnel::producer_handler(int event, HttpTunnelProducer *p)
   case VC_EVENT_READ_READY:
     // Data read from producer, reenable consumers
     for (c = p->consumer_list.head; c; c = c->link.next) {
-      if (c->alive) {
+      if (c->alive && c->write_vio) {
         c->write_vio->reenable();
       }
     }
     break;
 
   case HTTP_TUNNEL_EVENT_PRECOMPLETE:
-    // the producer had finished before the tunnel
-    //  started so just call the state machine back
-    //  We don't need to reenable since the consumers
-    //  were just activated.  Likewise, we can't be
-    //  done because the consumer couldn't have
-    //  called us back yet
-    p->bytes_read = 0;
-    jump_point = p->vc_handler;
-    (sm->*jump_point)(event, p);
-    sm_callback = true;
-    p->update_state_if_not_set(HTTP_SM_POST_SUCCESS);
-    break;
-
+    // If the write completes on the stack (as it can for http2), then 
+    // consumer could have called back by this point.  Must treat this as
+    // a regular read complete (falling through to the following cases).
+    
   case VC_EVENT_READ_COMPLETE:
   case VC_EVENT_EOS:
     // The producer completed
@@ -1200,7 +1193,7 @@ HttpTunnel::producer_handler(int event, HttpTunnelProducer *p)
 
     // Data read from producer, reenable consumers
     for (c = p->consumer_list.head; c; c = c->link.next) {
-      if (c->alive) {
+      if (c->alive && c->write_vio) {
         c->write_vio->reenable();
       }
     }
@@ -1210,14 +1203,16 @@ HttpTunnel::producer_handler(int event, HttpTunnelProducer *p)
   case VC_EVENT_ACTIVE_TIMEOUT:
   case VC_EVENT_INACTIVITY_TIMEOUT:
   case HTTP_TUNNEL_EVENT_CONSUMER_DETACH:
-    p->alive = false;
-    p->bytes_read = p->read_vio->ndone;
-    // Interesting tunnel event, call SM
-    jump_point = p->vc_handler;
-    (sm->*jump_point)(event, p);
-    sm_callback = true;
-    // Failure case anyway
-    p->update_state_if_not_set(HTTP_SM_POST_UA_FAIL);
+    if (p->alive) {
+      p->alive = false;
+      p->bytes_read = p->read_vio ? p->read_vio->ndone : 0;
+      // Interesting tunnel event, call SM
+      jump_point = p->vc_handler;
+      (sm->*jump_point)(event, p);
+      sm_callback = true;
+      // Failure case anyway
+      p->update_state_if_not_set(HTTP_SM_POST_UA_FAIL);
+    }
     break;
 
   case VC_EVENT_WRITE_READY:
@@ -1234,6 +1229,8 @@ HttpTunnel::producer_handler(int event, HttpTunnelProducer *p)
 void
 HttpTunnel::consumer_reenable(HttpTunnelConsumer *c)
 {
+  if (!c) return;
+
   HttpTunnelProducer *p = c->producer;
 
   if (p && p->alive
@@ -1410,7 +1407,8 @@ HttpTunnel::chain_abort_all(HttpTunnelProducer *p)
 
   if (p->alive) {
     p->alive = false;
-    p->bytes_read = p->read_vio->ndone;
+    if (p->read_vio)
+      p->bytes_read = p->read_vio->ndone;
     if (p->self_consumer) {
       p->self_consumer->alive = false;
     }
@@ -1456,13 +1454,15 @@ HttpTunnel::finish_all_internal(HttpTunnelProducer *p, bool chain)
       } else
         total_bytes = p->bytes_read + p->init_bytes_done;
 
-      c->write_vio->nbytes = total_bytes - c->skip_bytes;
-      ink_assert(c->write_vio->nbytes >= 0);
+      if (c->write_vio) {
+        c->write_vio->nbytes = total_bytes - c->skip_bytes;
+        ink_assert(c->write_vio->nbytes >= 0);
 
-      if (c->write_vio->nbytes < 0) {
-        // TODO: Wtf, printf?
-        fprintf(stderr, "[HttpTunnel::finish_all_internal] ERROR: Incorrect total_bytes - c->skip_bytes = %" PRId64 "\n",
-                (int64_t)(total_bytes - c->skip_bytes));
+        if (c->write_vio->nbytes < 0) {
+          // TODO: Wtf, printf?
+          fprintf(stderr, "[HttpTunnel::finish_all_internal] ERROR: Incorrect total_bytes - c->skip_bytes = %" PRId64 "\n",
+                  (int64_t)(total_bytes - c->skip_bytes));
+        }
       }
 
       if (chain == true && c->self_producer) {
@@ -1472,7 +1472,7 @@ HttpTunnel::finish_all_internal(HttpTunnelProducer *p, bool chain)
       //   is nothing to do.  Check to see if there is
       //   nothing to do and take the appripriate
       //   action
-      if (c->write_vio->nbytes == c->write_vio->ndone) {
+      if (c->write_vio && c->write_vio->nbytes == c->write_vio->ndone) {
         consumer_handler(VC_EVENT_WRITE_COMPLETE, c);
       }
     }
@@ -1562,6 +1562,8 @@ HttpTunnel::main_handler(int event, void *data)
   HttpTunnelConsumer *c = NULL;
   bool sm_callback = false;
 
+  ++reentrancy_count;
+
   ink_assert(sm->magic == HTTP_SM_MAGIC_ALIVE);
 
   // Find the appropriate entry
@@ -1580,11 +1582,18 @@ HttpTunnel::main_handler(int event, void *data)
   //  finished.  Check to see if there are any remaining
   //  VConnections alive.  If not, notifiy the state machine
   //
-  if (sm_callback && !is_tunnel_alive()) {
-    active = false;
-    sm->handleEvent(HTTP_TUNNEL_EVENT_DONE, this);
-    return EVENT_DONE;
+  // Don't call out if we are nested
+  if (call_sm || (sm_callback && !is_tunnel_alive())) {
+    if (reentrancy_count == 1) {
+      reentrancy_count = 0;
+      active = false;
+      sm->handleEvent(HTTP_TUNNEL_EVENT_DONE, this);
+      return EVENT_DONE;
+    } else {
+      call_sm = true;
+    }
   }
+  --reentrancy_count;
   return EVENT_CONT;
 }
 

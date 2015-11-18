@@ -130,7 +130,7 @@ public:
   ProxyAllocator eventAllocator;
   ProxyAllocator netVCAllocator;
   ProxyAllocator sslNetVCAllocator;
-  ProxyAllocator httpClientSessionAllocator;
+  ProxyAllocator http1ClientSessionAllocator;
   ProxyAllocator httpServerSessionAllocator;
   ProxyAllocator hdrHeapAllocator;
   ProxyAllocator strHeapAllocator;

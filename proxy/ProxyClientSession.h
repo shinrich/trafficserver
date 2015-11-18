@@ -27,11 +27,15 @@
 #include "libts.h"
 #include "P_Net.h"
 #include "InkAPIInternal.h"
+#include "http/HttpServerSession.h"
 
 // Emit a debug message conditional on whether this particular client session
 // has debugging enabled. This should only be called from within a client session
 // member function.
 #define DebugSsn(ssn, tag, ...) DebugSpecific((ssn)->debug(), tag, __VA_ARGS__)
+
+class ProxyClientTransaction;
+class AclRecord;
 
 class ProxyClientSession : public VConnection
 {
@@ -46,7 +50,7 @@ public:
   virtual void
   ssn_hook_append(TSHttpHookID id, INKContInternal *cont)
   {
-    this->api_hooks.prepend(id, cont);
+    this->api_hooks.append(id, cont);
   }
 
   virtual void
@@ -113,6 +117,40 @@ public:
   virtual bool handle_api_event(int event, void* data) { return false; }
 
   static int64_t next_connection_id();
+  virtual int get_transact_count() const = 0;
+
+  // Override if your session protocol allows this
+  virtual bool is_transparent_passthrough_allowed() { return false; }
+
+  // Override if your session protocol cares
+  virtual void set_half_close_flag(bool flag) {}
+  virtual bool get_half_close_flag() { return false; }
+
+  // Indicate we are done with a transaction
+  virtual void release(ProxyClientTransaction *trans) = 0;
+
+  /// acl record - cache IpAllow::match() call
+  const AclRecord *acl_record;
+
+  int64_t connection_id() const { return con_id; }
+
+  virtual void attach_server_session(HttpServerSession *ssession, bool transaction_done = true) { }
+
+  virtual HttpServerSession *get_server_session() const { return NULL; }
+
+  /// DNS resolution preferences.
+  HostResStyle host_res_style;
+
+  virtual int state_api_callout(int event, void *edata);
+
+  //TSHttpHookID get_hookid() const { return api_hookid; }
+
+  ink_hrtime ssn_start_time;
+  ink_hrtime ssn_last_txn_time;
+
+  virtual void set_active_timeout(ink_hrtime timeout_in) {}
+  virtual void set_inactivity_timeout(ink_hrtime timeout_in) {}
+  virtual void cancel_inactivity_timeout() {}
 
 protected:
   // XXX Consider using a bitwise flags variable for the following flags, so that we can make the best
@@ -121,6 +159,9 @@ protected:
   // Session specific debug flag.
   bool debug_on;
   bool hooks_on;
+
+  int64_t con_id;
+
 
 protected:
   /** Handle events while hooks are active.
@@ -133,7 +174,6 @@ protected:
 
       @return 0
   */
-  virtual int state_api_callout(int event, void *edata);
 
 private:
   APIHookScope api_scope;

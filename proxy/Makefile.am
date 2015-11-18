@@ -176,6 +176,8 @@ traffic_server_SOURCES = \
   ProtocolProbeSessionAccept.h \
   ProxyClientSession.cc \
   ProxyClientSession.h \
+  ProxyClientTransaction.cc \
+  ProxyClientTransaction.h \
   ReverseProxy.cc \
   ReverseProxy.h \
   SocksProxy.cc \
@@ -299,6 +301,8 @@ traffic_sac_SOURCES = \
   ProtocolProbeSessionAccept.h \
   ProxyClientSession.cc \
   ProxyClientSession.h \
+  ProxyClientTransaction.cc \
+  ProxyClientTransaction.h \
   Update.cc \
   Plugin.cc \
   InkAPI.cc \

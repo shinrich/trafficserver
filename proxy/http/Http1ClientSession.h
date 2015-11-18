@@ -23,14 +23,14 @@
 
 /****************************************************************************
 
-   HttpClientSession.h
+   Http1ClientSession.h
 
    Description:
 
  ****************************************************************************/
 
-#ifndef _HTTP_CLIENT_SESSION_H_
-#define _HTTP_CLIENT_SESSION_H_
+#ifndef _HTTP1_CLIENT_SESSION_H_
+#define _HTTP1_CLIENT_SESSION_H_
 
 #include "libts.h"
 #include "P_Net.h"
@@ -39,6 +39,7 @@
 #include "HttpConfig.h"
 #include "IPAllow.h"
 #include "ProxyClientSession.h"
+#include "Http1ClientTransaction.h"
 
 extern ink_mutex debug_cs_list_mutex;
 
@@ -47,11 +48,11 @@ class HttpServerSession;
 
 class SecurityContext;
 
-class HttpClientSession : public ProxyClientSession
+class Http1ClientSession : public ProxyClientSession
 {
 public:
   typedef ProxyClientSession super; ///< Parent type.
-  HttpClientSession();
+  Http1ClientSession();
 
   // Implement ProxyClientSession interface.
   virtual void destroy();
@@ -59,37 +60,30 @@ public:
   virtual void
   start()
   {
-    new_transaction();
+    // Create a new transaction object and kick it off
+    this->new_transaction();
   }
 
   void new_connection(NetVConnection *new_vc, MIOBuffer *iobuf, IOBufferReader *reader, bool backdoor);
 
   // Implement VConnection interface.
-  virtual VIO *do_io_read(Continuation *c, int64_t nbytes = INT64_MAX, MIOBuffer *buf = 0);
-  virtual VIO *do_io_write(Continuation *c = NULL, int64_t nbytes = INT64_MAX, IOBufferReader *buf = 0, bool owner = false);
+  virtual VIO *do_io_read(Continuation *c, int64_t nbytes = INT64_MAX, MIOBuffer *buf = 0); 
+  virtual VIO *do_io_write(Continuation *c = NULL, int64_t nbytes = INT64_MAX, IOBufferReader *buf = 0, bool owner = false); 
 
   virtual void do_io_close(int lerrno = -1);
   virtual void do_io_shutdown(ShutdownHowTo_t howto);
   virtual void reenable(VIO *vio);
 
-  void new_transaction();
-
   void
-  set_half_close_flag()
+  set_half_close_flag(bool flag)
   {
-    half_close = true;
-  };
-  void
-  clear_half_close_flag()
-  {
-    half_close = false;
+    half_close = flag;
   };
   bool
   get_half_close_flag() const
   {
     return half_close;
   };
-  virtual void release(IOBufferReader *r);
   virtual NetVConnection *
   get_netvc() const
   {
@@ -101,34 +95,39 @@ public:
     client_vc = NULL;
   }
 
-  virtual void attach_server_session(HttpServerSession *ssession, bool transaction_done = true);
-  HttpServerSession *
-  get_server_session() const
-  {
-    return bound_ss;
-  };
-
-  // Used for the cache authenticated HTTP content feature
-  HttpServerSession *get_bound_ss();
-
-  // Functions for manipulating api hooks
-  void ssn_hook_append(TSHttpHookID id, INKContInternal *cont);
-  void ssn_hook_prepend(TSHttpHookID id, INKContInternal *cont);
-
   int
   get_transact_count() const
   {
     return transact_count;
   }
 
-  void
-  set_h2c_upgrade_flag()
-  {
-    upgrade_to_h2c = true;
+  virtual bool is_outbound_transparent() { return f_outbound_transparent; }
+
+  // Indicate we are done with a transaction
+  virtual void release(ProxyClientTransaction *trans);
+
+  virtual uint16_t get_outbound_port() const { return outbound_port; }
+  virtual IpAddr get_outbound_ip4() const { return outbound_ip4; }
+  virtual IpAddr get_outbound_ip6() const { return outbound_ip6; }
+
+  virtual void attach_server_session(HttpServerSession *ssession, bool transaction_done = true);
+
+  virtual HttpServerSession *get_server_session() const { return bound_ss; }
+
+  void set_active_timeout(ink_hrtime timeout_in) {
+    if (client_vc) client_vc->set_active_timeout(timeout_in);
+  }
+  void set_inactivity_timeout(ink_hrtime timeout_in) {
+    if (client_vc) client_vc->set_inactivity_timeout(timeout_in);
+  }
+  void cancel_inactivity_timeout() {
+    if (client_vc) client_vc->cancel_inactivity_timeout();
   }
 
 private:
-  HttpClientSession(HttpClientSession &);
+  Http1ClientSession(Http1ClientSession &);
+
+  void new_transaction();
 
   int state_keep_alive(int event, void *data);
   int state_slave_keep_alive(int event, void *data);
@@ -152,21 +151,21 @@ private:
   bool tcp_init_cwnd_set;
   bool half_close;
   bool conn_decrease;
-  bool upgrade_to_h2c; // Switching to HTTP/2 with upgrade mechanism
-
-  HttpServerSession *bound_ss;
 
   MIOBuffer *read_buffer;
   IOBufferReader *sm_reader;
-  HttpSM *current_reader;
   C_Read_State read_state;
 
   VIO *ka_vio;
   VIO *slave_ka_vio;
 
-  Link<HttpClientSession> debug_link;
+
+  HttpServerSession *bound_ss;
 
 public:
+  //Link<Http1ClientSession> debug_link;
+  LINK(Http1ClientSession, debug_link);
+
   /// Local address for outbound connection.
   IpAddr outbound_ip4;
   /// Local address for outbound connection.
@@ -177,18 +176,17 @@ public:
   bool f_outbound_transparent;
   /// Transparently pass-through non-HTTP traffic.
   bool f_transparent_passthrough;
-  /// DNS resolution preferences.
-  HostResStyle host_res_style;
-  /// acl record - cache IpAllow::match() call
-  const AclRecord *acl_record;
+
 
   // for DI. An active connection is one that a request has
   // been successfully parsed (PARSE_DONE) and it remains to
   // be active until the transaction goes through or the client
   // aborts.
   bool m_active;
+  Http1ClientTransaction trans;
+
 };
 
-extern ClassAllocator<HttpClientSession> httpClientSessionAllocator;
+extern ClassAllocator<Http1ClientSession> http1ClientSessionAllocator;
 
 #endif

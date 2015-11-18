@@ -27,9 +27,6 @@
 
 #define DebugHttp2Ssn(fmt, ...) DebugSsn("http2_cs", "[%" PRId64 "] " fmt, this->con_id, __VA_ARGS__)
 
-// Currently use only HTTP/1.1 for requesting to origin server
-const static char *HTTP2_FETCHING_HTTP_VERSION = "HTTP/1.1";
-
 typedef Http2Error (*http2_frame_dispatch)(Http2ClientSession &, Http2ConnectionState &, const Http2Frame &);
 
 static const int buffer_size_index[HTTP2_FRAME_TYPE_MAX] = {
@@ -87,11 +84,6 @@ rcv_data_frame(Http2ClientSession &cs, Http2ConnectionState &cstate, const Http2
     }
   }
 
-  // Check to see if FetchSM is NULL
-  if (stream->get_fetcher() == NULL) {
-    return Http2Error(HTTP2_ERROR_CLASS_STREAM, HTTP2_ERROR_STREAM_CLOSED);
-  }
-
   // If a DATA frame is received whose stream is not in "open" or "half closed
   // (local)" state,
   // the recipient MUST respond with a stream error of type STREAM_CLOSED.
@@ -139,13 +131,20 @@ rcv_data_frame(Http2ClientSession &cs, Http2ConnectionState &cstate, const Http2
   stream->server_rwnd -= payload_length;
 
   const uint32_t unpadded_length = payload_length - pad_length;
+  // If we call write() multiple times, we must keep the same reader, so we can 
+  // update its offset via consume.  Otherwise, we will read the same data on the
+  // second time through
+  IOBufferReader *myreader = frame.reader()->clone();
   while (nbytes < payload_length - pad_length) {
     size_t read_len = sizeof(buf);
     if (nbytes + read_len > unpadded_length)
       read_len -= nbytes + read_len - unpadded_length;
-    unsigned read_bytes = read_rcv_buffer(buf, read_len, nbytes, frame);
-    stream->set_body_to_fetcher(buf, read_bytes);
+    nbytes += stream->request_buffer.write(myreader, read_len);
+    myreader->consume(nbytes);
+    // If there is an outstanding read, update the buffer
+    stream->update_read_request(INT64_MAX, true);
   }
+  myreader->writer()->dealloc_reader(myreader);
 
   uint32_t initial_rwnd = cstate.server_settings.get(HTTP2_SETTINGS_INITIAL_WINDOW_SIZE);
   uint32_t min_rwnd = min(initial_rwnd, cstate.server_settings.get(HTTP2_SETTINGS_MAX_FRAME_SIZE));
@@ -261,8 +260,12 @@ rcv_headers_frame(Http2ClientSession &cs, Http2ConnectionState &cstate, const Ht
     } else if (decoded_bytes == HPACK_ERROR_HTTP2_PROTOCOL_ERROR) {
       return Http2Error(HTTP2_ERROR_CLASS_STREAM, HTTP2_ERROR_PROTOCOL_ERROR);
     }
-
-    stream->init_fetcher(cstate);
+   
+    // Set up the State Machine
+    stream->new_transaction();
+    // Send request header to SM
+    stream->send_request(cstate);
+    //stream->init_fetcher(cstate);
   } else {
     // NOTE: Expect CONTINUATION Frame. Do NOT change state of stream or decode
     // Header Blocks.
@@ -541,6 +544,7 @@ rcv_window_update_frame(Http2ClientSession &cs, Http2ConnectionState &cstate, co
     }
 
     cstate.client_rwnd += size;
+    DebugSsn(&cs, "http2_cs", "New Windows state=%" PRId64 " increment=%d", cstate.client_rwnd, size);
     cstate.restart_streams();
   } else {
     // Stream level window update
@@ -577,8 +581,9 @@ rcv_window_update_frame(Http2ClientSession &cs, Http2ConnectionState &cstate, co
 
     stream->client_rwnd += size;
     ssize_t wnd = min(cstate.client_rwnd, stream->client_rwnd);
+    DebugSsn(&cs, "http2_cs", "New Windows state=%" PRId64 " stream=%" PRId64 " increment=%d", cstate.client_rwnd, stream->client_rwnd, size);
     if (wnd > 0) {
-      cstate.send_data_frame(stream->get_fetcher());
+      cstate.send_data_frame(stream);
     }
   }
 
@@ -661,7 +666,11 @@ rcv_continuation_frame(Http2ClientSession &cs, Http2ConnectionState &cstate, con
       return Http2Error(HTTP2_ERROR_CLASS_CONNECTION, HTTP2_ERROR_PROTOCOL_ERROR);
     }
 
-    stream->init_fetcher(cstate);
+    // Set up the State Machine
+    stream->new_transaction();
+    // Send request header to SM
+    stream->send_request(cstate);
+    //stream->init_fetcher(cstate);
   } else {
     // NOTE: Expect another CONTINUATION Frame. Do nothing.
     DebugSsn(&cs, "http2_cs", "[%" PRId64 "] No END_HEADERS flag, expecting CONTINUATION frame.", cs.connection_id());
@@ -745,7 +754,9 @@ Http2ConnectionState::main_event_handler(int event, void *edata)
       if (error.cls == HTTP2_ERROR_CLASS_CONNECTION) {
         HTTP2_INCREMENT_THREAD_DYN_STAT(HTTP2_STAT_CONNECTION_ERRORS_COUNT, ethread);
         this->send_goaway_frame(last_streamid, error.code);
-        cleanup_streams();
+        // The streams will be cleaned up by the HTTP2_SESSION_EVENT_FINI event
+        // The Http2ClientSession will shutdown because connection_state.is_state_closed() will be true
+
         // XXX We need to think a bit harder about how to coordinate the client
         // session and the
         // protocol connection. At this point, the protocol is shutting down,
@@ -762,30 +773,6 @@ Http2ConnectionState::main_event_handler(int event, void *edata)
 
     return 0;
   }
-
-  // Process response headers from origin server
-  case TS_FETCH_EVENT_EXT_HEAD_DONE: {
-    FetchSM *fetch_sm = reinterpret_cast<FetchSM *>(edata);
-    this->send_headers_frame(fetch_sm);
-    return 0;
-  }
-
-  // Process a part of response body from origin server
-  case TS_FETCH_EVENT_EXT_BODY_READY: {
-    FetchSM *fetch_sm = reinterpret_cast<FetchSM *>(edata);
-    this->send_data_frame(fetch_sm);
-    return 0;
-  }
-
-  // Process final part of response body from origin server
-  case TS_FETCH_EVENT_EXT_BODY_DONE: {
-    FetchSM *fetch_sm = reinterpret_cast<FetchSM *>(edata);
-    Http2Stream *stream = static_cast<Http2Stream *>(fetch_sm->ext_get_user_data());
-    stream->mark_body_done();
-    this->send_data_frame(fetch_sm);
-    return 0;
-  }
-
   default:
     DebugSsn(this->ua_session, "http2_cs", "unexpected event=%d edata=%p", event, edata);
     ink_release_assert(0);
@@ -818,13 +805,18 @@ Http2ConnectionState::create_stream(Http2StreamId new_id)
     return NULL;
   }
 
-  Http2Stream *new_stream = new Http2Stream(new_id, client_settings.get(HTTP2_SETTINGS_INITIAL_WINDOW_SIZE));
+  Http2Stream *new_stream = http2StreamAllocator.alloc();
+  new_stream->init(new_id, client_settings.get(HTTP2_SETTINGS_INITIAL_WINDOW_SIZE));
+  //new_stream->init(new_id, this->client_rwnd);
+  
+  //Http2Stream *new_stream = new Http2Stream(new_id, client_settings.get(HTTP2_SETTINGS_INITIAL_WINDOW_SIZE));
   stream_list.push(new_stream);
   latest_streamid = new_id;
 
   ink_assert(client_streams_count < UINT32_MAX);
   ++client_streams_count;
-
+  new_stream->set_parent(ua_session);
+  new_stream->mutex = ua_session->mutex;
   return new_stream;
 }
 
@@ -847,7 +839,7 @@ Http2ConnectionState::restart_streams()
   while (s) {
     Http2Stream *next = s->link.next;
     if (min(this->client_rwnd, s->client_rwnd) > 0) {
-      this->send_data_frame(s->get_fetcher());
+      this->send_data_frame(s);
     }
     s = next;
   }
@@ -859,8 +851,7 @@ Http2ConnectionState::cleanup_streams()
   Http2Stream *s = stream_list.head;
   while (s) {
     Http2Stream *next = s->link.next;
-    stream_list.remove(s);
-    delete s;
+    this->delete_stream(s);
     s = next;
   }
   client_streams_count = 0;
@@ -870,7 +861,7 @@ void
 Http2ConnectionState::delete_stream(Http2Stream *stream)
 {
   stream_list.remove(stream);
-  delete stream;
+  stream->initiating_close();
 
   ink_assert(client_streams_count > 0);
   --client_streams_count;
@@ -886,61 +877,78 @@ Http2ConnectionState::update_initial_rwnd(Http2WindowSize new_size)
 }
 
 void
-Http2ConnectionState::send_data_frame(FetchSM *fetch_sm)
+Http2ConnectionState::send_data_frame(Http2Stream *stream)
 {
   DebugSsn(this->ua_session, "http2_cs", "[%" PRId64 "] Send DATA frame", this->ua_session->connection_id());
-
-  if (fetch_sm == NULL) {
-    return;
-  }
 
   size_t buf_len = BUFFER_SIZE_FOR_INDEX(buffer_size_index[HTTP2_FRAME_TYPE_DATA]) - HTTP2_FRAME_HEADER_LEN;
   uint8_t payload_buffer[buf_len];
 
-  Http2Stream *stream = static_cast<Http2Stream *>(fetch_sm->ext_get_user_data());
-
   for (;;) {
     uint8_t flags = 0x00;
 
-    // Select appropriate payload size
-    if (this->client_rwnd <= 0 || stream->client_rwnd <= 0)
-      break;
     size_t window_size = min(this->client_rwnd, stream->client_rwnd);
     size_t send_size = min(buf_len, window_size);
+    size_t payload_length;
 
-    size_t payload_length = fetch_sm->ext_read_data(reinterpret_cast<char *>(payload_buffer), send_size);
+    IOBufferReader *current_reader = stream->response_get_data_reader(); 
 
-    // If we break here, we never send the END_STREAM in the case of a
-    // early terminating OS.  Ok if there is no body yet.  Otherwise
-    // continue on to delete the stream
-    if (payload_length == 0 && !stream->is_body_done()) {
-      break;
-    }
-
-    // Update window size
-    this->client_rwnd -= payload_length;
-    stream->client_rwnd -= payload_length;
-
-    if (stream->is_body_done() && payload_length < send_size) {
+    // Are we at the end?
+    if (stream->is_body_done() && current_reader && !current_reader->is_read_avail_more_than(0)) {
+      Debug("skh", "End of Stream id=%d no more data and body done", stream->get_id());
       flags |= HTTP2_FLAGS_DATA_END_STREAM;
+      payload_length = 0;
+    } else {
+      // Select appropriate payload size
+      if (this->client_rwnd <= 0 || stream->client_rwnd <= 0)
+        break;
+
+      // Copy into the payload buffer.  Seems like we should be able to skip this
+      // copy step
+      payload_length = current_reader ? current_reader->read(payload_buffer, send_size) : 0;
+
+      //size_t payload_length = fetch_sm->ext_read_data(reinterpret_cast<char *>(payload_buffer), send_size);
+
+      // If we break here, we never send the END_STREAM in the case of a
+      // early terminating OS.  Ok if there is no body yet.  Otherwise
+      // continue on to delete the stream
+      if (payload_length == 0 && !stream->is_body_done()) {
+        break;
+      }
+
+      // Update window size
+      this->client_rwnd -= payload_length;
+      stream->client_rwnd -= payload_length;
+
+      if (stream->is_body_done() && payload_length < send_size) {
+        Debug("skh", "End of Stream id=%d body done and should fit avail", stream->get_id());
+        flags |= HTTP2_FLAGS_DATA_END_STREAM;
+      }
     }
 
     // Create frame
     Http2Frame data(HTTP2_FRAME_TYPE_DATA, stream->get_id(), flags);
     data.alloc(buffer_size_index[HTTP2_FRAME_TYPE_DATA]);
+    // Write in the data directly from the buffer
     http2_write_data(payload_buffer, payload_length, data.write());
     data.finalize(payload_length);
 
+    stream->update_sent_count(payload_length);
+
     // Change state to 'closed' if its end of DATAs.
     if (flags & HTTP2_FLAGS_DATA_END_STREAM) {
-      if (!stream->change_state(data.header().type, data.header().flags)) {
+      stream->change_state(data.header().type, data.header().flags);
+      // Setting to the same state shouldn't be erroneous
+/*      if (!stream->change_state(data.header().type, data.header().flags)) {
         this->send_goaway_frame(stream->get_id(), HTTP2_ERROR_PROTOCOL_ERROR);
-      }
+      }*/
     }
 
     // xmit event
     MUTEX_LOCK(lock, this->ua_session->mutex, this_ethread());
     this->ua_session->handleEvent(HTTP2_SESSION_EVENT_XMIT, &data);
+
+    DebugSsn(this->ua_session, "http2_cs", "[%" PRId64 "] %" PRId64 " bytes DATA frame.", this->ua_session->connection_id(), payload_length);
 
     if (flags & HTTP2_FLAGS_DATA_END_STREAM) {
       // Delete a stream immediately
@@ -948,6 +956,7 @@ Http2ConnectionState::send_data_frame(FetchSM *fetch_sm)
       // RST_STREAM and WINDOW_UPDATE.
       // See 'closed' state written at
       // https://tools.ietf.org/html/draft-ietf-httpbis-http2-16#section-5.1
+      DebugSsn(this->ua_session, "http2_cs", "Shutdown stream %d", stream->get_id());
       this->delete_stream(stream);
       break;
     }
@@ -955,7 +964,7 @@ Http2ConnectionState::send_data_frame(FetchSM *fetch_sm)
 }
 
 void
-Http2ConnectionState::send_headers_frame(FetchSM *fetch_sm)
+Http2ConnectionState::send_headers_frame(Http2Stream *stream)
 {
   DebugSsn(this->ua_session, "http2_cs", "[%" PRId64 "] Send HEADERS frame.", this->ua_session->connection_id());
 
@@ -964,16 +973,14 @@ Http2ConnectionState::send_headers_frame(FetchSM *fetch_sm)
   size_t payload_length = 0;
   uint8_t flags = 0x00;
 
-  Http2Stream *stream = static_cast<Http2Stream *>(fetch_sm->ext_get_user_data());
-  HTTPHdr *resp_header = reinterpret_cast<HTTPHdr *>(fetch_sm->resp_hdr_bufp());
 
   // Write pseudo headers
-  payload_length += http2_write_psuedo_headers(resp_header, payload_buffer, buf_len, *(this->remote_dynamic_table));
+  payload_length += http2_write_psuedo_headers(&stream->response_header, payload_buffer, buf_len, *(this->remote_dynamic_table));
 
   // If response body is empty, set END_STREAM flag to HEADERS frame
   // Must check to ensure content-length is there.  Otherwise the value defaults
   // to 0
-  if (resp_header->presence(MIME_PRESENCE_CONTENT_LENGTH) && resp_header->get_content_length() == 0) {
+  if (stream->response_header.presence(MIME_PRESENCE_CONTENT_LENGTH) && stream->response_header.get_content_length() == 0) {
     flags |= HTTP2_FLAGS_HEADERS_END_STREAM;
   }
 
@@ -984,7 +991,7 @@ Http2ConnectionState::send_headers_frame(FetchSM *fetch_sm)
     Http2FrameType type = cont ? HTTP2_FRAME_TYPE_CONTINUATION : HTTP2_FRAME_TYPE_HEADERS;
 
     // Encode by HPACK naive
-    payload_length += http2_write_header_fragment(resp_header, field_iter, payload_buffer + payload_length,
+    payload_length += http2_write_header_fragment(&stream->response_header, field_iter, payload_buffer + payload_length,
                                                   buf_len - payload_length, *(this->remote_dynamic_table), cont);
 
     // If buffer size is enough to send rest of headers, set END_HEADERS flag
@@ -997,6 +1004,8 @@ Http2ConnectionState::send_headers_frame(FetchSM *fetch_sm)
     headers.alloc(buffer_size_index[type]);
     http2_write_headers(payload_buffer, payload_length, headers.write());
     headers.finalize(payload_length);
+
+    Debug("http2_cs", "Write %" PRId64 " bytes of header payload", payload_length);
 
     // xmit event
     MUTEX_LOCK(lock, this->ua_session->mutex, this_ethread());
@@ -1054,6 +1063,7 @@ Http2ConnectionState::send_settings_frame(const Http2ConnectionSettings &new_set
   }
 
   settings.finalize(settings_length);
+  MUTEX_LOCK(lock, this->ua_session->mutex, this_ethread());
   this->ua_session->handleEvent(HTTP2_SESSION_EVENT_XMIT, &settings);
 }
 
@@ -1113,143 +1123,4 @@ Http2ConnectionState::send_window_update_frame(Http2StreamId id, uint32_t size)
   this->ua_session->handleEvent(HTTP2_SESSION_EVENT_XMIT, &window_update);
 }
 
-void
-Http2Stream::init_fetcher(Http2ConnectionState &cstate)
-{
-  extern ClassAllocator<FetchSM> FetchSMAllocator;
 
-  // Convert header to HTTP/1.1 format
-  cstate.increment_stream_requests();
-  convert_from_2_to_1_1_header(&_req_header, cstate.get_stream_requests());
-
-  // Get null-terminated URL and method
-  Arena arena;
-  int url_len, method_len;
-  const char *url_ref = _req_header.url_get()->string_get_ref(&url_len);
-  const char *url = arena.str_store(url_ref, url_len);
-  const char *method_ref = _req_header.method_get(&method_len);
-  const char *method = arena.str_store(method_ref, method_len);
-
-  // Initialize FetchSM
-  _fetch_sm = FetchSMAllocator.alloc();
-  _fetch_sm->ext_init((Continuation *)cstate.ua_session, method, url, HTTP2_FETCHING_HTTP_VERSION,
-                      cstate.ua_session->get_client_addr(), (TS_FETCH_FLAGS_DECHUNK | TS_FETCH_FLAGS_NOT_INTERNAL_REQUEST));
-
-  // Set request header
-  MIMEFieldIter fiter;
-  for (const MIMEField *field = _req_header.iter_get_first(&fiter); field != NULL; field = _req_header.iter_get_next(&fiter)) {
-    int name_len, value_len;
-    const char *name = field->name_get(&name_len);
-    const char *value = field->value_get(&value_len);
-
-    DebugSsn(cstate.ua_session, "http2_stream", "Header: %s, Value: %s", name, value);
-    _fetch_sm->ext_add_header(name, name_len, value, value_len);
-  }
-
-  _fetch_sm->ext_set_user_data(this);
-  _fetch_sm->ext_launch();
-}
-
-void
-Http2Stream::set_body_to_fetcher(const void *data, size_t len)
-{
-  ink_assert(_fetch_sm != NULL);
-
-  _fetch_sm->ext_write_data(data, len);
-}
-
-/*
- * 5.1. Stream States
- *
- *                       +--------+
- *                 PP    |        |    PP
- *              ,--------|  idle  |--------.
- *             /         |        |         \
- *            v          +--------+          v
- *     +----------+          |           +----------+
- *     |          |          | H         |          |
- * ,---| reserved |          |           | reserved |---.
- * |   | (local)  |          v           | (remote) |   |
- * |   +----------+      +--------+      +----------+   |
- * |      |          ES  |        |  ES          |      |
- * |      | H    ,-------|  open  |-------.      | H    |
- * |      |     /        |        |        \     |      |
- * |      v    v         +--------+         v    v      |
- * |   +----------+          |           +----------+   |
- * |   |   half   |          |           |   half   |   |
- * |   |  closed  |          | R         |  closed  |   |
- * |   | (remote) |          |           | (local)  |   |
- * |   +----------+          |           +----------+   |
- * |        |                v                 |        |
- * |        |  ES / R    +--------+  ES / R    |        |
- * |        `----------->|        |<-----------'        |
- * |  R                  | closed |                  R  |
- * `-------------------->|        |<--------------------'
- *                       +--------+
- */
-bool
-Http2Stream::change_state(uint8_t type, uint8_t flags)
-{
-  switch (_state) {
-  case HTTP2_STREAM_STATE_IDLE:
-    if (type == HTTP2_FRAME_TYPE_HEADERS) {
-      if (end_stream && flags & HTTP2_FLAGS_HEADERS_END_HEADERS) {
-        _state = HTTP2_STREAM_STATE_HALF_CLOSED_REMOTE;
-      } else {
-        _state = HTTP2_STREAM_STATE_OPEN;
-      }
-    } else if (type == HTTP2_FRAME_TYPE_CONTINUATION) {
-      if (end_stream && flags & HTTP2_FLAGS_CONTINUATION_END_HEADERS) {
-        _state = HTTP2_STREAM_STATE_HALF_CLOSED_REMOTE;
-      } else {
-        _state = HTTP2_STREAM_STATE_OPEN;
-      }
-    } else if (type == HTTP2_FRAME_TYPE_PUSH_PROMISE) {
-      // XXX Server Push have been supported yet.
-    } else {
-      return false;
-    }
-    break;
-
-  case HTTP2_STREAM_STATE_OPEN:
-    if (type == HTTP2_FRAME_TYPE_RST_STREAM) {
-      _state = HTTP2_STREAM_STATE_CLOSED;
-    } else if (type == HTTP2_FRAME_TYPE_DATA && flags & HTTP2_FLAGS_DATA_END_STREAM) {
-      _state = HTTP2_STREAM_STATE_HALF_CLOSED_REMOTE;
-    } else {
-      // Currently ATS supports only HTTP/2 server features
-      return false;
-    }
-    break;
-
-  case HTTP2_STREAM_STATE_RESERVED_LOCAL:
-    // Currently ATS supports only HTTP/2 server features
-    return false;
-
-  case HTTP2_STREAM_STATE_RESERVED_REMOTE:
-    // XXX Server Push have been supported yet.
-    return false;
-
-  case HTTP2_STREAM_STATE_HALF_CLOSED_LOCAL:
-    // Currently ATS supports only HTTP/2 server features
-    return false;
-
-  case HTTP2_STREAM_STATE_HALF_CLOSED_REMOTE:
-    if (type == HTTP2_FRAME_TYPE_RST_STREAM || (type == HTTP2_FRAME_TYPE_HEADERS && flags & HTTP2_FLAGS_HEADERS_END_STREAM) ||
-        (type == HTTP2_FRAME_TYPE_DATA && flags & HTTP2_FLAGS_DATA_END_STREAM)) {
-      _state = HTTP2_STREAM_STATE_CLOSED;
-    } else {
-      return false;
-    }
-    break;
-
-  case HTTP2_STREAM_STATE_CLOSED:
-    // No state changing
-    return false;
-
-  default:
-    return false;
-  }
-
-  return true;
-}

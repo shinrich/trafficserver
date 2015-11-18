@@ -40,6 +40,12 @@ static char const *const HTTP2_STAT_TOTAL_TRANSACTIONS_TIME_NAME = "proxy.proces
 static char const *const HTTP2_STAT_TOTAL_CLIENT_CONNECTION_NAME = "proxy.process.http2.total_client_connections";
 static char const *const HTTP2_STAT_CONNECTION_ERRORS_NAME = "proxy.process.http2.connection_errors";
 static char const *const HTTP2_STAT_STREAM_ERRORS_NAME = "proxy.process.http2.stream_errors";
+static char const *const HTTP2_STAT_SESSION_DIE_DEFAULT_NAME = "proxy.process.http2.session_die_default";
+static char const *const HTTP2_STAT_SESSION_DIE_OTHER_NAME = "proxy.process.http2.session_die_other";
+static char const *const HTTP2_STAT_SESSION_DIE_ACTIVE_NAME = "proxy.process.http2.session_die_active";
+static char const *const HTTP2_STAT_SESSION_DIE_INACTIVE_NAME = "proxy.process.http2.session_die_inactive";
+static char const *const HTTP2_STAT_SESSION_DIE_EOS_NAME = "proxy.process.http2.session_die_eos";
+static char const *const HTTP2_STAT_SESSION_DIE_ERROR_NAME = "proxy.process.http2.session_die_error";
 
 union byte_pointer {
   byte_pointer(void *p) : ptr(p) {}
@@ -105,25 +111,22 @@ memcpy_and_advance(uint8_t(&dst), byte_pointer &src)
 }
 
 static bool
-http2_are_frame_flags_valid(uint8_t ftype, uint8_t fflags)
+http2_frame_flags_are_valid(uint8_t ftype, uint8_t fflags)
 {
-  static const uint8_t mask[HTTP2_FRAME_TYPE_MAX] = {
-    HTTP2_FLAGS_DATA_MASK,          HTTP2_FLAGS_HEADERS_MASK,      HTTP2_FLAGS_PRIORITY_MASK, HTTP2_FLAGS_RST_STREAM_MASK,
-    HTTP2_FLAGS_SETTINGS_MASK,      HTTP2_FLAGS_PUSH_PROMISE_MASK, HTTP2_FLAGS_PING_MASK,     HTTP2_FLAGS_GOAWAY_MASK,
-    HTTP2_FLAGS_WINDOW_UPDATE_MASK, HTTP2_FLAGS_CONTINUATION_MASK,
-  };
+  if (ftype >= HTTP2_FRAME_TYPE_MAX) {
+    // Skip validation for Unkown frame type - [RFC 7540] 5.5. Extending HTTP/2
+    return true;
+  }
 
-  // The frame flags are valid for this frame if nothing outside the defined
-  // bits is set.
-  return (fflags & ~mask[ftype]) == 0;
+  // The frame flags are valid for this frame if nothing outside the defined bits is set.
+  return (fflags & ~HTTP2_FRAME_FLAGS_MASKS[ftype]) == 0;
 }
 
 bool
 http2_frame_header_is_valid(const Http2FrameHeader &hdr, unsigned max_frame_size)
 {
-  if (!http2_are_frame_flags_valid(hdr.type, hdr.flags)) {
-    // XXX not working right now
-    // return false;
+  if (!http2_frame_flags_are_valid(hdr.type, hdr.flags)) {
+    return false;
   }
 
   // 6.1 If a DATA frame is received whose stream identifier field is 0x0, the recipient MUST
@@ -563,7 +566,7 @@ http2_write_psuedo_headers(HTTPHdr *in, uint8_t *out, uint64_t out_len, Http2Dyn
     // Add 'Status:' dummy header field
     MIMEField *status_field = mime_field_create(in->m_heap, in->m_http->m_fields_impl);
     mime_field_name_value_set(in->m_heap, in->m_mime, status_field, -1, HPACK_VALUE_STATUS, HPACK_LEN_STATUS, status_str,
-                              HPACK_LEN_STATUS_VALUE_STR, true, HPACK_LEN_STATUS + HPACK_LEN_STATUS_VALUE_STR, 0);
+                              HPACK_LEN_STATUS_VALUE_STR, 0, HPACK_LEN_STATUS + HPACK_LEN_STATUS_VALUE_STR, true);
     mime_hdr_field_attach(in->m_mime, status_field, 1, NULL);
 
     // Encode psuedo headers by HPACK
@@ -745,7 +748,8 @@ http2_decode_header_blocks(HTTPHdr *hdr, const uint8_t *buf_start, const uint8_t
 
 // Initialize this subsystem with librecords configs (for now)
 uint32_t Http2::max_concurrent_streams = 100;
-uint32_t Http2::initial_window_size = 1048576;
+uint32_t Http2::initial_window_size = 65535; // section 6.5.2 of the HTTP2 spec defines this value
+//uint32_t Http2::initial_window_size = 1048576;
 uint32_t Http2::max_frame_size = 16384;
 uint32_t Http2::header_table_size = 4096;
 uint32_t Http2::max_header_list_size = 4294967295;
@@ -788,6 +792,18 @@ Http2::init()
                      static_cast<int>(HTTP2_STAT_CONNECTION_ERRORS_COUNT), RecRawStatSyncSum);
   RecRegisterRawStat(http2_rsb, RECT_PROCESS, HTTP2_STAT_STREAM_ERRORS_NAME, RECD_INT, RECP_PERSISTENT,
                      static_cast<int>(HTTP2_STAT_STREAM_ERRORS_COUNT), RecRawStatSyncSum);
+  RecRegisterRawStat(http2_rsb, RECT_PROCESS, HTTP2_STAT_SESSION_DIE_DEFAULT_NAME, RECD_INT, RECP_PERSISTENT,
+                     static_cast<int>(HTTP2_STAT_SESSION_DIE_DEFAULT), RecRawStatSyncSum);
+  RecRegisterRawStat(http2_rsb, RECT_PROCESS, HTTP2_STAT_SESSION_DIE_OTHER_NAME, RECD_INT, RECP_PERSISTENT,
+                     static_cast<int>(HTTP2_STAT_SESSION_DIE_OTHER), RecRawStatSyncSum);
+  RecRegisterRawStat(http2_rsb, RECT_PROCESS, HTTP2_STAT_SESSION_DIE_EOS_NAME, RECD_INT, RECP_PERSISTENT,
+                     static_cast<int>(HTTP2_STAT_SESSION_DIE_EOS), RecRawStatSyncSum);
+  RecRegisterRawStat(http2_rsb, RECT_PROCESS, HTTP2_STAT_SESSION_DIE_ACTIVE_NAME, RECD_INT, RECP_PERSISTENT,
+                     static_cast<int>(HTTP2_STAT_SESSION_DIE_ACTIVE), RecRawStatSyncSum);
+  RecRegisterRawStat(http2_rsb, RECT_PROCESS, HTTP2_STAT_SESSION_DIE_INACTIVE_NAME, RECD_INT, RECP_PERSISTENT,
+                     static_cast<int>(HTTP2_STAT_SESSION_DIE_INACTIVE), RecRawStatSyncSum);
+  RecRegisterRawStat(http2_rsb, RECT_PROCESS, HTTP2_STAT_SESSION_DIE_ERROR_NAME, RECD_INT, RECP_PERSISTENT,
+                     static_cast<int>(HTTP2_STAT_SESSION_DIE_ERROR), RecRawStatSyncSum);
 }
 
 #if TS_HAS_TESTS
@@ -1022,7 +1038,7 @@ REGRESSION_TEST(HPACK_Encode)(RegressionTest *t, int, int *pstatus)
 
       MIMEField *field = mime_field_create(headers->m_heap, headers->m_http->m_fields_impl);
       mime_field_name_value_set(headers->m_heap, headers->m_http->m_fields_impl, field, -1, expected_name, strlen(expected_name),
-                                expected_value, strlen(expected_value), true, strlen(expected_name) + strlen(expected_value), 1);
+                                expected_value, strlen(expected_value), 1, strlen(expected_name) + strlen(expected_value), true);
       mime_hdr_field_attach(headers->m_http->m_fields_impl, field, 1, NULL);
     }
 
@@ -1175,6 +1191,130 @@ REGRESSION_TEST(HPACK_Decode)(RegressionTest *t, int, int *pstatus)
                   "A MIMEField that has \"%s\" as value doesn't exist", expected_value);
       }
     }
+  }
+}
+
+/***********************************************************************************
+ *                                                                                 *
+ *                       Regression test for HTTP/2                                *
+ *                                                                                 *
+ ***********************************************************************************/
+
+
+const static struct {
+  uint8_t ftype;
+  uint8_t fflags;
+  bool valid;
+} http2_frame_flags_test_case[] = {{HTTP2_FRAME_TYPE_DATA, 0x00, true},
+                                   {HTTP2_FRAME_TYPE_DATA, 0x01, true},
+                                   {HTTP2_FRAME_TYPE_DATA, 0x02, false},
+                                   {HTTP2_FRAME_TYPE_DATA, 0x04, false},
+                                   {HTTP2_FRAME_TYPE_DATA, 0x08, true},
+                                   {HTTP2_FRAME_TYPE_DATA, 0x10, false},
+                                   {HTTP2_FRAME_TYPE_DATA, 0x20, false},
+                                   {HTTP2_FRAME_TYPE_DATA, 0x40, false},
+                                   {HTTP2_FRAME_TYPE_DATA, 0x80, false},
+                                   {HTTP2_FRAME_TYPE_HEADERS, 0x00, true},
+                                   {HTTP2_FRAME_TYPE_HEADERS, 0x01, true},
+                                   {HTTP2_FRAME_TYPE_HEADERS, 0x02, false},
+                                   {HTTP2_FRAME_TYPE_HEADERS, 0x04, true},
+                                   {HTTP2_FRAME_TYPE_HEADERS, 0x08, true},
+                                   {HTTP2_FRAME_TYPE_HEADERS, 0x10, false},
+                                   {HTTP2_FRAME_TYPE_HEADERS, 0x20, true},
+                                   {HTTP2_FRAME_TYPE_HEADERS, 0x40, false},
+                                   {HTTP2_FRAME_TYPE_HEADERS, 0x80, false},
+                                   {HTTP2_FRAME_TYPE_PRIORITY, 0x00, true},
+                                   {HTTP2_FRAME_TYPE_PRIORITY, 0x01, false},
+                                   {HTTP2_FRAME_TYPE_PRIORITY, 0x02, false},
+                                   {HTTP2_FRAME_TYPE_PRIORITY, 0x04, false},
+                                   {HTTP2_FRAME_TYPE_PRIORITY, 0x08, false},
+                                   {HTTP2_FRAME_TYPE_PRIORITY, 0x10, false},
+                                   {HTTP2_FRAME_TYPE_PRIORITY, 0x20, false},
+                                   {HTTP2_FRAME_TYPE_PRIORITY, 0x40, false},
+                                   {HTTP2_FRAME_TYPE_PRIORITY, 0x80, false},
+                                   {HTTP2_FRAME_TYPE_RST_STREAM, 0x00, true},
+                                   {HTTP2_FRAME_TYPE_RST_STREAM, 0x01, false},
+                                   {HTTP2_FRAME_TYPE_RST_STREAM, 0x02, false},
+                                   {HTTP2_FRAME_TYPE_RST_STREAM, 0x04, false},
+                                   {HTTP2_FRAME_TYPE_RST_STREAM, 0x08, false},
+                                   {HTTP2_FRAME_TYPE_RST_STREAM, 0x10, false},
+                                   {HTTP2_FRAME_TYPE_RST_STREAM, 0x20, false},
+                                   {HTTP2_FRAME_TYPE_RST_STREAM, 0x40, false},
+                                   {HTTP2_FRAME_TYPE_RST_STREAM, 0x80, false},
+                                   {HTTP2_FRAME_TYPE_SETTINGS, 0x00, true},
+                                   {HTTP2_FRAME_TYPE_SETTINGS, 0x01, true},
+                                   {HTTP2_FRAME_TYPE_SETTINGS, 0x02, false},
+                                   {HTTP2_FRAME_TYPE_SETTINGS, 0x04, false},
+                                   {HTTP2_FRAME_TYPE_SETTINGS, 0x08, false},
+                                   {HTTP2_FRAME_TYPE_SETTINGS, 0x10, false},
+                                   {HTTP2_FRAME_TYPE_SETTINGS, 0x20, false},
+                                   {HTTP2_FRAME_TYPE_SETTINGS, 0x40, false},
+                                   {HTTP2_FRAME_TYPE_SETTINGS, 0x80, false},
+                                   {HTTP2_FRAME_TYPE_PUSH_PROMISE, 0x00, true},
+                                   {HTTP2_FRAME_TYPE_PUSH_PROMISE, 0x01, false},
+                                   {HTTP2_FRAME_TYPE_PUSH_PROMISE, 0x02, false},
+                                   {HTTP2_FRAME_TYPE_PUSH_PROMISE, 0x04, true},
+                                   {HTTP2_FRAME_TYPE_PUSH_PROMISE, 0x08, true},
+                                   {HTTP2_FRAME_TYPE_PUSH_PROMISE, 0x10, false},
+                                   {HTTP2_FRAME_TYPE_PUSH_PROMISE, 0x20, false},
+                                   {HTTP2_FRAME_TYPE_PUSH_PROMISE, 0x40, false},
+                                   {HTTP2_FRAME_TYPE_PUSH_PROMISE, 0x80, false},
+                                   {HTTP2_FRAME_TYPE_PING, 0x00, true},
+                                   {HTTP2_FRAME_TYPE_PING, 0x01, true},
+                                   {HTTP2_FRAME_TYPE_PING, 0x02, false},
+                                   {HTTP2_FRAME_TYPE_PING, 0x04, false},
+                                   {HTTP2_FRAME_TYPE_PING, 0x08, false},
+                                   {HTTP2_FRAME_TYPE_PING, 0x10, false},
+                                   {HTTP2_FRAME_TYPE_PING, 0x20, false},
+                                   {HTTP2_FRAME_TYPE_PING, 0x40, false},
+                                   {HTTP2_FRAME_TYPE_PING, 0x80, false},
+                                   {HTTP2_FRAME_TYPE_GOAWAY, 0x00, true},
+                                   {HTTP2_FRAME_TYPE_GOAWAY, 0x01, false},
+                                   {HTTP2_FRAME_TYPE_GOAWAY, 0x02, false},
+                                   {HTTP2_FRAME_TYPE_GOAWAY, 0x04, false},
+                                   {HTTP2_FRAME_TYPE_GOAWAY, 0x08, false},
+                                   {HTTP2_FRAME_TYPE_GOAWAY, 0x10, false},
+                                   {HTTP2_FRAME_TYPE_GOAWAY, 0x20, false},
+                                   {HTTP2_FRAME_TYPE_GOAWAY, 0x40, false},
+                                   {HTTP2_FRAME_TYPE_GOAWAY, 0x80, false},
+                                   {HTTP2_FRAME_TYPE_WINDOW_UPDATE, 0x00, true},
+                                   {HTTP2_FRAME_TYPE_WINDOW_UPDATE, 0x01, false},
+                                   {HTTP2_FRAME_TYPE_WINDOW_UPDATE, 0x02, false},
+                                   {HTTP2_FRAME_TYPE_WINDOW_UPDATE, 0x04, false},
+                                   {HTTP2_FRAME_TYPE_WINDOW_UPDATE, 0x08, false},
+                                   {HTTP2_FRAME_TYPE_WINDOW_UPDATE, 0x10, false},
+                                   {HTTP2_FRAME_TYPE_WINDOW_UPDATE, 0x20, false},
+                                   {HTTP2_FRAME_TYPE_WINDOW_UPDATE, 0x40, false},
+                                   {HTTP2_FRAME_TYPE_WINDOW_UPDATE, 0x80, false},
+                                   {HTTP2_FRAME_TYPE_CONTINUATION, 0x00, true},
+                                   {HTTP2_FRAME_TYPE_CONTINUATION, 0x01, false},
+                                   {HTTP2_FRAME_TYPE_CONTINUATION, 0x02, false},
+                                   {HTTP2_FRAME_TYPE_CONTINUATION, 0x04, true},
+                                   {HTTP2_FRAME_TYPE_CONTINUATION, 0x08, false},
+                                   {HTTP2_FRAME_TYPE_CONTINUATION, 0x10, false},
+                                   {HTTP2_FRAME_TYPE_CONTINUATION, 0x20, false},
+                                   {HTTP2_FRAME_TYPE_CONTINUATION, 0x40, false},
+                                   {HTTP2_FRAME_TYPE_CONTINUATION, 0x80, false},
+                                   {HTTP2_FRAME_TYPE_MAX, 0x00, true},
+                                   {HTTP2_FRAME_TYPE_MAX, 0x01, true},
+                                   {HTTP2_FRAME_TYPE_MAX, 0x02, true},
+                                   {HTTP2_FRAME_TYPE_MAX, 0x04, true},
+                                   {HTTP2_FRAME_TYPE_MAX, 0x08, true},
+                                   {HTTP2_FRAME_TYPE_MAX, 0x10, true},
+                                   {HTTP2_FRAME_TYPE_MAX, 0x20, true},
+                                   {HTTP2_FRAME_TYPE_MAX, 0x40, true},
+                                   {HTTP2_FRAME_TYPE_MAX, 0x80, true}};
+
+REGRESSION_TEST(HTTP2_FRAME_FLAGS)(RegressionTest *t, int, int *pstatus)
+{
+  TestBox box(t, pstatus);
+  box = REGRESSION_TEST_PASSED;
+
+  for (unsigned int i = 0; i < sizeof(http2_frame_flags_test_case) / sizeof(http2_frame_flags_test_case[0]); ++i) {
+    box.check(http2_frame_flags_are_valid(http2_frame_flags_test_case[i].ftype, http2_frame_flags_test_case[i].fflags) ==
+                http2_frame_flags_test_case[i].valid,
+              "Validation of frame flags (type: %d, flags: %d) are expected %d, but not", http2_frame_flags_test_case[i].ftype,
+              http2_frame_flags_test_case[i].fflags, http2_frame_flags_test_case[i].valid);
   }
 }
 

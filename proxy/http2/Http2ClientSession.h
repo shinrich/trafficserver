@@ -40,7 +40,7 @@
 #define HTTP2_SESSION_EVENT_RECV (HTTP2_SESSION_EVENTS_START + 3)
 #define HTTP2_SESSION_EVENT_XMIT (HTTP2_SESSION_EVENTS_START + 4)
 
-static size_t const HTTP2_HEADER_BUFFER_SIZE_INDEX = CLIENT_CONNECTION_FIRST_READ_BUFFER_SIZE_INDEX;
+size_t const HTTP2_HEADER_BUFFER_SIZE_INDEX = CLIENT_CONNECTION_FIRST_READ_BUFFER_SIZE_INDEX;
 
 // To support Upgrade: h2c
 struct Http2UpgradeContext {
@@ -175,12 +175,6 @@ public:
     client_vc = NULL;
   }
 
-  int64_t
-  connection_id() const
-  {
-    return this->con_id;
-  }
-
   sockaddr const *
   get_client_addr()
   {
@@ -203,6 +197,18 @@ public:
   virtual char const* getPluginTag() const;
   virtual int64_t getPluginId() const;
 
+  virtual int get_transact_count() const
+  {
+    return (int)con_id;
+  }
+  virtual void release(ProxyClientTransaction *trans)
+  { 
+  }
+
+  Http2ConnectionState connection_state;
+  void set_dying_event(int event) { dying_event = event; }
+  int get_dying_event() const { return dying_event; }
+
 private:
   Http2ClientSession(Http2ClientSession &);                  // noncopyable
   Http2ClientSession &operator=(const Http2ClientSession &); // noncopyable
@@ -213,7 +219,6 @@ private:
   int state_start_frame_read(int, void *);
   int state_complete_frame_read(int, void *);
 
-  int64_t con_id;
   SessionHandler session_handler;
   NetVConnection *client_vc;
   MIOBuffer *read_buffer;
@@ -221,12 +226,12 @@ private:
   MIOBuffer *write_buffer;
   IOBufferReader *sm_writer;
   Http2FrameHeader current_hdr;
-  Http2ConnectionState connection_state;
 
   // For Upgrade: h2c
   Http2UpgradeContext upgrade_context;
 
   VIO *write_vio;
+  int dying_event;
 };
 
 extern ClassAllocator<Http2ClientSession> http2ClientSessionAllocator;

@@ -32,7 +32,7 @@
 #include "URL.h"
 #include "MIME.h"
 #include "HTTP.h"
-#include "HttpClientSession.h"
+#include "ProxyClientSession.h"
 #include "Http2ClientSession.h"
 #include "HttpServerSession.h"
 #include "HttpSM.h"
@@ -966,24 +966,25 @@ INKContInternal::destroy()
   } else {
     // TODO: Should this schedule on some other "thread" ?
     // TODO: we don't care about the return action?
-    TSContSchedule((TSCont) this, 0, TS_THREAD_POOL_DEFAULT);
+    //TSContSchedule((TSCont) this, 0, TS_THREAD_POOL_DEFAULT);
+    this_ethread()->schedule_imm(this);
+    //if (m_event_count <= 0) 
+    {
+      Warning("INKCont not deletable %d %p", m_event_count, this);
+    }
   }
 }
 
 void
 INKContInternal::handle_event_count(int event)
 {
-  if ((event == EVENT_IMMEDIATE) || (event == EVENT_INTERVAL)) {
-    int val;
-
-    m_deletable = (m_closed != 0);
-
-    val = ink_atomic_increment((int *)&m_event_count, -1);
+  if ((event == EVENT_IMMEDIATE) || (event == EVENT_INTERVAL) || event == TS_EVENT_HTTP_TXN_CLOSE) {
+    int val = ink_atomic_increment((int *)&m_event_count, -1);
     if (val <= 0) {
       ink_assert(!"not reached");
     }
 
-    m_deletable = m_deletable && (val == 1);
+    m_deletable = (m_closed != 0) && (val == 1);
   }
 }
 
@@ -999,6 +1000,8 @@ INKContInternal::handle_event(int event, void *edata)
       this->mutex = NULL;
       m_free_magic = INKCONT_INTERN_MAGIC_DEAD;
       INKContAllocator.free(this);
+    } else {
+      Warning("INKCont Deletable but not deleted %d", m_event_count);
     }
   } else {
     return m_event_func((TSCont) this, (TSEvent)event, edata);
@@ -1214,7 +1217,7 @@ INKVConnInternal::set_data(int id, void *data)
 int
 APIHook::invoke(int event, void *edata)
 {
-  if ((event == EVENT_IMMEDIATE) || (event == EVENT_INTERVAL)) {
+  if ((event == EVENT_IMMEDIATE) || (event == EVENT_INTERVAL) || event == TS_EVENT_HTTP_TXN_CLOSE) {
     if (ink_atomic_increment((int *)&m_cont->m_event_count, 1) < 0) {
       ink_assert(!"not reached");
     }
@@ -4425,7 +4428,7 @@ TSHttpSsnHookAdd(TSHttpSsn ssnp, TSHttpHookID id, TSCont contp)
   sdk_assert(sdk_sanity_check_continuation(contp) == TS_SUCCESS);
   sdk_assert(sdk_sanity_check_hook_id(id) == TS_SUCCESS);
 
-  HttpClientSession *cs = (HttpClientSession *)ssnp;
+  ProxyClientSession *cs = reinterpret_cast<ProxyClientSession *>(ssnp);
   cs->ssn_hook_append(id, (INKContInternal *)contp);
 }
 
@@ -4434,14 +4437,14 @@ TSHttpSsnTransactionCount(TSHttpSsn ssnp)
 {
   sdk_assert(sdk_sanity_check_http_ssn(ssnp) == TS_SUCCESS);
 
-  HttpClientSession *cs = (HttpClientSession *)ssnp;
+  ProxyClientSession *cs = reinterpret_cast<ProxyClientSession *>(ssnp);
   return cs->get_transact_count();
 }
 
 class TSHttpSsnCallback : public Continuation
 {
 public:
-  TSHttpSsnCallback(HttpClientSession *cs, TSEvent event) : Continuation(cs->mutex), m_cs(cs), m_event(event)
+  TSHttpSsnCallback(ProxyClientSession *cs, TSEvent event) : Continuation(cs->mutex), m_cs(cs), m_event(event)
   {
     SET_HANDLER(&TSHttpSsnCallback::event_handler);
   }
@@ -4455,7 +4458,7 @@ public:
   }
 
 private:
-  HttpClientSession *m_cs;
+  ProxyClientSession *m_cs;
   TSEvent m_event;
 };
 
@@ -4465,7 +4468,7 @@ TSHttpSsnReenable(TSHttpSsn ssnp, TSEvent event)
 {
   sdk_assert(sdk_sanity_check_http_ssn(ssnp) == TS_SUCCESS);
 
-  HttpClientSession *cs = (HttpClientSession *)ssnp;
+  ProxyClientSession *cs = reinterpret_cast<ProxyClientSession *>(ssnp);
   EThread *eth = this_ethread();
 
   // If this function is being executed on a thread created by the API
@@ -4520,8 +4523,8 @@ TSHttpTxnSsnGet(TSHttpTxn txnp)
 {
   sdk_assert(sdk_sanity_check_txn(txnp) == TS_SUCCESS);
 
-  HttpSM *sm = (HttpSM *)txnp;
-  return (TSHttpSsn)sm->ua_session;
+  HttpSM *sm = reinterpret_cast<HttpSM *>(txnp);
+  return reinterpret_cast<TSHttpSsn>(sm->ua_session ? sm->ua_session->get_parent() : NULL);
 }
 
 // TODO: Is this still necessary ??
@@ -5223,7 +5226,7 @@ TSHttpSsnSSLConnectionGet(TSHttpSsn ssnp)
 {
   sdk_assert(sdk_sanity_check_null_ptr((void *)ssnp) == TS_SUCCESS);
 
-  HttpClientSession *cs = reinterpret_cast<HttpClientSession *>(ssnp);
+  ProxyClientSession *cs = reinterpret_cast<ProxyClientSession *>(ssnp);
   if (cs == NULL) {
     return NULL;
   }
@@ -5239,7 +5242,7 @@ TSHttpSsnSSLConnectionGet(TSHttpSsn ssnp)
 sockaddr const *
 TSHttpSsnClientAddrGet(TSHttpSsn ssnp)
 {
-  HttpClientSession *cs = reinterpret_cast<HttpClientSession *>(ssnp);
+  ProxyClientSession *cs = reinterpret_cast<ProxyClientSession *>(ssnp);
 
   if (cs == NULL)
     return 0;
@@ -5262,7 +5265,7 @@ TSHttpTxnClientAddrGet(TSHttpTxn txnp)
 sockaddr const *
 TSHttpSsnIncomingAddrGet(TSHttpSsn ssnp)
 {
-  HttpClientSession *cs = reinterpret_cast<HttpClientSession *>(ssnp);
+  ProxyClientSession *cs = reinterpret_cast<ProxyClientSession *>(ssnp);
 
   if (cs == NULL)
     return 0;
@@ -5344,16 +5347,8 @@ TSHttpTxnOutgoingAddrSet(TSHttpTxn txnp, const struct sockaddr *addr)
   sdk_assert(sdk_sanity_check_txn(txnp) == TS_SUCCESS);
   HttpSM *sm = (HttpSM *)txnp;
 
-  sm->ua_session->outbound_port = ats_ip_port_host_order(addr);
-
-  if (ats_is_ip4(addr)) {
-    sm->ua_session->outbound_ip4.assign(addr);
-  } else if (ats_is_ip6(addr)) {
-    sm->ua_session->outbound_ip6.assign(addr);
-  } else {
-    sm->ua_session->outbound_ip4.invalidate();
-    sm->ua_session->outbound_ip6.invalidate();
-  }
+  sm->ua_session->set_outbound_port(ats_ip_port_host_order(addr));
+  sm->ua_session->set_outbound_ip(IpAddr(addr));
   return TS_ERROR;
 }
 
@@ -5384,7 +5379,7 @@ TSHttpTxnOutgoingTransparencySet(TSHttpTxn txnp, int flag)
     return TS_ERROR;
   }
 
-  sm->ua_session->f_outbound_transparent = flag;
+  sm->ua_session->set_outbound_transparent(flag);
   return TS_SUCCESS;
 }
 
@@ -5730,7 +5725,7 @@ TSHttpSsnArgSet(TSHttpSsn ssnp, int arg_idx, void *arg)
   sdk_assert(sdk_sanity_check_http_ssn(ssnp) == TS_SUCCESS);
   sdk_assert(arg_idx >= 0 && arg_idx < HTTP_SSN_TXN_MAX_USER_ARG);
 
-  HttpClientSession *cs = (HttpClientSession *)ssnp;
+  ProxyClientSession *cs = reinterpret_cast<ProxyClientSession *>(ssnp);
 
   cs->set_user_arg(arg_idx, arg);
 }
@@ -5741,7 +5736,7 @@ TSHttpSsnArgGet(TSHttpSsn ssnp, int arg_idx)
   sdk_assert(sdk_sanity_check_http_ssn(ssnp) == TS_SUCCESS);
   sdk_assert(arg_idx >= 0 && arg_idx < HTTP_SSN_TXN_MAX_USER_ARG);
 
-  HttpClientSession *cs = (HttpClientSession *)ssnp;
+  ProxyClientSession *cs = reinterpret_cast<ProxyClientSession *>(ssnp);
   return cs->get_user_arg(arg_idx);
 }
 
@@ -5846,14 +5841,14 @@ void
 TSHttpSsnDebugSet(TSHttpSsn ssnp, int on)
 {
   sdk_assert(sdk_sanity_check_http_ssn(ssnp) == TS_SUCCESS);
-  ((HttpClientSession *)ssnp)->debug_on = on;
+  (reinterpret_cast<ProxyClientSession *>(ssnp))->debug_on = on;
 }
 
 int
 TSHttpSsnDebugGet(TSHttpSsn ssnp)
 {
   sdk_assert(sdk_sanity_check_http_ssn(ssnp) == TS_SUCCESS);
-  return ((HttpClientSession *)ssnp)->debug();
+  return (reinterpret_cast<ProxyClientSession *>(ssnp))->debug();
 }
 
 int
@@ -7453,7 +7448,7 @@ TSFetchRespHdrMLocGet(TSFetchSM fetch_sm)
 TSReturnCode
 TSHttpIsInternalSession(TSHttpSsn ssnp)
 {
-  HttpClientSession *cs = (HttpClientSession *)ssnp;
+  ProxyClientSession *cs = reinterpret_cast<ProxyClientSession *>(ssnp);
   if (!cs) {
     return TS_ERROR;
   }
