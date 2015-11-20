@@ -163,9 +163,17 @@ SSL_pthreads_thread_id()
 }
 
 static void
-SSL_locking_callback(int mode, int type, const char * /* file ATS_UNUSED */, int /* line ATS_UNUSED */)
+SSL_locking_callback(int mode, int type, const char *file, int line)
 {
+  Debug("ssl_lock", "file: %s line: %d type: %d", file, line, type);
   ink_assert(type < CRYPTO_num_locks());
+
+#ifdef OPENSSL_FIPS
+  // don't need to lock for FIPS if it has POSTed and we are not going to change the mode on the fly
+  if (type == CRYPTO_LOCK_FIPS || type == CRYPTO_LOCK_FIPS2) {
+    return;
+  }
+#endif
 
   if (mode & CRYPTO_LOCK) {
     pthread_mutex_lock(&mutex_buf[type]);
@@ -176,6 +184,7 @@ SSL_locking_callback(int mode, int type, const char * /* file ATS_UNUSED */, int
     ink_assert(0);
   }
 }
+
 
 static bool
 SSL_CTX_add_extra_chain_cert_file(SSL_CTX *ctx, const char *chainfile)
@@ -785,6 +794,14 @@ SSLInitializeLibrary()
 
     SSL_load_error_strings();
     SSL_library_init();
+
+#ifdef OPENSSL_FIPS
+    // calling FIPS_mode_set() will force FIPS to POST (Power On Self Test)
+    // After POST we don't have to lock for FIPS
+    int mode = FIPS_mode();
+    FIPS_mode_set(mode);
+    Debug("ssl", "FIPS_mode: %d", mode);
+#endif
 
     mutex_buf = (pthread_mutex_t *)OPENSSL_malloc(CRYPTO_num_locks() * sizeof(pthread_mutex_t));
 
