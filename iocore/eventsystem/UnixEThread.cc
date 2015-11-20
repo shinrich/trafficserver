@@ -41,21 +41,19 @@ struct AIOCallback;
 #define NO_ETHREAD_ID -1
 
 // !! THIS MUST BE IN THE ENUM ORDER !!
-char const * const EThread::STAT_NAME[] = {
-  "proxy.process.eventloop.count",
-  "proxy.process.eventloop.events",
-  "proxy.process.eventloop.events.min",
-  "proxy.process.eventloop.events.max",
-  "proxy.process.eventloop.wait",
-  "proxy.process.eventloop.time.min",
+char const *const EThread::STAT_NAME[] = {
+  "proxy.process.eventloop.count",      "proxy.process.eventloop.events", "proxy.process.eventloop.events.min",
+  "proxy.process.eventloop.events.max", "proxy.process.eventloop.wait",   "proxy.process.eventloop.time.min",
   "proxy.process.eventloop.time.max",
 };
 
-int const EThread::SAMPLE_COUNT[N_EVENT_TIMESCALES] = { 10, 100, 1000 };
+int const EThread::SAMPLE_COUNT[N_EVENT_TIMESCALES] = {10, 100, 1000};
 
 EThread::EThread()
   : generator((uint64_t)ink_get_hrtime_internal() ^ (uint64_t)(uintptr_t) this), ethreads_to_be_signalled(NULL),
-    n_ethreads_to_be_signalled(0), main_accept_index(-1), id(NO_ETHREAD_ID), event_types(0), tt(REGULAR), current_metric(metrics + (ink_get_hrtime_internal() / HRTIME_SECOND) % N_EVENT_METRICS)
+    n_ethreads_to_be_signalled(0), main_accept_index(-1), id(NO_ETHREAD_ID), event_types(0), tail_cb(&default_tail_handler),
+    tt(REGULAR), server_session_pool(NULL), default_tail_handler(EventQueueExternal),
+    current_metric(metrics + (ink_get_hrtime_internal() / HRTIME_SECOND) % N_EVENT_METRICS)
 
 {
   memset(thread_private, 0, PER_THREAD_DATA);
@@ -63,8 +61,9 @@ EThread::EThread()
 
 EThread::EThread(ThreadType att, int anid)
   : generator((uint64_t)ink_get_hrtime_internal() ^ (uint64_t)(uintptr_t) this), ethreads_to_be_signalled(NULL),
-    n_ethreads_to_be_signalled(0), main_accept_index(-1), id(anid), event_types(0), tt(att),
-    server_session_pool(NULL), current_metric(metrics + (ink_get_hrtime_internal() / HRTIME_SECOND) % N_EVENT_METRICS)
+    n_ethreads_to_be_signalled(0), main_accept_index(-1), id(anid), event_types(0), tail_cb(&default_tail_handler), tt(att),
+    server_session_pool(NULL), default_tail_handler(EventQueueExternal),
+    current_metric(metrics + (ink_get_hrtime_internal() / HRTIME_SECOND) % N_EVENT_METRICS)
 
 {
   ethreads_to_be_signalled = (EThread **)ats_malloc(MAX_EVENT_THREADS * sizeof(EThread *));
@@ -93,14 +92,12 @@ EThread::EThread(ThreadType att, int anid)
   fcntl(evpipe[1], F_SETFD, FD_CLOEXEC);
   fcntl(evpipe[1], F_SETFL, O_NONBLOCK);
 #endif
-
-  // Set default tail handling of event loop.
-  this->set_tail_handling(&EventQueueExternal, &ProtectedQueue::wait, &EventQueueExternal, &ProtectedQueue::signal);
 }
 
 EThread::EThread(ThreadType att, Event *e)
   : generator((uint32_t)((uintptr_t)time(NULL) ^ (uintptr_t) this)), ethreads_to_be_signalled(NULL), n_ethreads_to_be_signalled(0),
-    main_accept_index(-1), id(NO_ETHREAD_ID), event_types(0), tt(att), oneevent(e), current_metric(metrics + (ink_get_hrtime_internal() / HRTIME_SECOND) % N_EVENT_METRICS)
+    main_accept_index(-1), id(NO_ETHREAD_ID), event_types(0), tail_cb(&default_tail_handler), tt(att), oneevent(e),
+    server_session_pool(NULL), default_tail_handler(EventQueueExternal), current_metric(metrics + (ink_get_hrtime_internal() / HRTIME_SECOND) % N_EVENT_METRICS)
 
 {
   ink_assert(att == DEDICATED);
@@ -172,10 +169,12 @@ EThread::execute_regular()
   Event *e;
   Que(Event, link) NegativeQueue;
   ink_hrtime next_time = 0;
-  ink_hrtime delta = 0; // time spent in the event loop
-  ink_hrtime loop_start_time; // Time the loop started.
+  ink_hrtime delta = 0;        // time spent in the event loop
+  ink_hrtime loop_start_time;  // Time the loop started.
   ink_hrtime loop_finish_time; // Time at the end of the loop.
-  EventMetrics * prev_metric =  this->prev(metrics + (ink_get_based_hrtime_internal() / HRTIME_SECOND) % N_EVENT_METRICS); ///< Track this so we can update on boundary crossing.
+  EventMetrics *prev_metric = this->prev(metrics +
+                                         (ink_get_based_hrtime_internal() / HRTIME_SECOND) %
+                                           N_EVENT_METRICS); ///< Track this so we can update on boundary crossing.
   int nq_count = 0;
   int ev_count = 0;
   // A statically initialized instance we can use as a prototype for initializing other instances.
@@ -264,7 +263,7 @@ EThread::execute_regular()
     if (n_ethreads_to_be_signalled)
       flush_signals(this);
 
-    tail_cb(sleep_time);
+    tail_cb->waitForActivity(sleep_time);
 
     // loop cleanup
     loop_finish_time = this->update_hrtime();
@@ -321,8 +320,7 @@ EThread::execute()
   // coverity[missing_unlock]
 }
 
-EThread::EventMetrics&
-EThread::EventMetrics::operator += (EventMetrics const& that)
+EThread::EventMetrics &EThread::EventMetrics::operator+=(EventMetrics const &that)
 {
   this->_events._max = std::max(this->_events._max, that._events._max);
   this->_events._min = std::min(this->_events._min, that._events._min);
@@ -343,13 +341,15 @@ EThread::summarize_stats(EventMetrics summary[N_EVENT_TIMESCALES])
 
   // To avoid race conditions, we back up one from the current metric block. It's close enough
   // and won't be updated during the time this method runs so it should be thread safe.
-  EventMetrics* m = this->prev(current_metric);
+  EventMetrics *m = this->prev(current_metric);
 
-  for ( int t = 0 ; t < N_EVENT_TIMESCALES ; ++t ) {
+  for (int t = 0; t < N_EVENT_TIMESCALES; ++t) {
     int count = SAMPLE_COUNT[t];
-    if (t > 0) count -= SAMPLE_COUNT[t-1];
+    if (t > 0)
+      count -= SAMPLE_COUNT[t - 1];
     while (--count >= 0) {
-      if (0 != m->_loop_time._start) sum += *m;
+      if (0 != m->_loop_time._start)
+        sum += *m;
       m = this->prev(m);
     }
     summary[t] += sum; // push out to return vector.

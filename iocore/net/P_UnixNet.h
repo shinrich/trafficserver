@@ -179,7 +179,7 @@ struct PollCont : public Continuation {
 // A NetHandler handles the Network IO operations.  It maintains
 // lists of operations at multiples of it's periodicity.
 //
-class NetHandler : public Continuation
+class NetHandler : public Continuation, public EThread::LoopTailHandler
 {
 public:
   // @a thread and @a trigger_event are redundant - you can get the former from the latter.
@@ -200,13 +200,13 @@ public:
 
   int startNetEvent(int event, Event *data);
   int mainNetEvent(int event, Event *data);
-  void handleIO(ink_hrtime timeout);
+  int waitForActivity(ink_hrtime timeout);
   void process_enabled_list(NetHandler *);
 
-  NetHandler();
-
   /// Signal the epoll_wait to terminate.
-  void signal();
+  virtual void signalActivity();
+
+  NetHandler();
 };
 
 static inline NetHandler *

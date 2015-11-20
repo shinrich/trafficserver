@@ -828,8 +828,8 @@ UnixNetVConnection::reenable(VIO *vio)
           nh->write_enable_list.push(this);
         }
       }
-      if (nh->trigger_event && nh->trigger_event->ethread->tail_signal)
-        nh->trigger_event->ethread->tail_signal();
+      if (nh->trigger_event)
+        nh->trigger_event->ethread->tail_cb->signalActivity();
     } else {
       if (vio == &read.vio) {
         ep.modify(EVENTIO_READ);
