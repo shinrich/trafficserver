@@ -151,6 +151,7 @@ const char *MIME_FIELD_X_FORWARDED_FOR;
 const char *MIME_FIELD_SEC_WEBSOCKET_KEY;
 const char *MIME_FIELD_SEC_WEBSOCKET_VERSION;
 const char *MIME_FIELD_HTTP2_SETTINGS;
+const char *MIME_FIELD_HTTP2_NUM_REQUESTS;
 
 const char *MIME_VALUE_BYTES;
 const char *MIME_VALUE_CHUNKED;
@@ -266,6 +267,7 @@ int MIME_LEN_X_FORWARDED_FOR;
 int MIME_LEN_SEC_WEBSOCKET_KEY;
 int MIME_LEN_SEC_WEBSOCKET_VERSION;
 int MIME_LEN_HTTP2_SETTINGS;
+int MIME_LEN_HTTP2_NUM_REQUESTS;
 
 int MIME_WKSIDX_ACCEPT;
 int MIME_WKSIDX_ACCEPT_CHARSET;
@@ -344,6 +346,7 @@ int MIME_WKSIDX_X_FORWARDED_FOR;
 int MIME_WKSIDX_SEC_WEBSOCKET_KEY;
 int MIME_WKSIDX_SEC_WEBSOCKET_VERSION;
 int MIME_WKSIDX_HTTP2_SETTINGS;
+int MIME_WKSIDX_HTTP2_NUM_REQUESTS;
 
 /***********************************************************************
  *                                                                     *
@@ -720,6 +723,7 @@ mime_init()
     MIME_FIELD_SEC_WEBSOCKET_VERSION = hdrtoken_string_to_wks("Sec-WebSocket-Version");
 
     MIME_FIELD_HTTP2_SETTINGS = hdrtoken_string_to_wks("HTTP2-Settings");
+    MIME_FIELD_HTTP2_NUM_REQUESTS = hdrtoken_string_to_wks("@HTTP2-NRequests");
 
 
     MIME_LEN_ACCEPT = hdrtoken_wks_to_length(MIME_FIELD_ACCEPT);
@@ -801,6 +805,7 @@ mime_init()
     MIME_LEN_SEC_WEBSOCKET_VERSION = hdrtoken_wks_to_length(MIME_FIELD_SEC_WEBSOCKET_VERSION);
 
     MIME_LEN_HTTP2_SETTINGS = hdrtoken_wks_to_length(MIME_FIELD_HTTP2_SETTINGS);
+    MIME_LEN_HTTP2_NUM_REQUESTS = hdrtoken_wks_to_length(MIME_FIELD_HTTP2_NUM_REQUESTS);
 
 
     MIME_WKSIDX_ACCEPT = hdrtoken_wks_to_index(MIME_FIELD_ACCEPT);
@@ -879,6 +884,7 @@ mime_init()
     MIME_WKSIDX_SEC_WEBSOCKET_KEY = hdrtoken_wks_to_index(MIME_FIELD_SEC_WEBSOCKET_KEY);
     MIME_WKSIDX_SEC_WEBSOCKET_VERSION = hdrtoken_wks_to_index(MIME_FIELD_SEC_WEBSOCKET_VERSION);
     MIME_WKSIDX_HTTP2_SETTINGS = hdrtoken_wks_to_index(MIME_FIELD_HTTP2_SETTINGS);
+    MIME_WKSIDX_HTTP2_NUM_REQUESTS = hdrtoken_wks_to_index(MIME_FIELD_HTTP2_NUM_REQUESTS);
 
     MIME_VALUE_BYTES = hdrtoken_string_to_wks("bytes");
     MIME_VALUE_CHUNKED = hdrtoken_string_to_wks("chunked");

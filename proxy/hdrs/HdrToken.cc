@@ -94,7 +94,7 @@ static const char *_hdrtoken_strs[] = {
   "websocket", "Sec-WebSocket-Key", "Sec-WebSocket-Version",
 
   // HTTP/2 cleartext
-  MIME_UPGRADE_H2C_TOKEN, "HTTP2-Settings",
+  MIME_UPGRADE_H2C_TOKEN, "HTTP2-Settings", "@HTTP2-NRequests",
 
   // URL schemes
   "file", "ftp", "gopher", "https", "http", "mailto", "news", "nntp", "prospero", "telnet", "tunnel", "wais", "pnm", "rtspu",
@@ -336,7 +336,7 @@ static const char *_hdrtoken_commonly_tokenized_strs[] = {
   "websocket", "Sec-WebSocket-Key", "Sec-WebSocket-Version",
 
   // HTTP/2 cleartext
-  MIME_UPGRADE_H2C_TOKEN, "HTTP2-Settings",
+  MIME_UPGRADE_H2C_TOKEN, "HTTP2-Settings", "@HTTP2-NRequests",
 
   // URL schemes
   "file", "ftp", "gopher", "https", "http", "mailto", "news", "nntp", "prospero", "telnet", "tunnel", "wais", "pnm", "rtspu",
