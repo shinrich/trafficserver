@@ -6878,7 +6878,7 @@ HttpSM::update_stats()
           "dns_lookup_begin: %.3f "
           "dns_lookup_end: %.3f "
           "server_connect: %.3f "
-          "server_connect_end: %.3f"
+          "server_connect_end: %.3f "
           "server_first_read: %.3f "
           "server_read_header_done: %.3f "
           "server_close: %.3f "
