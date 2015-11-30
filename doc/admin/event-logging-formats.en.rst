@@ -519,6 +519,12 @@ The following list describes Traffic Server custom logging fields.
     connection reuse. This mirrors the behavior of the client-side boolean
     flag for connection reuse, ``cqtr``.
 
+.. _sscc:
+
+``sscc``
+    The number of open connections to specified origin at the time of 
+    connection establishment. 
+
 .. _ttms:
 
 ``ttms``
