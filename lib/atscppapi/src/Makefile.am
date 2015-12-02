@@ -19,7 +19,8 @@ AM_CPPFLAGS = \
   -I$(top_srcdir)/$(subdir)/include \
   -I$(top_builddir)/proxy/api \
   -I$(top_srcdir)/proxy/api \
-  -I$(top_srcdir)/lib
+  -I$(top_srcdir)/lib \
+  -I$(top_srcdir)/lib/ts
 
 
 # build the library
