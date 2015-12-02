@@ -231,6 +231,7 @@ public:
   inkcoreapi virtual int marshal_server_resp_time_s(char *);           // INT
   inkcoreapi virtual int marshal_server_time_to_first_byte_ms(char *); // INT
   inkcoreapi virtual int marshal_server_transact_count(char *);        // INT
+  inkcoreapi virtual int marshal_server_connection_count(char *);      // INT
 
   //
   // cache -> client fields
