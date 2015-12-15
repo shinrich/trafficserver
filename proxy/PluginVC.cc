@@ -295,7 +295,7 @@ PluginVC::reenable(VIO *vio)
   ink_assert(magic == PLUGIN_VC_MAGIC_ALIVE);
 
   Ptr<ProxyMutex> sm_mutex = vio->mutex;
-  SCOPED_MUTEX_LOCK(lock, sm_mutex, this_ethread());
+  MUTEX_LOCK(lock, sm_mutex, this_ethread());
 
   Debug("pvc", "[%u] %s: reenable %s", core_obj->id, PVC_TYPE, (vio->op == VIO::WRITE) ? "Write" : "Read");
 
@@ -318,7 +318,7 @@ PluginVC::reenable_re(VIO *vio)
 
   Debug("pvc", "[%u] %s: reenable_re %s", core_obj->id, PVC_TYPE, (vio->op == VIO::WRITE) ? "Write" : "Read");
 
-  SCOPED_MUTEX_LOCK(lock, this->mutex, this_ethread());
+  MUTEX_LOCK(lock, this->mutex, this_ethread());
 
   ++reentrancy_count;
 
@@ -352,7 +352,7 @@ PluginVC::do_io_close(int /* flag ATS_UNUSED */)
 
   Debug("pvc", "[%u] %s: do_io_close", core_obj->id, PVC_TYPE);
 
-  SCOPED_MUTEX_LOCK(lock, mutex, this_ethread());
+  MUTEX_LOCK(lock, mutex, this_ethread());
   if (!closed) { // if already closed, need to do nothing.
     closed = true;
 
