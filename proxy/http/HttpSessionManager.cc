@@ -186,8 +186,12 @@ ServerSessionPool::eventHandler(int event, void *data)
 
       // We've found our server session. Remove it from
       //   our lists and close it down
-      Debug("http_ss", "[%" PRId64 "] [session_pool] session %p received io notice [%s]", s->con_id, s,
-            HttpDebugNames::get_event_name(event));
+      if (is_debug_tag_set("http_ss")) {
+        Debug("http_ss", "[%" PRId64 "] [session_pool] session %p received io notice [%s]", s->con_id, s,
+              HttpDebugNames::get_event_name(event));
+        ip_port_text_buffer text_remote_addr, text_server_ip; 
+        Debug("http_ss", "remote_ip=%s, server_ip=%s", ats_ip_nptop(s->get_netvc()->get_remote_addr(), text_remote_addr, sizeof text_remote_addr ), ats_ip_nptop(&s->server_ip, text_server_ip, sizeof text_server_ip));
+      }
       ink_assert(s->state == HSS_KA_SHARED);
       // Out of the pool! Now!
       m_ip_pool.remove(lh);
@@ -195,6 +199,7 @@ ServerSessionPool::eventHandler(int event, void *data)
       // Drop connection on this end.
       s->do_io_close();
       found = true;
+
       break;
     }
   }
