@@ -337,8 +337,8 @@ HttpSM::HttpSM()
     server_response_hdr_bytes(0), server_response_body_bytes(0), client_response_hdr_bytes(0), client_response_body_bytes(0),
     cache_response_hdr_bytes(0), cache_response_body_bytes(0), pushed_response_hdr_bytes(0), pushed_response_body_bytes(0),
     client_tcp_reused(false), client_ssl_reused(false), client_connection_is_ssl(false), client_sec_protocol("-"),
-    client_cipher_suite("-"), server_transact_count(0), server_connection_is_ssl(false), plugin_tag(0), plugin_id(0),  hooks_set(false), cur_hook_id(TS_HTTP_LAST_HOOK), 
-    cur_hook(NULL), cur_hooks(0), callout_state(HTTP_API_NO_CALLOUT), terminate_sm(false), 
+    client_cipher_suite("-"), server_transact_count(0), server_connection_is_ssl(false), server_connection_count(0), plugin_tag(0), plugin_id(0),
+    hooks_set(false), cur_hook_id(TS_HTTP_LAST_HOOK), cur_hook(NULL), cur_hooks(0), callout_state(HTTP_API_NO_CALLOUT), terminate_sm(false), 
     kill_this_async_done(false), parse_range_done(false)
 {
   static int scatter_init = 0;
@@ -4661,7 +4661,9 @@ HttpSM::do_http_server_open(bool raw)
   }
 
   DebugSM("http_seq", "[HttpSM::do_http_server_open] Sending request to server");
-
+  ConnectionCount *connections = ConnectionCount::getInstance();
+  server_connection_count = connections->getCount(t_state.current.server->addr);
+ 
   milestones[TS_MILESTONE_SERVER_CONNECT] = Thread::get_hrtime();
   if (milestones[TS_MILESTONE_SERVER_FIRST_CONNECT] == 0) {
     milestones[TS_MILESTONE_SERVER_FIRST_CONNECT] = milestones[TS_MILESTONE_SERVER_CONNECT];
@@ -4806,10 +4808,8 @@ HttpSM::do_http_server_open(bool raw)
   // Check to see if we have reached the max number of connections on this
   // host.
   if (t_state.txn_conf->origin_max_connections > 0) {
-    ConnectionCount *connections = ConnectionCount::getInstance();
-
     char addrbuf[INET6_ADDRSTRLEN];
-    if (connections->getCount((t_state.current.server->addr)) >= t_state.txn_conf->origin_max_connections) {
+    if (server_connection_count >= t_state.txn_conf->origin_max_connections) {
       DebugSM("http", "[%" PRId64 "] over the number of connection for this host: %s", sm_id,
               ats_ip_ntop(&t_state.current.server->addr.sa, addrbuf, sizeof(addrbuf)));
       Warning("[%" PRId64 "] over the max number of connections for this host: %s", sm_id,
