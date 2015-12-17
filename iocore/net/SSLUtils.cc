@@ -1692,9 +1692,13 @@ ssl_store_ssl_context(const SSLConfigParams *params, SSLCertLookup *lookup, cons
   SSL_CTX_set_next_protos_advertised_cb(ctx, SSLNetVConnection::advertise_next_protocol, NULL);
 #endif /* TS_USE_TLS_NPN */
 
-#if TS_USE_TLS_ALPN
-  SSL_CTX_set_alpn_select_cb(ctx, SSLNetVConnection::select_next_protocol, NULL);
-#endif /* TS_USE_TLS_ALPN */
+  void (*test_alpn)(SSL_CTX*, int (*)(SSL*, const unsigned char**, unsigned char*, const unsigned char*, unsigned int, void*), void*) =
+  (void (*)(SSL_CTX*, int (*)(SSL*, const unsigned char**, unsigned char*, const unsigned char*, unsigned int, void*), void*)) dlsym(RTLD_DEFAULT, "SSL_CTX_set_alpn_select_cb");
+  if (test_alpn) {
+    test_alpn(ctx, SSLNetVConnection::select_next_protocol, NULL);
+    Debug("ssl", "apln is enabled");
+  }
+
   if (sslMultCertSettings.first_cert) {
     certpath = Layout::relative_to(params->serverCertPathOnly, sslMultCertSettings.first_cert);
   } else {
