@@ -1731,9 +1731,9 @@ HttpSM::state_http_server_open(int event, void *data)
     // of connections per host.  Set enable_origin_connection_limiting
     // to true in the server session so it will increment and decrement
     // the connection count.
-    if (t_state.txn_conf->origin_max_connections > 0 || t_state.http_config_param->origin_min_keep_alive_connections > 0) {
+    if (t_state.txn_conf->origin_max_connections > 0 || t_state.http_config_param->origin_min_keep_alive_connections > 0 || t_state.reverse_proxy) {
       DebugSM("http_ss", "[%" PRId64 "] max number of connections: %" PRIu64, sm_id, t_state.txn_conf->origin_max_connections);
-      session->enable_origin_connection_limiting = true;
+      session->enable_origin_connection_tracking = true;
     }
     /*UnixNetVConnection * vc = (UnixNetVConnection*)(ua_session->client_vc);
        UnixNetVConnection *server_vc = (UnixNetVConnection*)data;
