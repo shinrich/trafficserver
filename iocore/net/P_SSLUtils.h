@@ -98,6 +98,7 @@ enum SSL_Stats {
 };
 
 extern RecRawStatBlock *ssl_rsb;
+extern void (*ssl_alpn_selected_fp)(const SSL*, const unsigned char**, unsigned int*);
 
 /* Stats should only be accessed using these macros */
 #define SSL_INCREMENT_DYN_STAT(x) RecIncrRawStat(ssl_rsb, NULL, (int)x, 1)
