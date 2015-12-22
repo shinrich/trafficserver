@@ -1129,9 +1129,10 @@ SSLNetVConnection::sslServerHandShakeEvent(int &err)
 // preference would not be meaningful if we let the client
 // preference have priority.
 
-#if TS_USE_TLS_ALPN
-      SSL_get0_alpn_selected(ssl, &proto, &len);
-#endif /* TS_USE_TLS_ALPN */
+      if (ssl_alpn_selected_fp) {
+        ssl_alpn_selected_fp(ssl, &proto, &len);
+        Debug("ssl", "SSL_get0_alpn_selected called");
+      }
 
 #if TS_USE_TLS_NPN
       if (len == 0) {

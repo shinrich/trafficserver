@@ -81,6 +81,8 @@
 #endif
 #endif
 
+void (*ssl_alpn_selected_fp)(const SSL*, const unsigned char**, unsigned int*) = NULL;
+
 #if (OPENSSL_VERSION_NUMBER >= 0x10000000L) // openssl returns a const SSL_METHOD
 typedef const SSL_METHOD *ink_ssl_method_t;
 #else
@@ -1694,9 +1696,12 @@ ssl_store_ssl_context(const SSLConfigParams *params, SSLCertLookup *lookup, cons
 
   void (*test_alpn)(SSL_CTX*, int (*)(SSL*, const unsigned char**, unsigned char*, const unsigned char*, unsigned int, void*), void*) =
   (void (*)(SSL_CTX*, int (*)(SSL*, const unsigned char**, unsigned char*, const unsigned char*, unsigned int, void*), void*)) dlsym(RTLD_DEFAULT, "SSL_CTX_set_alpn_select_cb");
-  if (test_alpn) {
+  ssl_alpn_selected_fp = (void (*)(const SSL*, const unsigned char**, unsigned int*)) dlsym(RTLD_DEFAULT, "SSL_get0_alpn_selected");
+  if (test_alpn && ssl_alpn_selected_fp) {
     test_alpn(ctx, SSLNetVConnection::select_next_protocol, NULL);
     Debug("ssl", "apln is enabled");
+  } else {
+    ssl_alpn_selected_fp = NULL;
   }
 
   if (sslMultCertSettings.first_cert) {
