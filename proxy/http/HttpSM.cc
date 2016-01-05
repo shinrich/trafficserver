@@ -4824,10 +4824,10 @@ HttpSM::do_http_server_open(bool raw)
   // Check to see if we have reached the max number of connections on this
   // host.
   if (t_state.txn_conf->origin_max_connections > 0) {
-    char addrbuf[INET6_ADDRSTRLEN];
     if (server_connection_count >= t_state.txn_conf->origin_max_connections) {
-      DebugSM("http", "[%" PRId64 "] over the number of connection for this host: %s", sm_id,
-              ats_ip_ntop(&t_state.current.server->addr.sa, addrbuf, sizeof(addrbuf)));
+      char addrbuf[INET6_ADDRSTRLEN];
+      ats_ip_ntop(&t_state.current.server->addr.sa, addrbuf, sizeof(addrbuf));
+      DebugSM("http", "[%" PRId64 "] over the number of connection for this host: %s", sm_id, addrbuf);
       Warning("[%" PRId64 "] over the max number of connections for this host: %s", sm_id,
               addrbuf);
       ink_assert(pending_action == NULL);
