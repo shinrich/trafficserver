@@ -938,9 +938,7 @@ Vol::agg_wrap()
   {
     Vol *vol = this;
     CACHE_INCREMENT_DYN_STAT(cache_directory_wrap_stat);
-    if (is_debug_tag_set("cache_wrap")) {
-      Note("Dir %s wraps around", vol->hash_text.get());
-    }
+    Note("Cache volume %d on disk '%s' wraps around", vol->cache_vol->vol_number, vol->hash_text.get());
   }
   periodic_scan();
 }
