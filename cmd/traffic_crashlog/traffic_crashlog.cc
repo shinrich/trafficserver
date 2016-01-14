@@ -28,7 +28,6 @@
 #include "I_Layout.h"
 #include "I_RecProcess.h"
 #include "RecordsConfig.h"
-#include "ts/BaseLogFile.h"
 
 static int syslog_mode = false;
 static int debug_mode = false;
@@ -90,7 +89,7 @@ main(int /* argc ATS_UNUSED */, const char **argv)
   TSMgmtError mgmterr;
   crashlog_target target;
 
-  diags = new Diags("" /* tags */, "" /* actions */, new BaseLogFile("stderr"));
+  diags = new Diags("" /* tags */, "" /* actions */, stderr);
 
   appVersionInfo.setup(PACKAGE_NAME, "traffic_crashlog", PACKAGE_VERSION, __DATE__, __TIME__, BUILD_MACHINE, BUILD_PERSON, "");
 

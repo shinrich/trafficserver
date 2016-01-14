@@ -206,8 +206,7 @@ SSLReleaseContext(SSL_CTX *ctx)
 int
 main(int argc, const char **argv)
 {
-  BaseLogFile *blf = new BaseLogFile("stdout");
-  diags = new Diags(NULL, NULL, blf);
+  diags = new Diags(NULL, NULL, stdout);
   res_track_memory = 1;
 
   SSL_library_init();

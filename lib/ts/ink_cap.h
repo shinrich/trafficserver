@@ -60,10 +60,10 @@ public:
     TRACE_PRIVILEGE = 0x2u // Trace other processes with privilege
   } privilege_level;
 
-  ElevateAccess(unsigned level = FILE_PRIVILEGE);
+  ElevateAccess(const bool state, unsigned level = FILE_PRIVILEGE);
   ~ElevateAccess();
 
-  void elevate(unsigned level);
+  void elevate();
   void demote();
 
 private:
@@ -71,12 +71,8 @@ private:
   uid_t saved_uid;
   unsigned level;
 
-  void acquireFileAccessCap(unsigned level);
-  void releaseFileAccessCap();
 #if !TS_USE_POSIX_CAP
   static ink_mutex lock; // only one thread at a time can elevate
-#else
-  void *cap_state; ///< Original capabilities state to restore.
 #endif
 };
 
