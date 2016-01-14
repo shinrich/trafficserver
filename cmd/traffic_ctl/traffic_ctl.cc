@@ -219,8 +219,7 @@ main(int argc, const char **argv)
     {subcommand_storage, "storage", "Manipulate cache storage"},
   };
 
-  BaseLogFile *base_log_file = new BaseLogFile("stderr");
-  diags = new Diags("" /* tags */, "" /* actions */, base_log_file);
+  diags = new Diags("" /* tags */, "" /* actions */, stderr);
 
   // Process command line arguments and dump into variables
   if (!CtrlProcessArguments(argc, argv, argument_descriptions, countof(argument_descriptions))) {

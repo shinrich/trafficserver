@@ -75,8 +75,6 @@ static inkcoreapi DiagsConfig *diagsConfig;
 static char debug_tags[1024] = "";
 static char action_tags[1024] = "";
 static bool proxy_on = true;
-static char bind_stdout[512] = "";
-static char bind_stderr[512] = "";
 
 static char mgmt_path[PATH_NAME_MAX];
 
@@ -97,44 +95,6 @@ static void SignalAlrmHandler(int sig);
 
 static volatile int sigHupNotifier = 0;
 static void SigChldHandler(int sig);
-
-static void
-rotateLogs()
-{
-  // First, let us synchronously update the rolling config values for both diagslog
-  // and outputlog. Note that the config values for outputlog in traffic_server
-  // are never updated past the original instantiation of Diags. This shouldn't
-  // be an issue since we're never rolling outputlog from traffic_server anyways.
-  // The reason being is that it is difficult to send a notification from TS to
-  // TM, informing TM that outputlog has been rolled. It is much easier sending
-  // a notification (in the form of SIGUSR2) from TM -> TS.
-  int output_log_roll_int = (int)REC_ConfigReadInteger("proxy.config.output.logfile.rolling_interval_sec");
-  int output_log_roll_size = (int)REC_ConfigReadInteger("proxy.config.output.logfile.rolling_size_mb");
-  int output_log_roll_enable = (int)REC_ConfigReadInteger("proxy.config.output.logfile.rolling_enabled");
-  int diags_log_roll_int = (int)REC_ConfigReadInteger("proxy.config.diags.logfile.rolling_interval_sec");
-  int diags_log_roll_size = (int)REC_ConfigReadInteger("proxy.config.diags.logfile.rolling_size_mb");
-  int diags_log_roll_enable = (int)REC_ConfigReadInteger("proxy.config.diags.logfile.rolling_enabled");
-  diags->config_roll_diagslog((RollingEnabledValues)diags_log_roll_enable, diags_log_roll_int, diags_log_roll_size);
-  diags->config_roll_outputlog((RollingEnabledValues)output_log_roll_enable, output_log_roll_int, output_log_roll_size);
-
-  // Now we can actually roll the logs (if necessary)
-  if (diags->should_roll_diagslog()) {
-    mgmt_log("Rotated %s", DIAGS_LOG_FILENAME);
-  }
-
-  if (diags->should_roll_outputlog()) {
-    // send a signal to TS to reload traffic.out, so the logfile is kept
-    // synced across processes
-    mgmt_log("Sending SIGUSR2 to TS");
-    pid_t tspid = lmgmt->watched_process_pid;
-    if (tspid <= 0)
-      return;
-    if (kill(tspid, SIGUSR2) != 0)
-      mgmt_log("Could not send SIGUSR2 to TS: %s", strerror(errno));
-    else
-      mgmt_log("Succesfully sent SIGUSR2 to TS!");
-  }
-}
 
 static bool
 is_server_idle()
@@ -495,12 +455,6 @@ main(int argc, char **argv)
           } else if (strcmp(argv[i], "-clusterRSPort") == 0) {
             ++i;
             cluster_rsport = atoi(argv[i]);
-		  } else if (strcmp(argv[i], "-bind_stdout")) {
-			++i;
-			ink_strlcpy(bind_stdout, argv[i], sizeof(bind_stdout));
-		  } else if (strcmp(argv[i], "-bind_stderr")) {
-			++i;
-			ink_strlcpy(bind_stderr, argv[i], sizeof(bind_stderr));
 #if TS_USE_DIAGS
           } else if (strcmp(argv[i], "-debug") == 0) {
             ++i;
@@ -590,8 +544,6 @@ main(int argc, char **argv)
   //  up the manager
   diagsConfig = new DiagsConfig(DIAGS_LOG_FILENAME, debug_tags, action_tags, false);
   diags = diagsConfig->diags;
-  diags->set_stdout_output(bind_stdout);
-  diags->set_stderr_output(bind_stderr);
   diags->prefix_str = "Manager ";
 
   RecLocalInit();
@@ -643,8 +595,6 @@ main(int argc, char **argv)
   diags = diagsConfig->diags;
   RecSetDiags(diags);
   diags->prefix_str = "Manager ";
-  diags->set_stdout_output(bind_stdout);
-  diags->set_stderr_output(bind_stderr);
 
   if (is_debug_tag_set("diags"))
     diags->dump();
@@ -715,29 +665,6 @@ main(int argc, char **argv)
     lmgmt->proxy_options = tsArgs;
     mgmt_log(stderr, "[main] Traffic Server Args: '%s'\n", lmgmt->proxy_options);
   }
-
-  // we must pass in bind_stdout and bind_stderr values to TS
-  // we do it so TS is able to create BaseLogFiles for each value
-  if (*bind_stdout != 0) {
-    size_t l = strlen(lmgmt->proxy_options);
-    size_t n = 3                            /* " --" */
-               + sizeof(TM_OPT_BIND_STDOUT) /* nul accounted for here */
-               + 1                          /* space */
-               + strlen(bind_stdout);
-    lmgmt->proxy_options = static_cast<char *>(ats_realloc(lmgmt->proxy_options, n + l));
-    snprintf(lmgmt->proxy_options + l, n, " --%s %s", TM_OPT_BIND_STDOUT, bind_stdout);
-  }
-
-  if (*bind_stderr != 0) {
-    size_t l = strlen(lmgmt->proxy_options);
-    size_t n = 3                            /* space dash dash */
-               + sizeof(TM_OPT_BIND_STDERR) /* nul accounted for here */
-               + 1                          /* space */
-               + strlen(bind_stderr);
-    lmgmt->proxy_options = static_cast<char *>(ats_realloc(lmgmt->proxy_options, n + l));
-    snprintf(lmgmt->proxy_options + l, n, " --%s %s", TM_OPT_BIND_STDERR, bind_stderr);
-  }
-
   if (proxy_port) {
     HttpProxyPort::loadValue(lmgmt->m_proxy_ports, proxy_port);
   }
@@ -807,9 +734,6 @@ main(int argc, char **argv)
   for (;;) {
     lmgmt->processEventQueue();
     lmgmt->pollMgmtProcessServer();
-
-    // Handle rotation of output log (aka traffic.out) as well as DIAGS_LOG_FILENAME (aka manager.log)
-    rotateLogs();
 
     // Check for a SIGHUP
     if (sigHupNotifier != 0) {
@@ -1059,8 +983,6 @@ printUsage()
   fprintf(stderr, "     -groupAddr     <addr>  Cluster Multicast group, example: \"225.0.0.37\".\n");
   fprintf(stderr, "     -clusterRSPort <port>  Cluster Multicast port.\n");
   fprintf(stderr, "     -path          <path>  Root path for config files.\n");
-  fprintf(stderr, "     -bind_stdout   <path>  Regular file to bind stdout to.\n");
-  fprintf(stderr, "     -bind_stderr   <path>  Regular file to bind stderr to.\n");
   /*
      fprintf(stderr,
      "     -lmConf        <fname> Local Management config file.\n");

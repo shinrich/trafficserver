@@ -90,13 +90,23 @@ reconfigure_diags()
 static void
 init_diags(const char *bdt, const char *bat)
 {
+  FILE *diags_log_fp;
   char diags_logpath[500];
   ink_strlcpy(diags_logpath, DIAGS_LOG_FILE, sizeof(diags_logpath));
 
-  BaseLogFile *blf = new BaseLogFile(diags_logpath);
-  diags = new Diags(bdt, bat, blf);
+  diags_log_fp = fopen(diags_logpath, "w");
+  if (diags_log_fp) {
+    int status;
+    status = setvbuf(diags_log_fp, NULL, _IOLBF, 512);
+    if (status != 0) {
+      fclose(diags_log_fp);
+      diags_log_fp = NULL;
+    }
+  }
 
-  if (blf == NULL || blf->m_fp == NULL) {
+  diags = new Diags(bdt, bat, diags_log_fp);
+
+  if (diags_log_fp == NULL) {
     Warning("couldn't open diags log file '%s', "
             "will not log to this file",
             diags_logpath);

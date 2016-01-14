@@ -150,8 +150,6 @@ char cluster_host[MAXDNAME + 1] = DEFAULT_CLUSTER_HOST;
 static char command_string[512] = "";
 static char conf_dir[512] = "";
 int remote_management_flag = DEFAULT_REMOTE_MANAGEMENT_FLAG;
-static char bind_stdout[512] = DEFAULT_BIND_STDOUT;
-static char bind_stderr[512] = DEFAULT_BIND_STDERR;
 
 static char error_tags[1024] = "";
 static char action_tags[1024] = "";
@@ -164,7 +162,6 @@ static int cmd_line_dprintf_level = 0; // default debug output level from ink_dp
 static int poll_timeout = -1;          // No value set.
 
 static volatile bool sigusr1_received = false;
-static volatile bool sigusr2_received = false;
 
 // 1: delay listen, wait for cache.
 // 0: Do not delay, start listen ASAP.
@@ -212,8 +209,6 @@ static const ArgumentDescription argument_descriptions[] = {
   {"conf_dir", 'D', "config dir to verify", "S511", &conf_dir, "PROXY_SYS_CONFIG_DIR", NULL},
   {"clear_hostdb", 'k', "Clear HostDB on Startup", "F", &auto_clear_hostdb_flag, "PROXY_CLEAR_HOSTDB", NULL},
   {"clear_cache", 'K', "Clear Cache on Startup", "F", &cacheProcessor.auto_clear_flag, "PROXY_CLEAR_CACHE", NULL},
-  {"bind_stdout", '-', "Regular file to bind stdout to", "S512", &bind_stdout, "PROXY_BIND_STDOUT", NULL},
-  {"bind_stderr", '-', "Regular file to bind stderr to", "S512", &bind_stderr, "PROXY_BIND_STDERR", NULL},
 #if defined(linux)
   {"read_core", 'c', "Read Core file", "S255", &core_file, NULL, NULL},
 #endif
@@ -263,14 +258,9 @@ public:
       fastmemsnap += fmdelta;
 #endif
       snap = now;
-    } else if (sigusr2_received) {
-      sigusr2_received = false;
-      Debug("log", "received SIGUSR2, reloading traffic.out");
-      // reload output logfile (file is usually called traffic.out)
-      diags->set_stdout_output(bind_stdout);
-      diags->set_stderr_output(bind_stderr);
-	  }
-	return EVENT_CONT;
+    }
+
+    return EVENT_CONT;
   }
 };
 
@@ -310,36 +300,6 @@ public:
       ink_freelists_snap_baseline();
       // TODO: TS-567 Integrate with debugging allocators "dump" features?
       baseline_taken = 1;
-    }
-    return EVENT_CONT;
-  }
-};
-
-// This continuation is used to periodically check on diags.log, and rotate
-// the logs if necessary
-class DiagsLogContinuation : public Continuation
-{
-public:
-  DiagsLogContinuation() : Continuation(new_ProxyMutex()) { SET_HANDLER(&DiagsLogContinuation::periodic); }
-  int
-  periodic(int /* event ATS_UNUSED */, Event * /* e ATS_UNUSED */)
-  {
-    Debug("log", "in DiagsLogContinuation, checking on diags.log");
-
-    // First, let us update the rolling config values for diagslog. We
-    // do not need to update the config values for outputlog because
-    // traffic_server never actually rotates outputlog. outputlog is always
-    // rotated in traffic_manager. The reason being is that it is difficult
-    // to send a notification from TS to TM, informing TM that outputlog has
-    // been rolled. It is much easier sending a notification (in the form
-    // of SIGUSR2) from TM -> TS.
-    int diags_log_roll_int = (int)REC_ConfigReadInteger("proxy.config.diags.logfile.rolling_interval_sec");
-    int diags_log_roll_size = (int)REC_ConfigReadInteger("proxy.config.diags.logfile.rolling_size_mb");
-    int diags_log_roll_enable = (int)REC_ConfigReadInteger("proxy.config.diags.logfile.rolling_enabled");
-    diags->config_roll_diagslog((RollingEnabledValues)diags_log_roll_enable, diags_log_roll_int, diags_log_roll_size);
-
-    if (diags->should_roll_diagslog()) {
-      Note("Rolled %s", DIAGS_LOG_FILENAME);
     }
     return EVENT_CONT;
   }
@@ -393,9 +353,6 @@ proxy_signal_handler(int signo, siginfo_t *info, void *)
   switch (signo) {
   case SIGUSR1:
     sigusr1_received = true;
-    return;
-  case SIGUSR2:
-    sigusr2_received = true;
     return;
   case SIGHUP:
     return;
@@ -1436,64 +1393,6 @@ change_uid_gid(const char *user)
 #endif
 }
 
-/** Open a file, elevating privilege only if needed.
-
-    @internal This is necessary because the CI machines run the regression tests
-    as a normal user, not as root, so attempts to get privilege fail even though
-    the @c open would succeed without elevation. So, try that first and ask for
-    elevation only on an explicit permission failure.
-*/
-static int
-elevating_open(char const* path, unsigned int flags, unsigned int fperms)
-{
-  int fd = open(path, flags, fperms);
-  // The EACCES check is Yahoo only because for whatever reason
-  // the EPERM and EACCES error are semantically disjoint
-  if (fd < 0 && (EPERM == errno || EACCES == errno)) {
-    ElevateAccess access;
-    fd = open(path, flags, fperms);
-  }
-  return fd;
-}
-
-/*
- * Binds stdout and stderr to files specified by the parameters
- *
- * On failure to bind, emits a warning and whatever is being bound
- * just isn't bound
- *
- * This must work without the ability to elevate privilege if the files are accessible without.
- */
-void
-bind_outputs(const char *bind_stdout, const char *bind_stderr)
-{
-  int log_fd;
-  unsigned int flags = O_WRONLY | O_APPEND | O_CREAT | O_SYNC;
-
-  if (*bind_stdout != 0) {
-    Debug("log", "binding stdout to %s", bind_stdout);
-    log_fd = elevating_open(bind_stdout, flags, 0644);
-    if (log_fd < 0) {
-      fprintf(stdout, "[Warning]: TS unable to open log file \"%s\" [%d '%s']\n", bind_stdout, errno, strerror(errno));
-    } else {
-      Debug("log", "duping stdout");
-      dup2(log_fd, STDOUT_FILENO);
-      close(log_fd);
-    }
-  }
-  if (*bind_stderr != 0) {
-    Debug("log", "binding stderr to %s", bind_stderr);
-    log_fd = elevating_open(bind_stderr, O_WRONLY | O_APPEND | O_CREAT | O_SYNC, 0644);
-    if (log_fd < 0) {
-      fprintf(stdout, "[Warning]: TS unable to open log file \"%s\" [%d '%s']\n", bind_stderr, errno, strerror(errno));
-    } else {
-      Debug("log", "duping stderr");
-      dup2(log_fd, STDERR_FILENO);
-      close(log_fd);
-    }
-  }
-}
-
 //
 // Main
 //
@@ -1551,20 +1450,11 @@ main(int /* argc ATS_UNUSED */, const char **argv)
   // re-start Diag completely) because at initialize, TM only has 1 thread.
   // In TS, some threads have already created, so if we delete Diag and
   // re-start it again, TS will crash.
-  // This is also needed for log rotation - setting up the file can cause privilege
-  // related errors and if diagsConfig isn't get up yet that will crash on a NULL pointer.
   diagsConfig = new DiagsConfig(DIAGS_LOG_FILENAME, error_tags, action_tags, false);
   diags = diagsConfig->diags;
   diags->prefix_str = "Server ";
-  diags->set_stdout_output(bind_stdout);
-  diags->set_stderr_output(bind_stderr);
   if (is_debug_tag_set("diags"))
     diags->dump();
-
-  // Bind stdout and stderr to specified switches
-  // Still needed despite the set_std{err,out}_output() calls later since there are
-  // fprintf's before those calls
-  bind_outputs(bind_stdout, bind_stderr);
 
   // Local process manager
   initialize_process_manager();
@@ -1636,8 +1526,6 @@ main(int /* argc ATS_UNUSED */, const char **argv)
   diags = diagsConfig->diags;
   RecSetDiags(diags);
   diags->prefix_str = "Server ";
-  diags->set_stdout_output(bind_stdout);
-  diags->set_stderr_output(bind_stderr);
   if (is_debug_tag_set("diags"))
     diags->dump();
 
@@ -1765,7 +1653,6 @@ main(int /* argc ATS_UNUSED */, const char **argv)
   }
 
   eventProcessor.schedule_every(new SignalContinuation, HRTIME_MSECOND * 500, ET_CALL);
-  eventProcessor.schedule_every(new DiagsLogContinuation, HRTIME_SECOND, ET_TASK);
   REC_RegisterConfigUpdateFunc("proxy.config.dump_mem_info_frequency", init_memory_tracker, NULL);
   init_memory_tracker(NULL, RECD_NULL, RecData(), NULL);
 

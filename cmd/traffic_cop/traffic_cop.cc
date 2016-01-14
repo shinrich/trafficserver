@@ -88,6 +88,7 @@ static gid_t admin_gid;
 static bool admin_user_p = false;
 static char manager_binary[PATH_NAME_MAX] = "traffic_manager";
 static char server_binary[PATH_NAME_MAX] = "traffic_server";
+static char manager_options[OPTIONS_LEN_MAX] = "";
 
 static char log_file[PATH_NAME_MAX] = "traffic.out";
 
@@ -720,8 +721,13 @@ static void
 spawn_manager()
 {
   char prog[PATH_NAME_MAX];
+  char *options[OPTIONS_MAX];
+  char *last;
+  char *tok;
+  int log_fd;
   int err;
   int key;
+
   ats_scoped_str bindir(config_read_bin_dir());
 
   cop_log_trace("Entering spawn_manager()\n");
@@ -754,32 +760,56 @@ spawn_manager()
     exit(1);
   }
 
+  cop_log_trace("spawn_manager: Launching %s with options '%s'\n", prog, manager_options);
+  int i;
+  for (i = 0; i < OPTIONS_MAX; i++) {
+    options[i] = NULL;
+  }
+  options[0] = prog;
+  i = 1;
+  tok = strtok_r(manager_options, " ", &last);
+  options[i++] = tok;
+  if (tok != NULL) {
+    while (i < OPTIONS_MAX && (tok = strtok_r(NULL, " ", &last))) {
+      options[i++] = tok;
+    }
+  }
+
   // Move any traffic.out that we can not write to, out
   //  of the way (TSqa2232)
   // coverity[fs_check_call]
   if (access(log_file, W_OK) < 0 && errno == EACCES) {
     char old_log_file[PATH_NAME_MAX];
     snprintf(old_log_file, sizeof(old_log_file), "%s.old", log_file);
-    cop_log(COP_NOTICE, "renaming %s to %s as it is not writeable\n", log_file, old_log_file);
     // coverity[toctou]
-    if (rename(log_file, old_log_file) != 0) {
-      cop_log(COP_WARNING, "unable to rename \"%s\" to \"%s\" [%d '%s']\n", log_file, old_log_file, errno, strerror(errno));
-    }
+    rename(log_file, old_log_file);
+    cop_log(COP_WARNING, "rename %s to %s as it is not accessible.\n", log_file, old_log_file);
   }
-
-  cop_log_trace("launching %s'\n", prog);
+  // coverity[toctou]
+  if ((log_fd = open(log_file, O_WRONLY | O_APPEND | O_CREAT, 0644)) < 0) {
+    cop_log(COP_WARNING, "unable to open log file \"%s\" [%d '%s']\n", log_file, errno, strerror(errno));
+  }
 
   err = fork();
   if (err == 0) {
+    if (log_fd >= 0) {
+      dup2(log_fd, STDOUT_FILENO);
+      dup2(log_fd, STDERR_FILENO);
+      close(log_fd);
+    }
+
     EnableDeathSignal(SIGTERM);
 
-    // Bind stdout and stderr of traffic_manager to traffic.out
-    execl(prog, prog, "-" TM_OPT_BIND_STDOUT, log_file, "-" TM_OPT_BIND_STDERR, log_file, NULL);
+    err = execv(prog, options);
     cop_log_trace("Somehow execv(%s, options, NULL) failed (%d)!\n", prog, err);
     exit(1);
   } else if (err == -1) {
     cop_log(COP_FATAL, "unable to fork [%d '%s']\n", errno, strerror(errno));
     exit(1);
+  }
+
+  if (log_fd >= 0) {
+    close(log_fd);
   }
 
   manager_failures = 0;
