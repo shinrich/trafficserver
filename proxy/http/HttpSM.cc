@@ -1338,7 +1338,7 @@ HttpSM::state_common_wait_for_transform_read(HttpTransformInfo *t_info, HttpSMHa
          entire state machine since (1) there's no point in finishing the POST to the
          origin and (2) there's no user agent connection to which to send the error response.
       */
-      this->kill_this();
+      terminate_sm = true;
     } else {
       tunnel.kill_tunnel();
       call_transact_and_set_next_state(HttpTransact::HandleApiErrorJump);
