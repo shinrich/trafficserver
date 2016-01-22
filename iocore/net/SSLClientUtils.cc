@@ -20,7 +20,6 @@
  */
 
 #include "ink_config.h"
-#include "ink_cap.h"
 #include "records/I_RecHttp.h"
 #include "libts.h"
 #include "P_Net.h"
@@ -123,12 +122,10 @@ SSLInitClientContext(const SSLConfigParams *params)
     SSL_CTX_set_options(client_ctx, params->ssl_client_ctx_protocols);
   }
 
-#if TS_USE_POSIX_CAP
   // elevate/allow file access to root read only files/certs
   uint32_t elevate_setting = 0;
   REC_ReadConfigInteger(elevate_setting, "proxy.config.ssl.cert.load_elevated");
-  ElevateAccess elevate_access(elevate_setting != 0); // destructor will demote for us
-#endif                                                /* TS_USE_POSIX_CAP */
+  ElevateAccess elevate_access(elevate_setting ? ElevateAccess::FILE_PRIVILEGE : 0); // destructor will demote for us
 
   if (params->client_cipherSuite != NULL) {
     if (!SSL_CTX_set_cipher_list(client_ctx, params->client_cipherSuite)) {
