@@ -121,6 +121,12 @@ SSLInitClientContext(const SSLConfigParams *params)
   if (params->ssl_client_ctx_protocols) {
     SSL_CTX_set_options(client_ctx, params->ssl_client_ctx_protocols);
   }
+
+  // elevate/allow file access to root read only files/certs
+  uint32_t elevate_setting = 0;
+  REC_ReadConfigInteger(elevate_setting, "proxy.config.ssl.cert.load_elevated");
+  ElevateAccess elevate_access(elevate_setting ? ElevateAccess::FILE_PRIVILEGE : 0); // destructor will demote for us
+
   if (params->client_cipherSuite != NULL) {
     if (!SSL_CTX_set_cipher_list(client_ctx, params->client_cipherSuite)) {
       SSLError("invalid client cipher suite in records.config");
