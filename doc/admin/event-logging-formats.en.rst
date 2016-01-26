@@ -438,6 +438,12 @@ The following list describes Traffic Server custom logging fields.
     Indicates whether the connection from Traffic Server to the origin
     was over SSL or not.
 
+.. _sca:
+
+``sca``
+    The number of attempts in the transaction Traffic Server tries to
+    connect to the origin server.
+
 .. _shi:
 
 ``shi``
