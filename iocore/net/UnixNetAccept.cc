@@ -247,7 +247,7 @@ NetAccept::do_blocking_accept(EThread *t)
     // Throttle accepts
 
     while (!backdoor && check_net_throttle(ACCEPT, now)) {
-      check_throttle_warning();
+      check_throttle_warning(ACCEPT);
       if (!unix_netProcessor.throttle_error_message) {
         safe_delay(NET_THROTTLE_DELAY);
       } else if (send_throttle_message(this) < 0) {

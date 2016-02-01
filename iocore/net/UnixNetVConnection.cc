@@ -1221,7 +1221,7 @@ UnixNetVConnection::connectUp(EThread *t, int fd)
 
   thread = t;
   if (check_net_throttle(CONNECT, submit_time)) {
-    check_throttle_warning();
+    check_throttle_warning(CONNECT);
     action_.continuation->handleEvent(NET_EVENT_OPEN_FAILED, (void *)-ENET_THROTTLING);
     free(t);
     return CONNECT_FAILURE;
@@ -1370,6 +1370,10 @@ UnixNetVConnection::migrateToCurrentThread(Continuation *cont, EThread *t)
   // processed on two threads simultaneously
   this->ep.stop();
   this->do_io_close(); 
+
+  // The do_io_close will decrement the current stat count, but we are creating a new
+  // vc, so increment, so the current count is net unchanged
+  NET_SUM_GLOBAL_DYN_STAT(net_connections_currently_open_stat, 1);
   
   // Create new VC:
   NetVConnection *new_vc = NULL;
