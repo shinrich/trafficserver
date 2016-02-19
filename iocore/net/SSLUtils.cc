@@ -1354,7 +1354,7 @@ SSLInitServerContext(const SSLConfigParams *params, const ssl_user_config &sslMu
   }
 
 #ifdef SSL_MODE_RELEASE_BUFFERS
-  if (OPENSSL_VERSION_NUMBER > 0x1000107fL) {
+  if (OPENSSL_VERSION_NUMBER >= 0x1000105fL) {
     Debug("ssl", "enabling SSL_MODE_RELEASE_BUFFERS");
     SSL_CTX_set_mode(ctx, SSL_MODE_RELEASE_BUFFERS);
   }
