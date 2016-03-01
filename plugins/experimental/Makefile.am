@@ -21,6 +21,7 @@ SUBDIRS = \
  buffer_upload \
  channel_stats \
  collapsed_connection \
+ collapsed_forwarding \
  custom_redirect \
  epic \
  escalate \

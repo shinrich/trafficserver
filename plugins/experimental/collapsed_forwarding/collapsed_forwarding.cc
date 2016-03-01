@@ -247,8 +247,8 @@ collapsed_cont(TSCont contp, TSEvent event, void *edata)
   case TS_EVENT_HTTP_READ_RESPONSE_HDR: {
     return on_read_response_header(txnp);
   }
-  case TSEvent::TS_EVENT_IMMEDIATE:
-  case TSEvent::TS_EVENT_TIMEOUT: {
+  case TS_EVENT_IMMEDIATE:
+  case TS_EVENT_TIMEOUT: {
     return on_immediate(my_req, contp);
   }
   case TS_EVENT_HTTP_SEND_RESPONSE_HDR: {
@@ -292,15 +292,16 @@ TSRemapDoRemap(void *ih, TSHttpTxn rh, TSRemapRequestInfo *rri)
   TSCont cont = TSContCreate(collapsed_cont, TSMutexCreate());
 
   RequestData *req_data;
-  req_data = static_cast<RequestData *>(TSmalloc(sizeof(RequestData)));
-  memset(req_data, 0, sizeof(RequestData));
+  //req_data = static_cast<RequestData *>(TSmalloc(sizeof(RequestData)));
+  // memset(req_data, 0, sizeof(RequestData));
+  req_data = new RequestData();
 
   req_data->txnp = rh;
   req_data->wl_retry = 0;
 
   int url_len = 0;
   char *url = TSHttpTxnEffectiveUrlStringGet(rh, &url_len);
-  req_data->req_url = std::string(url, url_len);
+  req_data->req_url.assign(url, url_len);
 
   TSfree(url);
   TSContDataSet(cont, req_data);
