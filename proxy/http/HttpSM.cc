@@ -839,9 +839,9 @@ HttpSM::state_read_client_request_header(int event, void *data)
     }
     // YTS Team, yamsat Plugin
     // Setting enable_redirection according to HttpConfig master
-    if ((HttpConfig::m_master.number_of_redirections > 0) ||
+    if ((t_state.txn_conf->number_of_redirections > 0) ||
         (t_state.method == HTTP_WKSIDX_POST && HttpConfig::m_master.post_copy_size))
-      enable_redirection = HttpConfig::m_master.redirection_enabled;
+      enable_redirection = t_state.txn_conf->redirection_enabled;
 
     // Update Connection Reuse Info for HTTP2
     MIMEField *nrequests_field;
@@ -1967,7 +1967,7 @@ HttpSM::state_read_server_response_header(int event, void *data)
     t_state.api_next_action = HttpTransact::SM_ACTION_API_READ_RESPONSE_HDR;
 
     // if exceeded limit deallocate postdata buffers and disable redirection
-    if (enable_redirection && (redirection_tries < HttpConfig::m_master.number_of_redirections)) {
+    if (enable_redirection && (redirection_tries < t_state.txn_conf->number_of_redirections)) {
       ++redirection_tries;
     } else {
       tunnel.deallocate_redirect_postdata_buffers();
@@ -7507,7 +7507,7 @@ void
 HttpSM::do_redirect()
 {
   DebugSM("http_redirect", "[HttpSM::do_redirect]");
-  if (!enable_redirection || redirection_tries >= HttpConfig::m_master.number_of_redirections) {
+  if (!enable_redirection || redirection_tries >= t_state.txn_conf->number_of_redirections) {
     tunnel.deallocate_redirect_postdata_buffers();
     return;
   }
@@ -7810,7 +7810,7 @@ HttpSM::is_private()
 inline bool
 HttpSM::is_redirect_required()
 {
-  bool redirect_required = (enable_redirection && (redirection_tries <= HttpConfig::m_master.number_of_redirections));
+  bool redirect_required = (enable_redirection && (redirection_tries <= t_state.txn_conf->number_of_redirections));
 
   DebugSM("http_redirect", "is_redirect_required %u", redirect_required);
 
