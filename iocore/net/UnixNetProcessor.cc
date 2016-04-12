@@ -253,7 +253,8 @@ UnixNetProcessor::connect_re_internal(Continuation *cont, sockaddr const *target
       }
     }
   }
-  eventProcessor.schedule_imm(vc, opt->etype);
+  t->schedule_imm(vc);
+  //eventProcessor.schedule_imm(vc, opt->etype);
   if (using_socks) {
     return &socksEntry->action_;
   } else

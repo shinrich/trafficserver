@@ -23,6 +23,8 @@
 
 #include "Http2ClientSession.h"
 #include "HttpDebugNames.h"
+#include "IPAllow.h"
+#include "HttpConfig.h"
 
 #define STATE_ENTER(state_name, event)                                                       \
   do {                                                                                       \
@@ -60,14 +62,40 @@ send_connection_event(Continuation *cont, int event, void *edata)
 }
 
 Http2ClientSession::Http2ClientSession()
-  : con_id(0), client_vc(NULL), read_buffer(NULL), sm_reader(NULL), write_buffer(NULL), sm_writer(NULL), upgrade_context()
+  : client_vc(NULL), read_buffer(NULL), sm_reader(NULL), write_buffer(NULL), sm_writer(NULL), upgrade_context(), dying_event(VC_EVENT_NONE)
 {
+  // For now bypass IpAllow checks.  TBD
+  this->acl_record = IpAllow::AllMethodAcl();
 }
 
 void
 Http2ClientSession::destroy()
 {
   DebugHttp2Ssn0("session destroy");
+
+  // Update stats on how we died.  May want to eliminate this.  Was useful for
+  // tracking down which cases we were having problems cleaning up.  But for general
+  // use probably not worth the effort
+  switch (dying_event) {
+  case VC_EVENT_NONE:
+    HTTP2_INCREMENT_THREAD_DYN_STAT(HTTP2_STAT_SESSION_DIE_DEFAULT, this_ethread());
+    break;
+  case VC_EVENT_ACTIVE_TIMEOUT:
+    HTTP2_INCREMENT_THREAD_DYN_STAT(HTTP2_STAT_SESSION_DIE_ACTIVE, this_ethread());
+    break;
+  case VC_EVENT_INACTIVITY_TIMEOUT:
+    HTTP2_INCREMENT_THREAD_DYN_STAT(HTTP2_STAT_SESSION_DIE_INACTIVE, this_ethread());
+    break;
+  case VC_EVENT_ERROR:
+    HTTP2_INCREMENT_THREAD_DYN_STAT(HTTP2_STAT_SESSION_DIE_ERROR, this_ethread());
+    break;
+  case VC_EVENT_EOS:
+    HTTP2_INCREMENT_THREAD_DYN_STAT(HTTP2_STAT_SESSION_DIE_EOS, this_ethread());
+    break;
+  default:
+    HTTP2_INCREMENT_THREAD_DYN_STAT(HTTP2_STAT_SESSION_DIE_OTHER, this_ethread());
+    break;
+  }
 
   ink_release_assert(this->client_vc == NULL);
 
@@ -124,6 +152,10 @@ Http2ClientSession::new_connection(NetVConnection *new_vc, MIOBuffer *iobuf, IOB
   this->client_vc = new_vc;
   client_vc->set_inactivity_timeout(HRTIME_SECONDS(Http2::accept_no_activity_timeout));
   this->mutex = new_vc->mutex;
+
+  // These macros must have the mutex set.
+  HTTP_INCREMENT_DYN_STAT(http_current_client_connections_stat);
+  HTTP_INCREMENT_DYN_STAT(http_total_client_connections_stat);
 
   this->connection_state.mutex = new_ProxyMutex();
 
@@ -222,6 +254,7 @@ Http2ClientSession::do_io_close(int alerrno)
 
   ink_assert(this->mutex->thread_holding == this_ethread());
   HTTP2_DECREMENT_THREAD_DYN_STAT(HTTP2_STAT_CURRENT_CLIENT_SESSION_COUNT, this->mutex->thread_holding);
+  HTTP_DECREMENT_DYN_STAT(http_current_client_connections_stat);
   send_connection_event(&this->connection_state, HTTP2_SESSION_EVENT_FINI, this);
   do_api_callout(TS_HTTP_SSN_CLOSE_HOOK);
 }
@@ -253,22 +286,16 @@ Http2ClientSession::main_event_handler(int event, void *edata)
   case VC_EVENT_INACTIVITY_TIMEOUT:
   case VC_EVENT_ERROR:
   case VC_EVENT_EOS:
+    this->set_dying_event(event);
     this->do_io_close();
     return 0;
 
   case VC_EVENT_WRITE_COMPLETE:
   case VC_EVENT_WRITE_READY:
     // After sending GOAWAY, close the connection
-    if (this->connection_state.is_state_closed() && write_vio->ntodo() <= 0) {
+    if (this->connection_state.is_state_closed()) {
       this->do_io_close();
     }
-    return 0;
-
-  case TS_FETCH_EVENT_EXT_HEAD_DONE:
-  case TS_FETCH_EVENT_EXT_BODY_READY:
-  case TS_FETCH_EVENT_EXT_BODY_DONE:
-    // Process responses from origin server
-    send_connection_event(&this->connection_state, event, edata);
     return 0;
 
   default:

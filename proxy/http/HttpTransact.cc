@@ -44,7 +44,7 @@
 #include "ReverseProxy.h"
 #include "HttpBodyFactory.h"
 #include "StatPages.h"
-#include "HttpClientSession.h"
+#include "../IPAllow.h"
 #include "I_Machine.h"
 
 static char range_type[] = "multipart/byteranges; boundary=RANGE_SEPARATOR";
@@ -866,7 +866,7 @@ HttpTransact::EndRemapRequest(State *s)
     }
   }
   s->reverse_proxy = true;
-  s->server_info.is_transparent = s->state_machine->ua_session ? s->state_machine->ua_session->f_outbound_transparent : false;
+  s->server_info.is_transparent = s->state_machine->ua_session ? s->state_machine->ua_session->is_outbound_transparent() : false;
 
 done:
   if (is_debug_tag_set("http_chdr_describe") || is_debug_tag_set("http_trans") || is_debug_tag_set("url_rewrite")) {
@@ -989,16 +989,8 @@ HttpTransact::handle_upgrade_request(State *s)
        HTTP2-Settings header field.
      */
     if (s->upgrade_token_wks == MIME_VALUE_H2C) {
-      MIMEField *http2_settings = s->hdr_info.client_request.field_find(MIME_FIELD_HTTP2_SETTINGS, MIME_LEN_HTTP2_SETTINGS);
-
-      // TODO Check whether h2c is enabled or not.
-      if (http2_settings) {
-        s->state_machine->ua_session->set_h2c_upgrade_flag();
-        build_upgrade_response(s);
-        TRANSACT_RETURN_VAL(SM_ACTION_INTERNAL_CACHE_NOOP, NULL, true);
-      } else {
-        DebugTxn("http_trans_upgrade", "Unable to upgrade connection to h2c, invalid headers");
-      }
+      // TODO Check whether h2c is enabled or not.  h2c removed for now.
+      DebugTxn("http_trans_upgrade", "Unable to upgrade connection to h2c, invalid headers");
     }
   } else {
     DebugTxn("http_trans_upgrade", "Transaction requested upgrade for unknown protocol: %s", upgrade_hdr_val);
@@ -3646,7 +3638,7 @@ HttpTransact::handle_response_from_server(State *s)
         // Force host resolution to have the same family as the client.
         // Because this is a transparent connection, we can't switch address
         // families - that is locked in by the client source address.
-        s->state_machine->ua_session->host_res_style = ats_host_res_match(&s->current.server->addr.sa);
+        s->state_machine->ua_session->set_host_res_style(ats_host_res_match(&s->current.server->addr.sa));
         TRANSACT_RETURN(SM_ACTION_DNS_LOOKUP, OSDNSLookup);
       } else if ((s->dns_info.srv_lookup_success || s->host_db_info.is_rr_elt()) &&
                  (s->txn_conf->connect_attempts_rr_retries > 0) &&
@@ -5538,7 +5530,7 @@ HttpTransact::initialize_state_variables_from_request(State *s, HTTPHdr *obsolet
   if (s->state_machine->ua_session) {
     vc = s->state_machine->ua_session->get_netvc();
   }
-  if (!s->txn_conf->keep_alive_enabled_in || (vc && vc->get_is_internal_request())) {
+  if (!s->txn_conf->keep_alive_enabled_in || (vc && vc->get_is_internal_request()) || (s->state_machine->ua_session && s->state_machine->ua_session->ignore_keep_alive())) {
     s->client_info.keep_alive = HTTP_NO_KEEPALIVE;
   } else {
     s->client_info.keep_alive = incoming_request->keep_alive_get();
@@ -5620,7 +5612,10 @@ HttpTransact::initialize_state_variables_from_request(State *s, HTTPHdr *obsolet
   ats_ip_copy(&s->request_data.src_ip, &s->client_info.addr);
   memset(&s->request_data.dest_ip, 0, sizeof(s->request_data.dest_ip));
   if (s->state_machine->ua_session) {
-    s->request_data.incoming_port = s->state_machine->ua_session->get_netvc()->get_local_port();
+    NetVConnection *netvc = s->state_machine->ua_session->get_netvc();
+    if (netvc) {
+      s->request_data.incoming_port = netvc->get_local_port();
+    }
   }
   s->request_data.xact_start = s->client_request_time;
   s->request_data.api_info = &s->api_info;
@@ -5659,7 +5654,7 @@ HttpTransact::initialize_state_variables_from_response(State *s, HTTPHdr *incomi
     if (!s->cop_test_page)
       DebugTxn("http_hdrs", "[initialize_state_variables_from_response]"
                             "Server is keep-alive.");
-  } else if (s->state_machine->ua_session && s->state_machine->ua_session->f_outbound_transparent &&
+  } else if (s->state_machine->ua_session && s->state_machine->ua_session->is_outbound_transparent() &&
              s->state_machine->t_state.http_config_param->use_client_source_port) {
     /* If we are reusing the client<->ATS 4-tuple for ATS<->server then if the server side is closed, we can't
        re-open it because the 4-tuple may still be in the processing of shutting down. So if the server isn't
@@ -6473,7 +6468,7 @@ HttpTransact::process_quick_http_filter(State *s, int method)
   }
 
   if (s->state_machine->ua_session) {
-    const AclRecord *acl_record = s->state_machine->ua_session->acl_record;
+    const AclRecord *acl_record = s->state_machine->ua_session->get_acl_record();
     bool deny_request = (acl_record == NULL);
     if (acl_record && (acl_record->_method_mask != AclRecord::ALL_METHOD_MASK)) {
       if (method != -1) {
@@ -7999,7 +7994,7 @@ HttpTransact::build_error_response(State *s, HTTPStatus status_code, const char 
   }
   // If transparent and the forward server connection looks unhappy don't
   // keep alive the ua connection.
-  if ((s->state_machine->ua_session && s->state_machine->ua_session->f_outbound_transparent) &&
+  if ((s->state_machine->ua_session && s->state_machine->ua_session->is_outbound_transparent()) &&
       (status_code == HTTP_STATUS_INTERNAL_SERVER_ERROR || status_code == HTTP_STATUS_GATEWAY_TIMEOUT ||
        status_code == HTTP_STATUS_BAD_GATEWAY || status_code == HTTP_STATUS_SERVICE_UNAVAILABLE)) {
     s->client_info.keep_alive = HTTP_NO_KEEPALIVE;
