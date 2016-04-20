@@ -3432,6 +3432,7 @@ create_volume(int volume_number, off_t size_in_blocks, int scheme, CacheVol *cp)
       while (sp[i] > 0) {
         DiskVolBlock *p = gdisks[i]->create_volume(volume_number, sp[i], scheme);
         ink_assert(p && (p->len >= (unsigned int)blocks_per_vol));
+        Debug("cache_init", "Cache volume %d asked for %d blocks got %" PRIu64, i, sp[i], p->len);
         sp[i] -= p->len;
         cp->num_vols++;
         cp->size += p->len;
