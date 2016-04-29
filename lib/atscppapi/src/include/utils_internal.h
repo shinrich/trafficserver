@@ -72,21 +72,33 @@ namespace utils
     }
 
     static void
-    initTransactionServerRequest(Transaction &transaction)
+    initTransactionServerRequest(Transaction &transaction, TSEvent event)
     {
-      transaction.initServerRequest();
+      transaction.initServerRequest(event);
     }
 
     static void
-    initTransactionServerResponse(Transaction &transaction)
+    initTransactionServerResponse(Transaction &transaction, TSEvent event)
     {
-      transaction.initServerResponse();
+      transaction.initServerResponse(event);
     }
 
     static void
-    initTransactionClientResponse(Transaction &transaction)
+    initTransactionClientResponse(Transaction &transaction, TSEvent event)
     {
-      transaction.initClientResponse();
+      transaction.initClientResponse(event);
+    }
+
+    static void
+    initTransactionCachedRequest(Transaction &transaction, TSEvent event)
+    {
+      transaction.initCachedRequest(event);
+    }
+
+    static void
+    initTransactionCachedResponse(Transaction &transaction, TSEvent event)
+    {
+      transaction.initCachedResponse(event);
     }
 
     static const std::list<TransactionPlugin *> &
