@@ -170,7 +170,7 @@ public:
   virtual bool allow_half_open() const { return false; }
 
   virtual const char *
-  get_protocol_string() const { return "http2"; }
+  get_protocol_string() const { return "http/2"; }
 
   virtual void set_active_timeout(ink_hrtime timeout_in);
   virtual void set_inactivity_timeout(ink_hrtime timeout_in);
