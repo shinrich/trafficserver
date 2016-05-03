@@ -970,7 +970,7 @@ INKContInternal::destroy()
     this_ethread()->schedule_imm(this);
     //if (m_event_count <= 0) 
     {
-      Warning("INKCont not deletable %d %p", m_event_count, this);
+      //Warning("INKCont not deletable %d %p", m_event_count, this);
     }
   }
 }
@@ -1001,7 +1001,7 @@ INKContInternal::handle_event(int event, void *edata)
       m_free_magic = INKCONT_INTERN_MAGIC_DEAD;
       INKContAllocator.free(this);
     } else {
-      Warning("INKCont Deletable but not deleted %d", m_event_count);
+      //Warning("INKCont Deletable but not deleted %d", m_event_count);
     }
   } else {
     return m_event_func((TSCont) this, (TSEvent)event, edata);
