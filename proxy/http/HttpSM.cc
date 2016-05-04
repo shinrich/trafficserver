@@ -5779,7 +5779,8 @@ HttpSM::attach_server_session(HttpServerSession *s)
   if (ua_session) {
     NetVConnection *server_vc = s->get_netvc();
     NetVConnection *ua_vc = ua_session->get_netvc();
-    ink_release_assert(server_vc->thread == ua_vc->thread);
+    // With the scheduling change needed for TSNetConnection, it appears that we cannot make this assertion.
+    //ink_release_assert(server_vc->thread == ua_vc->thread);
   }
 
   // Set the mutex so that we have something to update
