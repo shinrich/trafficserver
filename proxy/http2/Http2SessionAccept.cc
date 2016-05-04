@@ -25,6 +25,7 @@
 #include "Http2ClientSession.h"
 #include "I_Machine.h"
 #include "Error.h"
+#include "../IPAllow.h"
 
 Http2SessionAccept::Http2SessionAccept(const HttpSessionAccept::Options &_o) : SessionAccept(NULL), options(_o)
 {
@@ -38,10 +39,14 @@ Http2SessionAccept::~Http2SessionAccept()
 void
 Http2SessionAccept::accept(NetVConnection *netvc, MIOBuffer *iobuf, IOBufferReader *reader)
 {
-  // XXX we need to refactor the ACL checks from HttpSessionAccept so that we can invoke them here, and also in
-  // the SPDY protocol layer ...
-  // Warning("skipping access control checks for HTTP/2 connection");
-
+  sockaddr const *client_ip = netvc->get_remote_addr();
+  const AclRecord *session_acl_record = testIpAllowPolicy(client_ip);
+  if (!session_acl_record) {
+    ip_port_text_buffer ipb;
+    Warning("HTTP/2 client '%s' prohibited by ip-allow policy", ats_ip_ntop(client_ip, ipb, sizeof(ipb)));
+    netvc->do_io_close();
+    return;
+  }
   netvc->attributes = this->options.transport_type;
 
   if (is_debug_tag_set("http2_seq")) {
@@ -52,10 +57,10 @@ Http2SessionAccept::accept(NetVConnection *netvc, MIOBuffer *iobuf, IOBufferRead
           ats_ip_nptop(client_ip, ipb, sizeof(ipb)), netvc->attributes);
   }
 
-  // XXX Allocate a Http2ClientSession
   Http2ClientSession *new_session = http2ClientSessionAllocator.alloc();
 
   netvc->set_action(new_session);
+  new_session->acl_record = session_acl_record;
   new_session->new_connection(netvc, iobuf, reader, false /* backdoor */);
 }
 
