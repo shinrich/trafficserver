@@ -967,11 +967,12 @@ INKContInternal::destroy()
     // TODO: Should this schedule on some other "thread" ?
     // TODO: we don't care about the return action?
     //TSContSchedule((TSCont) this, 0, TS_THREAD_POOL_DEFAULT);
+    int val = ink_atomic_increment((int *)&m_event_count, 1);	// Bump up our count because we are going through the handler again
     this_ethread()->schedule_imm(this);
-    //if (m_event_count <= 0) 
+    /*if (m_event_count <= 0) 
     {
-      //Warning("INKCont not deletable %d %p", m_event_count, this);
-    }
+      Warning("INKCont not deletable %d %p", m_event_count, this);
+    }*/
   }
 }
 
@@ -1001,7 +1002,7 @@ INKContInternal::handle_event(int event, void *edata)
       m_free_magic = INKCONT_INTERN_MAGIC_DEAD;
       INKContAllocator.free(this);
     } else {
-      //Warning("INKCont Deletable but not deleted %d", m_event_count);
+      Warning("INKCont Deletable but not deleted %d", m_event_count);
     }
   } else {
     return m_event_func((TSCont) this, (TSEvent)event, edata);
