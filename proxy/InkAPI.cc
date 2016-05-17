@@ -967,7 +967,7 @@ INKContInternal::destroy()
     // TODO: Should this schedule on some other "thread" ?
     // TODO: we don't care about the return action?
     //TSContSchedule((TSCont) this, 0, TS_THREAD_POOL_DEFAULT);
-    int val = ink_atomic_increment((int *)&m_event_count, 1);	// Bump up our count because we are going through the handler again
+    ink_atomic_increment((int *)&m_event_count, 1);	// Bump up our count because we are going through the handler again
     this_ethread()->schedule_imm(this);
     /*if (m_event_count <= 0) 
     {
