@@ -34,7 +34,7 @@ public:
   typedef ProxyClientTransaction super; ///< Parent type.
   Http2Stream(Http2StreamId sid = 0, ssize_t initial_rwnd = Http2::initial_window_size)
     : client_rwnd(initial_rwnd), server_rwnd(Http2::initial_window_size), header_blocks(NULL), header_blocks_length(0), request_header_length(0),
-      end_stream(false), response_reader(NULL), request_reader(NULL), request_buffer(CLIENT_CONNECTION_FIRST_READ_BUFFER_SIZE_INDEX), _id(sid), _state(HTTP2_STREAM_STATE_IDLE), body_done(false), data_length(0), closed(false), sent_delete(false), bytes_sent(0), chunked(false), cross_thread_event(NULL), active_event(NULL), inactive_event(NULL)
+      end_stream(false), response_reader(NULL), request_reader(NULL), request_buffer(CLIENT_CONNECTION_FIRST_READ_BUFFER_SIZE_INDEX), _id(sid), _state(HTTP2_STREAM_STATE_IDLE), body_done(false), data_length(0), closed(false), sent_delete(false), bytes_sent(0), chunked(false), cross_thread_event(NULL), active_event(NULL), inactive_event(NULL), read_event(NULL), write_event(NULL)
   {
     SET_HANDLER(&Http2Stream::main_event_handler);
   }
@@ -178,8 +178,10 @@ public:
   void clear_inactive_timer();
   void clear_active_timer();
   void clear_timers();
+  void clear_io_events();
 
 private:
+  Event *send_tracked_event(Event *event, int send_event, VIO *vio);
   HTTPParser http_parser;
   ink_hrtime _start_time;
   EThread *_thread;
@@ -206,6 +208,9 @@ private:
   ink_hrtime inactive_timeout;
   ink_hrtime inactive_timeout_at;
   Event *inactive_event;
+
+  Event *read_event;
+  Event *write_event;
 };
 
 extern ClassAllocator<Http2Stream> http2StreamAllocator;
