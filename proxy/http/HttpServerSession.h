@@ -149,6 +149,8 @@ public:
   LINK(HttpServerSession, ip_hash_link);
   LINK(HttpServerSession, host_hash_link);
 
+  LINK(HttpServerSession, side_link);
+
   // Keep track of connection limiting and a pointer to the
   // singleton that keeps track of the connection counts.
   bool enable_origin_connection_tracking;
