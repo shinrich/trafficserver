@@ -816,7 +816,7 @@ extern volatile int gnvol;
 
 extern void cplist_init();
 extern int cplist_reconfigure();
-static int configs = 4;
+static int configs = 3;
 
 Queue<CacheVol> saved_cp_list;
 int saved_cp_list_len;
@@ -853,6 +853,7 @@ create_config(RegressionTest *t, int num)
   int vol_num = 1;
   // clear all old configurations before adding new test cases
   config_volumes.clear_all();
+  cacheProcessor.initialized = CACHE_INITIALIZING; // prevent stats callbacks.
   switch (num) {
   case 0:
     for (i = 0; i < gndisks; i++) {
