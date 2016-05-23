@@ -34,8 +34,7 @@ Http2Stream::main_event_handler(int event, void *edata)
   MUTEX_LOCK(lock, this->mutex, this_ethread());
   if (e == cross_thread_event) {
     cross_thread_event = NULL;
-  }
-  else if (e == active_event) {
+  } else if (e == active_event) {
     event = VC_EVENT_ACTIVE_TIMEOUT;
     active_event = NULL;
   } else if (e == inactive_event) {
@@ -240,16 +239,16 @@ void
 Http2Stream::do_io_close(int /* flags */)
 {
   current_reader = NULL;	// SM on the way out
+  Mutex_lock(this->mutex, this_ethread());
   if (!sent_delete) {
-    Mutex_lock(this->mutex, this_ethread());
     sent_delete = true;
 
-    Debug("skh", "do_io_close stream %d", this->get_id());
+    Debug("http2", "do_io_close stream %d", this->get_id());
 
     // Only close if we are done sending data back to the client
     if (parent && (!this->is_body_done() || this->response_is_data_available())) {
       //Warning("Undoing do_io_close body_is_done=%d", this->is_body_done());
-      Debug("skh", "%d: Undo close to pass data", this->get_id());
+      Debug("http2", "%d: Undo close to pass data", this->get_id());
       closed = false;  // "unclose" so this gets picked up later when the netvc side is done
 
       // If chunking is playing games with us, make sure we noticed when the end of message has happened
@@ -295,7 +294,7 @@ Http2Stream::initiating_close()
 {
   if (!closed) {
     MUTEX_LOCK(lock, this->mutex, this_ethread());
-    Debug("skh", "initiating_close stream %d", this->get_id());
+    Debug("http2", "initiating_close stream %d", this->get_id());
     closed = true;
     // leaving the reference to the SM, so we can detatch from the SM
     // when we actually destroy
@@ -315,11 +314,11 @@ Http2Stream::initiating_close()
         MUTEX_LOCK(lock, write_vio.mutex, this_ethread());
         // Are we done?
         if (write_vio.nbytes == write_vio.ndone) {
-          Debug("skh", "handle write from destroy stream=%d event=%d", this->_id, VC_EVENT_WRITE_COMPLETE);
+          Debug("http2", "handle write from destroy stream=%d event=%d", this->_id, VC_EVENT_WRITE_COMPLETE);
           write_vio._cont->handleEvent(VC_EVENT_WRITE_COMPLETE, &write_vio);
         } else {
           write_vio._cont->handleEvent(VC_EVENT_EOS, &write_vio);
-          Debug("skh", "handle write from destroy stream=%d event=%d", this->_id, VC_EVENT_EOS);
+          Debug("http2", "handle write from destroy stream=%d event=%d", this->_id, VC_EVENT_EOS);
         }
         sent_write_complete = true;
       } 
@@ -329,7 +328,7 @@ Http2Stream::initiating_close()
      // Only bother with the EOS if we haven't sent the write complete
      if (!sent_write_complete) {
        MUTEX_LOCK(lock, read_vio.mutex, this_ethread());
-       Debug("skh", "send EOS to read cont stream=%d", this->_id);
+       Debug("http2", "send EOS to read cont stream=%d", this->_id);
        read_vio._cont->handleEvent(VC_EVENT_EOS, &read_vio);
      }
     } else if (current_reader) {
@@ -363,7 +362,7 @@ Http2Stream::send_tracked_event(Event *in_event, int send_event, VIO *vio)
     }
   } 
   if (event == NULL) {
-    event = this_ethread()->schedule_imm(this, send_event, vio);
+    event = this->get_thread()->schedule_imm(this, send_event, vio);
   }
   return event;
 }
@@ -532,7 +531,7 @@ Http2Stream::reenable(VIO *vio)
 void 
 Http2Stream::destroy()
 {
-  Debug("skh", "Destroy stream %d. Sent %d bytes", this->_id, this->bytes_sent);
+  Debug("http2", "Destroy stream %d. Sent %d bytes", this->_id, this->bytes_sent);
 
   // Clean up the write VIO in case of inactivity timeout
   this->do_io_write(NULL, 0, NULL);
