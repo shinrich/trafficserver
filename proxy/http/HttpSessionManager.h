@@ -139,7 +139,7 @@ public:
   HSMresult_t acquireSession(sockaddr const *addr, INK_MD5 const &host_hash, TSServerSessionSharingMatchType match_style, HttpServerSession *&server_session);
   /** Release a session to to pool.
    */
-  void releaseSession(HttpServerSession *ss, bool have_pool_lock);
+  void releaseSession(HttpServerSession *ss);
 
   void releaseSideSessionList();
 

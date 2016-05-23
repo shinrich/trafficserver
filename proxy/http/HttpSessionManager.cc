@@ -130,8 +130,10 @@ ServerSessionPool::releaseSideSessionList() {
 }
 
 void
-ServerSessionPool::releaseSession(HttpServerSession *ss, bool have_pool_lock)
+ServerSessionPool::releaseSession(HttpServerSession *ss)
 {
+  MUTEX_TRY_LOCK(lock, this->mutex, this_ethread());
+  bool have_pool_lock = lock.is_locked();
   ss->state = HSS_KA_SHARED;
   // Now we need to issue a read on the connection to detect
   //  if it closes on us.  We will get called back in the
@@ -157,6 +159,7 @@ ServerSessionPool::releaseSession(HttpServerSession *ss, bool have_pool_lock)
 
     releaseSideSessionList();
   } else { // Put on side list to handle later
+    Debug("http_ss", "[%" PRId64 "] [release session] could not release session due to lock contention", ss->con_id);
     // Put on queue to handle by next entity to get the lock
     ink_mutex_acquire(&this->side_mutex);
     this->side_list.push(ss);
@@ -189,6 +192,10 @@ ServerSessionPool::eventHandler(int event, void *data)
     ink_release_assert(0);
     return 0;
   }
+
+  // We are holding the pool mutex at this point.  Add back the sessions before we
+  // look for the one to close
+  this->releaseSideSessionList();
 
   sockaddr const *addr = net_vc->get_remote_addr();
   HttpConfigParams *http_config_params = HttpConfig::acquire();
@@ -235,31 +242,8 @@ ServerSessionPool::eventHandler(int event, void *data)
       break;
     }
   }
-
   HttpConfig::release(http_config_params);
 
-  bool do_close = false;
-  HttpServerSession *ssession = NULL;
-  if (!found) {
-    ink_mutex_acquire(&this->side_mutex);
-    ssession = side_list.head; 
-    while (ssession) {
-      HttpServerSession *next_ssession = ssession->side_link.next;
-      if (ssession->get_netvc() == net_vc) {
-        // Remove from the side list
-        this->side_list.remove(ssession);
-        found = true;
-        do_close = true;
-        break;
-      }
-      ssession = next_ssession; 
-    }
-    ink_mutex_release(&this->side_mutex);
-  }
-  if (do_close) {
-    // Drop connection on this end.
-    ssession->do_io_close();
-  }
   if (!found) {
     // We failed to find our session.  This can only be the result
     //  of a programming flaw
@@ -392,20 +376,10 @@ HttpSessionManager::acquire_session(Continuation * /* cont ATS_UNUSED */, sockad
 HSMresult_t
 HttpSessionManager::release_session(HttpServerSession *to_release)
 {
-  EThread *ethread = this_ethread();
   ServerSessionPool *pool =
-    TS_SERVER_SESSION_SHARING_POOL_THREAD == to_release->sharing_pool ? ethread->server_session_pool : m_g_pool;
-  bool released_p = true;
+    TS_SERVER_SESSION_SHARING_POOL_THREAD == to_release->sharing_pool ? this_ethread()->server_session_pool : m_g_pool;
 
   // The per thread lock looks like it should not be needed but if it's not locked the close checking I/O op will crash.
-  MUTEX_TRY_LOCK(lock, pool->mutex, ethread);
-  if (lock.is_locked()) {
-    pool->releaseSession(to_release, true);
-  } else {
-    Debug("http_ss", "[%" PRId64 "] [release session] could not release session due to lock contention", to_release->con_id);
-    pool->releaseSession(to_release, false);
-    //released_p = false;
-  }
-
-  return released_p ? HSM_DONE : HSM_RETRY;
+  pool->releaseSession(to_release);
+  return HSM_DONE;
 }
