@@ -355,10 +355,10 @@ struct OverridableHttpConfigParams {
       cache_heuristic_min_lifetime(3600), cache_heuristic_max_lifetime(86400), cache_guaranteed_min_lifetime(0),
       cache_guaranteed_max_lifetime(31536000), cache_max_stale_age(604800), keep_alive_no_activity_timeout_in(115),
       keep_alive_no_activity_timeout_out(120), transaction_no_activity_timeout_in(30), transaction_no_activity_timeout_out(30),
-      transaction_active_timeout_out(0), origin_max_connections(0), connect_attempts_max_retries(0),
-      connect_attempts_max_retries_dead_server(3), connect_attempts_rr_retries(3), connect_attempts_timeout(30),
+      transaction_active_timeout_out(0), origin_max_connections(0), origin_max_connections_queue(0), connect_attempts_max_retries(0), 
+      connect_attempts_max_retries_dead_server(3), connect_attempts_rr_retries(3), connect_attempts_timeout(30), 
       post_connect_attempts_timeout(1800), down_server_timeout(300), client_abort_threshold(10), freshness_fuzz_time(240),
-      freshness_fuzz_min_time(0), max_cache_open_read_retries(-1), cache_open_read_retry_time(10),
+      freshness_fuzz_min_time(0), max_cache_open_read_retries(-1), cache_open_read_retry_time(10), 
       background_fill_active_timeout(60), http_chunking_size(4096), flow_high_water_mark(0), flow_low_water_mark(0),
       default_buffer_size_index(8), default_buffer_water_mark(32768), slow_log_threshold(0),ssl_client_verify_server(0),
 
@@ -506,6 +506,7 @@ struct OverridableHttpConfigParams {
   MgmtInt transaction_no_activity_timeout_out;
   MgmtInt transaction_active_timeout_out;
   MgmtInt origin_max_connections;
+  MgmtInt origin_max_connections_queue;
 
   ////////////////////////////////////
   // origin server connect attempts //
