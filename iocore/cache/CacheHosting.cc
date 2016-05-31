@@ -822,6 +822,7 @@ Queue<CacheVol> saved_cp_list;
 int saved_cp_list_len;
 ConfigVolumes saved_config_volumes;
 int saved_gnvol;
+int saved_cacheprocessor_state;
 
 int ClearConfigVol(ConfigVolumes *configp);
 int ClearCacheVolList(Queue<CacheVol> *cpl, int len);
@@ -853,7 +854,6 @@ create_config(RegressionTest *t, int num)
   int vol_num = 1;
   // clear all old configurations before adding new test cases
   config_volumes.clear_all();
-  cacheProcessor.initialized = CACHE_INITIALIZING; // prevent stats callbacks.
   switch (num) {
   case 0:
     for (i = 0; i < gndisks; i++) {
@@ -1123,6 +1123,8 @@ save_state()
   memset(&cp_list, 0, sizeof(Queue<CacheVol>));
   memset(&config_volumes, 0, sizeof(ConfigVolumes));
   gnvol = 0;
+  saved_cacheprocessor_state = cacheProcessor.initialized;
+  cacheProcessor.initialized = CACHE_INITIALIZING; // prevent stats callbacks.
 }
 
 void
@@ -1132,4 +1134,5 @@ restore_state()
   cp_list_len = saved_cp_list_len;
   memcpy(&config_volumes, &saved_config_volumes, sizeof(ConfigVolumes));
   gnvol = saved_gnvol;
+  cacheProcessor.initialized = saved_cacheprocessor_state;
 }
