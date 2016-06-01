@@ -1775,9 +1775,9 @@ HttpSM::state_http_server_open(int event, void *data)
        UnixNetVConnection *server_vc = (UnixNetVConnection*)data;
        printf("client fd is :%d , server fd is %d\n",vc->con.fd,
        server_vc->con.fd); */
+    session->attach_hostname(t_state.current.server->name);
     ats_ip_copy(&session->server_ip, &t_state.current.server->addr);
-    session->new_connection((NetVConnection *)data);
-    ats_ip_port_cast(&session->server_ip) = htons(t_state.current.server->port);
+    session->new_connection(static_cast<NetVConnection *>(data));
     session->state = HSS_ACTIVE;
 
     attach_server_session(session);
@@ -4732,8 +4732,13 @@ HttpSM::do_http_server_open(bool raw)
   }
 
   DebugSM("http_seq", "[HttpSM::do_http_server_open] Sending request to server");
+  INK_MD5 hostname_hash;
+  MD5Context md5_ctx;
+  md5_ctx.hash_immediate(hostname_hash, static_cast<const void *>(t_state.current.server->name),
+                         strlen(t_state.current.server->name));
   ConnectionCount *connections = ConnectionCount::getInstance();
-  server_connection_count = connections->getCount(t_state.current.server->addr);
+  server_connection_count = connections->getCount(t_state.current.server->addr, hostname_hash,
+                              (TSServerSessionSharingMatchType)t_state.txn_conf->server_session_sharing_match);
  
   milestones[TS_MILESTONE_SERVER_CONNECT] = Thread::get_hrtime();
   if (milestones[TS_MILESTONE_SERVER_FIRST_CONNECT] == 0) {
@@ -4881,14 +4886,36 @@ HttpSM::do_http_server_open(bool raw)
   // Check to see if we have reached the max number of connections on this
   // host.
   if (t_state.txn_conf->origin_max_connections > 0) {
-    if (server_connection_count >= t_state.txn_conf->origin_max_connections) {
-      char addrbuf[INET6_ADDRSTRLEN];
-      ats_ip_ntop(&t_state.current.server->addr.sa, addrbuf, sizeof(addrbuf));
-      DebugSM("http", "[%" PRId64 "] over the number of connection for this host: %s", sm_id, addrbuf);
-      Warning("[%" PRId64 "] over the max number of connections for this host: %s", sm_id,
-              addrbuf);
+    ip_port_text_buffer addrbuf;
+    if (server_connection_count >= t_state.txn_conf->origin_max_connections) { 
+      DebugSM("http", "[%" PRId64 "] over the number of connection for this host: %s", sm_id,
+              ats_ip_nptop(&t_state.current.server->addr.sa, addrbuf, sizeof(addrbuf)));
       ink_assert(pending_action == NULL);
-      pending_action = eventProcessor.schedule_in(this, HRTIME_MSECONDS(100));
+
+      // if we were previously queued, or the queue is disabled-- just reschedule
+      if (t_state.origin_request_queued || t_state.txn_conf->origin_max_connections_queue < 0) {
+        pending_action = eventProcessor.schedule_in(this, HRTIME_MSECONDS(100));
+        return;
+      } else if (t_state.txn_conf->origin_max_connections_queue > 0) { // If we have a queue, lets see if there is a slot
+        ConnectionCountQueue *waiting_connections = ConnectionCountQueue::getInstance();
+        // if there is space in the queue
+        if (waiting_connections->getCount(t_state.current.server->addr, hostname_hash,
+                                          (TSServerSessionSharingMatchType)t_state.txn_conf->server_session_sharing_match) <
+            t_state.txn_conf->origin_max_connections_queue) {
+          t_state.origin_request_queued = true;
+          Debug("http", "[%" PRId64 "] queued for this host: %s", sm_id,
+                ats_ip_ntop(&t_state.current.server->addr.sa, addrbuf, sizeof(addrbuf)));
+          waiting_connections->incrementCount(t_state.current.server->addr, hostname_hash,
+                                              (TSServerSessionSharingMatchType)t_state.txn_conf->server_session_sharing_match, 1);
+          pending_action = eventProcessor.schedule_in(this, HRTIME_MSECONDS(100));
+        } else { // the queue is full
+          t_state.current.state = HttpTransact::CONNECTION_ERROR;
+          call_transact_and_set_next_state(HttpTransact::HandleResponse);
+        }
+      } else { // the queue is set to 0
+        t_state.current.state = HttpTransact::CONNECTION_ERROR;
+        call_transact_and_set_next_state(HttpTransact::HandleResponse);
+      }
       return;
     }
   }
@@ -5303,6 +5330,20 @@ HttpSM::handle_post_failure()
 void
 HttpSM::handle_http_server_open()
 {
+  // if we were a queued request, we need to decrement the queue size-- as we got a connection
+  if (t_state.origin_request_queued) {
+    INK_MD5 hostname_hash;
+    MD5Context md5_ctx;
+    md5_ctx.hash_immediate(hostname_hash, static_cast<const void *>(t_state.current.server->name),
+                           strlen(t_state.current.server->name));
+
+    ConnectionCountQueue *waiting_connections = ConnectionCountQueue::getInstance();
+    waiting_connections->incrementCount(t_state.current.server->addr, hostname_hash,
+                                        (TSServerSessionSharingMatchType)t_state.txn_conf->server_session_sharing_match, -1);
+    // The request is now not queued. This is important if the request will ever retry, the t_state is re-used
+    t_state.origin_request_queued = false;
+  }
+
   // [bwyatt] applying per-transaction OS netVC options here
   //          IFF they differ from the netVC's current options.
   //          This should keep this from being redundant on a

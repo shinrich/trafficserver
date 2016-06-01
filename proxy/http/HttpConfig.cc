@@ -893,6 +893,7 @@ HttpConfig::startup()
   HttpEstablishStaticConfigLongLong(c.server_max_connections, "proxy.config.http.server_max_connections");
   HttpEstablishStaticConfigLongLong(c.oride.server_tcp_init_cwnd, "proxy.config.http.server_tcp_init_cwnd");
   HttpEstablishStaticConfigLongLong(c.oride.origin_max_connections, "proxy.config.http.origin_max_connections");
+  HttpEstablishStaticConfigLongLong(c.oride.origin_max_connections_queue, "proxy.config.http.origin_max_connections_queue");
   HttpEstablishStaticConfigLongLong(c.origin_min_keep_alive_connections, "proxy.config.http.origin_min_keep_alive_connections");
   HttpEstablishStaticConfigLongLong(c.attach_server_session_to_client, "proxy.config.http.attach_server_session_to_client");
 
@@ -1169,6 +1170,13 @@ HttpConfig::reconfigure()
   params->server_max_connections = m_master.server_max_connections;
   params->oride.server_tcp_init_cwnd = m_master.oride.server_tcp_init_cwnd;
   params->oride.origin_max_connections = m_master.oride.origin_max_connections;
+  params->oride.origin_max_connections_queue = m_master.oride.origin_max_connections_queue;
+  // if origin_max_connections_queue is set without max_connections, it is meaningless, so we'll warn
+  if (params->oride.origin_max_connections_queue >= 0 &&
+      !(params->oride.origin_max_connections || params->origin_min_keep_alive_connections)) {
+    Warning("origin_max_connections_queue is set, but neither origin_max_connections nor origin_min_keep_alive_connections are "
+            "set, please correct your records.config");
+  }
   params->origin_min_keep_alive_connections = m_master.origin_min_keep_alive_connections;
   params->attach_server_session_to_client = m_master.attach_server_session_to_client;
 
