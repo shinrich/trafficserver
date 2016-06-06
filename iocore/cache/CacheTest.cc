@@ -481,7 +481,8 @@ test_RamCache(RegressionTest *t, RamCache *cache)
 
   for (int l = 0; l < 10; l++) {
     for (int i = 0; i < 200; i++) {
-      IOBufferData *d = new IOBufferData;
+    //  IOBufferData *d = new IOBufferData;
+      Ptr<IOBufferData> d(ioDataAllocator.alloc());
       INK_MD5 md5;
 
       d->alloc(BUFFER_SIZE_INDEX_16K);
