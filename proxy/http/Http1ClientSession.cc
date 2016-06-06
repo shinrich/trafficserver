@@ -71,7 +71,6 @@ Http1ClientSession::Http1ClientSession()
 void
 Http1ClientSession::destroy()
 {
-  Debug("skh", "Http1ClientSession destroy");
   DebugHttpSsn("[%" PRId64 "] session destroy", con_id);
 
   ink_release_assert(!client_vc);
@@ -279,6 +278,10 @@ Http1ClientSession::do_io_close(int alerrno)
     HTTP_SUM_DYN_STAT(http_transactions_per_client_con, transact_count);
     HTTP_DECREMENT_DYN_STAT(http_current_client_connections_stat);
     conn_decrease = false;
+    if (client_vc) {
+      client_vc->do_io_close();
+      client_vc = NULL;
+    }
     do_api_callout(TS_HTTP_SSN_CLOSE_HOOK);
   }
 }
