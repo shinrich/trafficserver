@@ -141,9 +141,6 @@ public:
    */
   void releaseSession(HttpServerSession *ss);
 
-  void releaseSideSessionList();
-
-
   /// Close all sessions and then clear the table.
   void purge();
 
@@ -151,9 +148,6 @@ public:
   // Note that each server session is stored in both pools.
   IPHashTable m_ip_pool;
   HostHashTable m_host_pool;
-
-  DList(HttpServerSession, side_link) side_list;
-  ink_mutex side_mutex;
 };
 
 class HttpSessionManager

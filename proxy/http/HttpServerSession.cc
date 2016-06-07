@@ -33,7 +33,6 @@
 #include "HttpServerSession.h"
 #include "HttpSessionManager.h"
 #include "HttpSM.h"
-#include "I_Lock.h"
 
 static int64_t next_ss_id = (int64_t)0;
 ClassAllocator<HttpServerSession> httpServerSessionAllocator("httpServerSessionAllocator");
