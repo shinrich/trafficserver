@@ -155,6 +155,7 @@ public:
   // Implement ProxyClientSession interface.
   void start();
   virtual void destroy();
+  virtual void really_destroy();
   void new_connection(NetVConnection *new_vc, MIOBuffer *iobuf, IOBufferReader *reader, bool backdoor);
   virtual bool handle_api_event(int event, void* data);
 
@@ -177,7 +178,7 @@ public:
     if (client_vc) {
       client_vc->do_io_read(NULL, 0, NULL); 
       client_vc->do_io_write(NULL, 0, NULL); 
-      client_vc = NULL;
+      client_vc->set_action(NULL);
    }
   }
 
@@ -214,6 +215,8 @@ public:
   Http2ConnectionState connection_state;
   void set_dying_event(int event) { dying_event = event; }
   int get_dying_event() const { return dying_event; }
+  bool do_destroy() const { return kill_me == true; }
+  bool is_recursing() const { return recursion > 0; }
 
 private:
   Http2ClientSession(Http2ClientSession &);                  // noncopyable
@@ -238,6 +241,8 @@ private:
 
   VIO *write_vio;
   int dying_event;
+  bool kill_me;
+  int recursion;
 };
 
 extern ClassAllocator<Http2ClientSession> http2ClientSessionAllocator;

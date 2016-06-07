@@ -161,9 +161,10 @@ ServerSessionPool::releaseSession(HttpServerSession *ss)
   } else { // Put on side list to handle later
     Debug("http_ss", "[%" PRId64 "] [release session] could not release session due to lock contention", ss->con_id);
     // Put on queue to handle by next entity to get the lock
-    ink_mutex_acquire(&this->side_mutex);
+    /*ink_mutex_acquire(&this->side_mutex);
     this->side_list.push(ss);
-    ink_mutex_release(&this->side_mutex);
+    ink_mutex_release(&this->side_mutex);*/
+    ss->do_io_close();
   }
 }
 

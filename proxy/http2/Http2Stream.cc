@@ -31,6 +31,7 @@ Http2Stream::main_event_handler(int event, void *edata)
 {
   Event *e = static_cast<Event *>(edata);
 
+  ink_release_assert(this->get_thread() == this_ethread());
   MUTEX_LOCK(lock, this->mutex, this_ethread());
   if (e == cross_thread_event) {
     cross_thread_event = NULL;
@@ -52,11 +53,19 @@ Http2Stream::main_event_handler(int event, void *edata)
   case VC_EVENT_ACTIVE_TIMEOUT:
   case VC_EVENT_INACTIVITY_TIMEOUT:
     if (current_reader && read_vio.ntodo() > 0) {
-      MUTEX_LOCK(lock, read_vio.mutex, this_ethread());
-      read_vio._cont->handleEvent(event, &read_vio);
+      MUTEX_TRY_LOCK(lock, read_vio.mutex, this_ethread());
+      if (lock.is_locked()) {
+        read_vio._cont->handleEvent(event, &read_vio);
+      } else {
+        this_ethread()->schedule_imm(read_vio._cont, event, &read_vio);
+      }
     } else if (current_reader && write_vio.ntodo() > 0) {
-      MUTEX_LOCK(lock, write_vio.mutex, this_ethread());
-      write_vio._cont->handleEvent(event, &write_vio);
+      MUTEX_TRY_LOCK(lock, write_vio.mutex, this_ethread());
+      if (lock.is_locked()) {
+        write_vio._cont->handleEvent(event, &write_vio);
+      } else {
+        this_ethread()->schedule_imm(write_vio._cont, event, &write_vio);
+      }
     }
     break;
   case VC_EVENT_WRITE_READY: 
@@ -64,8 +73,12 @@ Http2Stream::main_event_handler(int event, void *edata)
     inactive_timeout_at = Thread::get_hrtime() + inactive_timeout;
     if (e->cookie == &write_vio) {
       if (write_vio.mutex) {
-        MUTEX_LOCK(lock, write_vio.mutex, this_ethread());
-        if (write_vio._cont && this->current_reader) write_vio._cont->handleEvent(event, &write_vio);
+        MUTEX_TRY_LOCK(lock, write_vio.mutex, this_ethread());
+        if (lock.is_locked() && write_vio._cont && this->current_reader) {
+          write_vio._cont->handleEvent(event, &write_vio);
+        } else {
+          this_ethread()->schedule_imm(write_vio._cont, event, &write_vio);
+        }
       }
     } else {
       update_write_request(write_vio.get_reader(), INT64_MAX, true);
@@ -76,8 +89,12 @@ Http2Stream::main_event_handler(int event, void *edata)
     inactive_timeout_at = Thread::get_hrtime() + inactive_timeout;
     if (e->cookie == &read_vio) {
       if (read_vio.mutex) {
-        MUTEX_LOCK(lock, read_vio.mutex, this_ethread());
-        if (read_vio._cont && this->current_reader) read_vio._cont->handleEvent(event, &read_vio);
+        MUTEX_TRY_LOCK(lock, read_vio.mutex, this_ethread());
+        if (lock.is_locked() && read_vio._cont && this->current_reader) {
+          read_vio._cont->handleEvent(event, &read_vio);
+        } else {
+          this_ethread()->schedule_imm(read_vio._cont, event, &read_vio);
+        }
       }
     } else {
       this->update_read_request(INT64_MAX, true);
@@ -87,6 +104,8 @@ Http2Stream::main_event_handler(int event, void *edata)
     MUTEX_LOCK(lock, this->mutex, this_ethread());
     // Clean up after yourself if this was an EOS
     ink_release_assert(this->closed);
+    // Safe to initiate SSN_CLOSE if this is the last stream
+    static_cast<Http2ClientSession *>(parent)->connection_state.release_stream(this);
     this->destroy();
     break;
   }
@@ -257,7 +276,7 @@ Http2Stream::do_io_close(int /* flags */)
       } else {
         Mutex_unlock(this->mutex, this_ethread());
         this->reenable(&write_vio); // Kick the mechanism to get any remaining data pushed out
-        Warning("Re-enabled to get data pushed out is_done=%d", this->is_body_done());
+        //Warning("Re-enabled to get data pushed out is_done=%d ndone=%" PRId64 " nbytes=%" PRId64, this->is_body_done(), this->write_vio.ndone, this->write_vio.nbytes);
         return;	
       }
     } 
@@ -268,9 +287,10 @@ Http2Stream::do_io_close(int /* flags */)
       static_cast<Http2ClientSession *>(parent)->connection_state.send_data_frame(this);
       // Remove ourselves from the stream list
       static_cast<Http2ClientSession *>(parent)->connection_state.delete_stream(this);
+
     }
 
-    parent = NULL;
+    //parent = NULL;
 
     clear_timers();
     clear_io_events();
@@ -299,8 +319,10 @@ Http2Stream::initiating_close()
     // leaving the reference to the SM, so we can detatch from the SM
     // when we actually destroy
     //current_reader = NULL;
-
-    parent = NULL;
+    //
+    // Leaving reference to client session as well, so we can signal once the
+    // TXN_CLOSE has beent sent
+    //parent = NULL;
     clear_timers();
     clear_io_events();
 
@@ -682,4 +704,11 @@ Http2Stream::clear_io_events()
   read_event = NULL;
   if (write_event) write_event->cancel();
   write_event = NULL;
+}
+
+void 
+Http2Stream::release(IOBufferReader *r) 
+{ 
+  current_reader = NULL;  // State machine is on its own way down.
+  this->do_io_close(); 
 }

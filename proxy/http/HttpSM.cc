@@ -942,8 +942,6 @@ HttpSM::state_watch_for_client_abort(int event, void *data)
         netvc->do_io_shutdown(IO_SHUTDOWN_READ);
       ua_entry->eos = true;
     } else {
-      if (netvc)
-        netvc->do_io_close();
       ua_session->do_io_close();
       ua_session = NULL;
       ua_buffer_reader = NULL;

@@ -695,6 +695,7 @@ static const http2_frame_dispatch frame_handlers[HTTP2_FRAME_TYPE_MAX] = {
 int
 Http2ConnectionState::main_event_handler(int event, void *edata)
 {
+  ++recursion;
   switch (event) {
   // Initialize HTTP/2 Connection
   case HTTP2_SESSION_EVENT_INIT: {
@@ -717,16 +718,17 @@ Http2ConnectionState::main_event_handler(int event, void *edata)
       send_window_update_frame(0, server_settings.get(HTTP2_SETTINGS_INITIAL_WINDOW_SIZE) - HTTP2_INITIAL_WINDOW_SIZE);
     }
 
-    return 0;
+    break;
   }
 
   // Finalize HTTP/2 Connection
   case HTTP2_SESSION_EVENT_FINI: {
-    this->ua_session = NULL;
+    this->fini_received = true;
     cleanup_streams();
     SET_HANDLER(&Http2ConnectionState::state_closed);
-    return 0;
+    this->release_stream(NULL);
   }
+  break;
 
   // Parse received HTTP/2 frames
   case HTTP2_SESSION_EVENT_RECV: {
@@ -740,10 +742,9 @@ Http2ConnectionState::main_event_handler(int event, void *edata)
     if (frame->header().type >= HTTP2_FRAME_TYPE_MAX) {
       DebugSsn(this->ua_session, "http2_cs", "[%" PRId64 "] Discard a frame which has unknown type, type=%x",
                this->ua_session->connection_id(), frame->header().type);
-      return 0;
+      break;
     }
-
-    if (frame_handlers[frame->header().type]) {
+    else if (frame_handlers[frame->header().type]) {
       error = frame_handlers[frame->header().type](*this->ua_session, *this, *frame);
     } else {
       error = Http2Error(HTTP2_ERROR_CLASS_CONNECTION, HTTP2_ERROR_INTERNAL_ERROR);
@@ -770,13 +771,19 @@ Http2ConnectionState::main_event_handler(int event, void *edata)
         this->send_rst_stream_frame(last_streamid, error.code);
       }
     }
-
-    return 0;
+    break;
   }
   default:
     DebugSsn(this->ua_session, "http2_cs", "unexpected event=%d edata=%p", event, edata);
     ink_release_assert(0);
-    return 0;
+    break;
+  }
+
+  --recursion;
+  if (recursion == 0 && ua_session && !ua_session->is_recursing()) {
+    if (this->ua_session->do_destroy()) {
+      this->ua_session->really_destroy();
+    }
   }
 
   return 0;
@@ -815,6 +822,7 @@ Http2ConnectionState::create_stream(Http2StreamId new_id)
 
   ink_assert(client_streams_count < UINT32_MAX);
   ++client_streams_count;
+  ++total_client_streams_count;
   new_stream->set_parent(ua_session);
   new_stream->mutex = ua_session->mutex;
   return new_stream;
@@ -868,6 +876,18 @@ Http2ConnectionState::delete_stream(Http2Stream *stream)
 }
 
 void
+Http2ConnectionState::release_stream(Http2Stream *stream)
+{
+  if (stream) {
+    --total_client_streams_count;
+  }
+  if (ua_session && fini_received && total_client_streams_count == 0) {
+    // We were shutting down, go ahead and terminate the session
+    ua_session->do_api_callout(TS_HTTP_SSN_CLOSE_HOOK);
+  }
+}
+
+void
 Http2ConnectionState::update_initial_rwnd(Http2WindowSize new_size)
 {
   // Update stream level window sizes
@@ -895,7 +915,6 @@ Http2ConnectionState::send_data_frame(Http2Stream *stream)
 
     // Are we at the end?
     if (stream->is_body_done() && current_reader && !current_reader->is_read_avail_more_than(0)) {
-      Debug("skh", "End of Stream id=%d no more data and body done", stream->get_id());
       flags |= HTTP2_FLAGS_DATA_END_STREAM;
       payload_length = 0;
     } else {
@@ -921,7 +940,6 @@ Http2ConnectionState::send_data_frame(Http2Stream *stream)
       stream->client_rwnd -= payload_length;
 
       if (stream->is_body_done() && payload_length < send_size) {
-        Debug("skh", "End of Stream id=%d body done and should fit avail", stream->get_id());
         flags |= HTTP2_FLAGS_DATA_END_STREAM;
       }
     }
