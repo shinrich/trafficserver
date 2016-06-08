@@ -162,7 +162,12 @@ private:
 
   MIOBuffer *read_buffer;
   IOBufferReader *sm_reader;
-  C_Read_State read_state;
+
+  /*
+   * Volatile should not be necessary, but there appears to be a bug in the 4.9 rhel gcc 
+   * compiler that was using an old version of read_state to make decisions in really_destroy
+   */
+  volatile C_Read_State read_state;
 
   VIO *ka_vio;
   VIO *slave_ka_vio;

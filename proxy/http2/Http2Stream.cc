@@ -31,7 +31,12 @@ Http2Stream::main_event_handler(int event, void *edata)
 {
   Event *e = static_cast<Event *>(edata);
 
-  ink_release_assert(this->get_thread() == this_ethread());
+  Thread *this_thread = this_ethread();
+  if (this->get_thread() != this_thread) {
+    // Send on to the owning thread
+    this->get_thread()->schedule_imm(this, event, edata);
+    return 0;
+  }
   MUTEX_LOCK(lock, this->mutex, this_ethread());
   if (e == cross_thread_event) {
     cross_thread_event = NULL;

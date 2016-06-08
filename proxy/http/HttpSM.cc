@@ -943,7 +943,7 @@ HttpSM::state_watch_for_client_abort(int event, void *data)
       ua_entry->eos = true;
     } else {
       ua_session->do_io_close();
-      ua_session = NULL;
+      //ua_session = NULL;
       ua_buffer_reader = NULL;
       vc_table.cleanup_entry(ua_entry);
       ua_entry = NULL;
@@ -3041,8 +3041,8 @@ HttpSM::tunnel_handler_server(int event, HttpTunnelProducer *p)
       // Note: This is a hack. The correct solution is for the UA session to signal back to the SM
       // when the UA is about to be destroyed and clean up the pointer there. That should be done once
       // the TS-3612 changes are in place (and similarly for the server session).
-      if (ua_entry->in_tunnel)
-        ua_session = NULL;
+      /*if (ua_entry->in_tunnel)
+        ua_session = NULL;*/
 
       t_state.current.server->abort = HttpTransact::ABORTED;
       t_state.client_info.keep_alive = HTTP_NO_KEEPALIVE;
@@ -3360,12 +3360,12 @@ HttpSM::tunnel_handler_ua(int event, HttpTunnelConsumer *c)
     }
 
     ua_session->do_io_close();
-    ua_session = NULL;
+    //ua_session = NULL;
   } else {
     ink_assert(ua_buffer_reader != NULL);
     ua_session->release(ua_buffer_reader);
     ua_buffer_reader = NULL;
-    ua_session = NULL;
+    //ua_session = NULL;
   }
 
   return 0;
@@ -6156,7 +6156,7 @@ HttpSM::setup_error_transfer()
     DebugSM("http", "[setup_error_transfer] Now closing connection ...");
     vc_table.cleanup_entry(ua_entry);
     ua_entry = NULL;
-    ua_session = NULL;
+    //ua_session = NULL;
     terminate_sm = true;
     t_state.source = HttpTransact::SOURCE_INTERNAL;
   }
