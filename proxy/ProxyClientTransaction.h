@@ -97,11 +97,8 @@ public:
 
   virtual bool ignore_keep_alive() { return true; }
 
-  virtual void destroy() 
-  { 
-    this->mutex.clear(); 
-  }
-
+  virtual void destroy();
+  virtual void transaction_done() { }
   ProxyClientSession *get_parent() { return parent; }
 
   virtual void set_parent(ProxyClientSession *new_parent) 
