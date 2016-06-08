@@ -157,7 +157,8 @@ public:
             prev->next = next;
           else
             buckets[i] = next;
-          delete cur;
+	  ats_free(cur);
+          //delete cur;
           cur_size--;
         } else {
           prev = cur;
