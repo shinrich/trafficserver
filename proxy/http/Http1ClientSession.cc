@@ -85,6 +85,8 @@ Http1ClientSession::really_destroy()
   ink_release_assert(!client_vc);
   ink_assert(read_buffer);
 
+  do_api_callout(TS_HTTP_SSN_CLOSE_HOOK);
+
   magic = HTTP_CS_MAGIC_DEAD;
   if (read_buffer) {
     free_MIOBuffer(read_buffer);
@@ -292,7 +294,6 @@ Http1ClientSession::do_io_close(int alerrno)
       client_vc->do_io_close();
       client_vc = NULL;
     }
-    do_api_callout(TS_HTTP_SSN_CLOSE_HOOK);
     if (trans.get_sm() == NULL) {
       // Go ahead and destroy
       this->really_destroy();
