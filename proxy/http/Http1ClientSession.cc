@@ -69,7 +69,13 @@ Http1ClientSession::Http1ClientSession()
 }
 
 void
-Http1ClientSession::destroy()
+Http1ClientSession::destroy() 
+{
+
+}
+
+void
+Http1ClientSession::really_destroy()
 {
   DebugHttpSsn("[%" PRId64 "] session destroy", con_id);
 

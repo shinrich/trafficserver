@@ -56,6 +56,7 @@ public:
 
   // Implement ProxyClientSession interface.
   virtual void destroy();
+  void really_destroy();
 
   virtual void
   start()

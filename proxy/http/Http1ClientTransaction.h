@@ -112,6 +112,7 @@ public:
   virtual void cancel_inactivity_timeout() {
     if (parent) parent->cancel_inactivity_timeout();
   }
+  virtual void transaction_done();
 
 protected:
   uint16_t outbound_port;

@@ -6768,7 +6768,9 @@ HttpSM::kill_this()
       plugin_tunnel = NULL;
     }
 
-    ua_session = NULL;
+    if (ua_session) {
+      ua_session->transaction_done();
+    }
     server_session = NULL;
 
     // So we don't try to nuke the state machine
