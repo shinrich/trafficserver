@@ -1262,7 +1262,6 @@ HdrTest::test_http_hdr_print_and_copy_aux(int testnum, const char *request, cons
   marshal_hdr.unmarshal(marshal_buf, marshal_len, &ref);
   new_hdr.create(HTTP_TYPE_REQUEST);
   new_hdr.copy(&marshal_hdr);
-  ats_free(marshal_buf);
 
   /*** (3) print the request header and copy to buffers ***/
 
@@ -1298,6 +1297,8 @@ HdrTest::test_http_hdr_print_and_copy_aux(int testnum, const char *request, cons
     return (0);
   }
 
+
+  ats_free(marshal_buf);
   hdr.destroy();
   new_hdr.destroy();
 
