@@ -34,7 +34,9 @@ Http2Stream::main_event_handler(int event, void *edata)
   Thread *this_thread = this_ethread();
   if (this->get_thread() != this_thread) {
     // Send on to the owning thread
-    this->get_thread()->schedule_imm(this, event, edata);
+    if (cross_thread_event == NULL) {
+      cross_thread_event = this->get_thread()->schedule_imm(this, event, edata);
+    }
     return 0;
   }
   MUTEX_LOCK(lock, this->mutex, this_ethread());
@@ -262,8 +264,9 @@ Http2Stream::do_io_write(Continuation *c, int64_t nbytes, IOBufferReader *abuffe
 void 
 Http2Stream::do_io_close(int /* flags */)
 {
-  current_reader = NULL;	// SM on the way out
   Mutex_lock(this->mutex, this_ethread());
+  // disengage us from the SM
+  super::release(NULL);  
   if (!sent_delete) {
     sent_delete = true;
 
@@ -714,6 +717,6 @@ Http2Stream::clear_io_events()
 void 
 Http2Stream::release(IOBufferReader *r) 
 { 
-  current_reader = NULL;  // State machine is on its own way down.
+  super::release(r); // disengage us from the SM
   this->do_io_close(); 
 }
