@@ -5027,8 +5027,8 @@ REGRESSION_TEST(SDK_API_TSMimeHdrParse)(RegressionTest *test, int /* atype ATS_U
 REGRESSION_TEST(SDK_API_TSUrlParse)(RegressionTest *test, int /* atype ATS_UNUSED */, int *pstatus)
 {
   static char const *const urls[] = {
-    "file:///test.dat;ab?abc=def#abc", "http://www.example.com", "http://abc:def@www.example.com", "http://www.example.com:3426",
-    "http://abc:def@www.example.com:3426", "http://www.example.com/homepage.cgi",
+    "file:///test.dat;ab?abc=def#abc", "http://www.example.com/", "http://abc:def@www.example.com/", "http://www.example.com:3426/",
+    "http://abc:def@www.example.com:3426/", "http://www.example.com/homepage.cgi",
     "http://www.example.com/homepage.cgi;ab?abc=def#abc", "http://abc:def@www.example.com:3426/homepage.cgi;ab?abc=def#abc",
     "https://abc:def@www.example.com:3426/homepage.cgi;ab?abc=def#abc",
     "ftp://abc:def@www.example.com:3426/homepage.cgi;ab?abc=def#abc",
