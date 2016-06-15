@@ -111,6 +111,7 @@ Http2Stream::main_event_handler(int event, void *edata)
     MUTEX_LOCK(lock, this->mutex, this_ethread());
     // Clean up after yourself if this was an EOS
     ink_release_assert(this->closed);
+
     // Safe to initiate SSN_CLOSE if this is the last stream
     static_cast<Http2ClientSession *>(parent)->connection_state.release_stream(this);
     this->destroy();
@@ -303,17 +304,24 @@ Http2Stream::do_io_close(int /* flags */)
     clear_timers();
     clear_io_events();
 
-    if (cross_thread_event != NULL) cross_thread_event->cancel();
-
-    // Send an event to get the stream to kill itself
-    // Thus if any events for the stream are in the queue, they will be handled first.
-    // We have marked the stream closed, so no new events should be queued
-    cross_thread_event = this->get_thread()->schedule_imm(this, VC_EVENT_EOS);
-    if (this_ethread() != this->get_thread()) {
-      Warning("Do_io_close from other thread");
-    }
+    // Wait until transaction_done is called from HttpSM to signal that the TXN_CLOSE hook has been executed
   }
   Mutex_unlock(this->mutex, this_ethread());
+}
+
+/*
+ * HttpSM has called TXN_close hooks.
+ */
+void
+Http2Stream::transaction_done()
+{
+  MUTEX_LOCK(lock, this->mutex, this_ethread());
+  if (cross_thread_event != NULL) cross_thread_event->cancel();
+
+  // Send an event to get the stream to kill itself
+  // Thus if any events for the stream are in the queue, they will be handled first.
+  // We have marked the stream closed, so no new events should be queued
+  cross_thread_event = this->get_thread()->schedule_imm(this, VC_EVENT_EOS);
 }
 
 // Initiated from the Http2 side
@@ -368,16 +376,9 @@ Http2Stream::initiating_close()
         Warning("Http2 initiating close: sent write complete and EOS to SM");
       }
     } else if (!sent_write_complete) {
-      // Send an event to get the stream to kill itself
-      // Thus if any events for the stream are in the queue, they will be handled first.
-      // We have marked the stream closed, so no new events should be queued
-      if (cross_thread_event != NULL) cross_thread_event->cancel();
-      cross_thread_event = this->get_thread()->schedule_imm(this, VC_EVENT_EOS);
-      if (this_ethread() != this->get_thread()) {
-        Warning("initiate_close from other thread");
-      }
+      // Wait for transaction_done to send the signal to kill itself
     }
-  } 
+  }
 }
 
 /* Replace existing event only if the new event is different than the inprogress event */
@@ -400,7 +401,7 @@ Http2Stream::send_tracked_event(Event *in_event, int send_event, VIO *vio)
 void
 Http2Stream::update_read_request(int64_t read_len, bool call_update) 
 {
-  if (closed || this->current_reader == NULL) return;
+  if (closed || sent_delete || parent == NULL) return;
   if (this->get_thread() != this_ethread()) {
     MUTEX_LOCK(stream_lock, this->mutex, this_ethread());
     if (cross_thread_event == NULL) {
@@ -449,7 +450,7 @@ bool
 Http2Stream::update_write_request(IOBufferReader *buf_reader, int64_t write_len, bool call_update)
 {
   bool retval = true;
-  if (closed || parent == NULL) return retval;
+  if (closed || sent_delete || parent == NULL) return retval;
   if (this->get_thread() != this_ethread()) {
     MUTEX_LOCK(stream_lock, this->mutex, this_ethread());
     if (cross_thread_event == NULL) {

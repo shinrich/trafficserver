@@ -6777,9 +6777,6 @@ HttpSM::kill_this()
       plugin_tunnel = NULL;
     }
 
-    if (ua_session) {
-      ua_session->transaction_done();
-    }
     server_session = NULL;
 
     // So we don't try to nuke the state machine
@@ -6788,6 +6785,7 @@ HttpSM::kill_this()
     terminate_sm = false;
     t_state.api_next_action = HttpTransact::SM_ACTION_API_SM_SHUTDOWN;
     do_api_callout();
+
   }
   // The reentrancy_count is still valid up to this point since
   //   the api shutdown hook is asynchronous and double frees can
@@ -6808,6 +6806,11 @@ HttpSM::kill_this()
   //   then the value of kill_this_async_done has changed so
   //   we must check it again
   if (kill_this_async_done == true) {
+
+    if (ua_session) {
+      ua_session->transaction_done();
+    }
+
     // In the async state, the plugin could have been
     // called resulting in the creation of a plugin_tunnel.
     // So it needs to be deleted now.
