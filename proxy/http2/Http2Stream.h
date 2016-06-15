@@ -131,6 +131,7 @@ public:
   void update_read_request(int64_t read_len, bool send_update);
   bool update_write_request(IOBufferReader *buf_reader, int64_t write_len, bool send_update);
   void reenable(VIO *vio);
+  virtual void transaction_done();
 
   // Stream level window size
   ssize_t client_rwnd, server_rwnd;
