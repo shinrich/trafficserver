@@ -222,6 +222,7 @@ Http1ClientSession::do_io_write(Continuation *c, int64_t nbytes, IOBufferReader 
 void
 Http1ClientSession::set_tcp_init_cwnd()
 {
+  if (!trans.get_sm()) return;
   int desired_tcp_init_cwnd = trans.get_sm()->t_state.txn_conf->server_tcp_init_cwnd;
   DebugHttpSsn("desired TCP congestion window is %d\n", desired_tcp_init_cwnd);
   if (desired_tcp_init_cwnd == 0)
@@ -294,10 +295,9 @@ Http1ClientSession::do_io_close(int alerrno)
       client_vc->do_io_close();
       client_vc = NULL;
     }
-    if (trans.get_sm() == NULL) {
-      // Go ahead and destroy
-      this->really_destroy();
-    }
+  }
+  if (trans.get_sm() == NULL) { // Destroying from keep_alive state
+    this->really_destroy();
   }
 }
 

@@ -269,33 +269,21 @@ Http2Stream::do_io_close(int /* flags */)
   // disengage us from the SM
   super::release(NULL);  
   if (!sent_delete) {
-    sent_delete = true;
 
     Debug("http2", "do_io_close stream %d", this->get_id());
+    Http2ClientSession *my_parent = static_cast<Http2ClientSession *>(parent);
 
-    // Only close if we are done sending data back to the client
-    if (parent && (!this->is_body_done() || this->response_is_data_available())) {
-      //Warning("Undoing do_io_close body_is_done=%d", this->is_body_done());
-      Debug("http2", "%d: Undo close to pass data", this->get_id());
-      closed = false;  // "unclose" so this gets picked up later when the netvc side is done
+    // When we get here, the SM has initiated the shutdown.  Either it received a WRITE_COMPLETE, or it is shutting down.  Any
+    // remaining IO operations back to client should be abandoned.  The SM-side buffers backing these operations will be deleted
+    // by the time this is called from transaction_done.
 
-      // If chunking is playing games with us, make sure we noticed when the end of message has happened
-      if (!this->is_body_done() && this->write_vio.ndone == this->write_vio.nbytes) {
-        this->mark_body_done();
-      } else {
-        Mutex_unlock(this->mutex, this_ethread());
-        this->reenable(&write_vio); // Kick the mechanism to get any remaining data pushed out
-        //Warning("Re-enabled to get data pushed out is_done=%d ndone=%" PRId64 " nbytes=%" PRId64, this->is_body_done(), this->write_vio.ndone, this->write_vio.nbytes);
-        return;	
-      }
-    } 
-
+    sent_delete = true;
     closed = true;
-    if (parent) {
+    if (my_parent) {
       // Make sure any trailing end of stream frames are sent
-      static_cast<Http2ClientSession *>(parent)->connection_state.send_data_frame(this);
+      my_parent->connection_state.send_data_frame(this);
       // Remove ourselves from the stream list
-      static_cast<Http2ClientSession *>(parent)->connection_state.delete_stream(this);
+      my_parent->connection_state.delete_stream(this);
 
     }
 
@@ -318,10 +306,16 @@ Http2Stream::transaction_done()
   MUTEX_LOCK(lock, this->mutex, this_ethread());
   if (cross_thread_event != NULL) cross_thread_event->cancel();
 
-  // Send an event to get the stream to kill itself
-  // Thus if any events for the stream are in the queue, they will be handled first.
-  // We have marked the stream closed, so no new events should be queued
-  cross_thread_event = this->get_thread()->schedule_imm(this, VC_EVENT_EOS);
+  if (!closed) do_io_close();  // Make sure we've been closed.  If we didn't close the parent session better still be open
+  ink_release_assert(closed || !static_cast<Http2ClientSession*>(parent)->connection_state.is_state_closed());
+  current_reader = NULL;
+
+  if (closed) {
+    // Safe to initiate SSN_CLOSE if this is the last stream
+    if (cross_thread_event) cross_thread_event->cancel();
+    static_cast<Http2ClientSession *>(parent)->connection_state.release_stream(this);
+    this->destroy();
+  }
 }
 
 // Initiated from the Http2 side
@@ -376,7 +370,8 @@ Http2Stream::initiating_close()
         Warning("Http2 initiating close: sent write complete and EOS to SM");
       }
     } else if (!sent_write_complete) {
-      // Wait for transaction_done to send the signal to kill itself
+      // Transaction is already gone.  Kill yourself!
+      do_io_close();
     }
   }
 }
@@ -719,5 +714,8 @@ void
 Http2Stream::release(IOBufferReader *r) 
 { 
   super::release(r); // disengage us from the SM
+  if (current_reader) {
+    current_reader = NULL;
+  }
   this->do_io_close(); 
 }

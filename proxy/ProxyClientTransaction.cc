@@ -69,13 +69,6 @@ ProxyClientTransaction::release(IOBufferReader *r)
 
   DebugHttpTxn("[%" PRId64 "] session released by sm [%" PRId64 "]", parent ? parent->connection_id() : 0, current_reader ? current_reader->sm_id : 0);
 
-  // Clear reference to SM. 
-  // And clear SM's reference to us.
-  if (current_reader) {
-    current_reader->ua_session = NULL;
-    current_reader = NULL;
-  }
-
   // Pass along the release to the session
   if (parent)
     parent->release(this);
@@ -96,3 +89,18 @@ ProxyClientTransaction::destroy()
   }
   this->mutex.clear(); 
 }
+
+Action *
+ProxyClientTransaction::adjust_thread(Continuation *cont, int event, void *data)
+{   
+  NetVConnection *vc = this->get_netvc();
+  EThread *this_thread = this_ethread();
+  if (vc && vc->thread != this_thread) {
+    if (vc->thread->is_event_type(ET_NET) || vc->thread->is_event_type(SSLNetProcessor::ET_SSL)) {
+      return vc->thread->schedule_imm(cont, event, data);
+    } else { // Not a net thread, take over this thread
+      vc->thread = this_thread;
+    }
+  }   
+  return NULL;
+}     

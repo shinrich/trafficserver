@@ -2497,12 +2497,10 @@ HttpSM::state_cache_open_write(int event, void *data)
 
   // Make sure we are on the "right" thread
   if (ua_session) {
-    NetVConnection *vc = ua_session->get_netvc();
-    if (vc && vc->thread != this_ethread()) {
-      pending_action = vc->thread->schedule_imm(this, event, data); // Stay on the same thread!
-      return 0;
+    if ((pending_action = ua_session->adjust_thread(this, event, data))) {
+      return 0; // Go away if we reschedule
     }
-  } 
+  }
 
   milestones[TS_MILESTONE_CACHE_OPEN_WRITE_END] = Thread::get_hrtime();
   pending_action = NULL;
@@ -4698,9 +4696,7 @@ HttpSM::do_http_server_open(bool raw)
 
   // Make sure we are on the "right" thread
   if (ua_session) {
-    NetVConnection *vc = ua_session->get_netvc();
-    if (vc && vc->thread != this_ethread()) {
-      pending_action = vc->thread->schedule_imm(this, EVENT_INTERVAL);
+    if ((pending_action = ua_session->adjust_thread(this, EVENT_INTERVAL, NULL))) {
       return;
     }
   }
