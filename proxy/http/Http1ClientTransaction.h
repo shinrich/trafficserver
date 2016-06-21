@@ -53,7 +53,7 @@ public:
 
   // Don't destroy your elements.  Rely on the Http1ClientSession to clean up the 
   // Http1ClientTransaction class as necessary
-  virtual void destroy() { }
+  virtual void destroy();
 
   // Clean up the transaction elements when the ClientSession shuts down
   void cleanup() { super::destroy(); }

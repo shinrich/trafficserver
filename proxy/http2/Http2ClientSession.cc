@@ -335,10 +335,9 @@ Http2ClientSession::main_event_handler(int event, void *edata)
     break;
   }
   recursion--;
-  // Rely on the connection state to close things via release_stream(NULL)
-  /*if (!connection_state.is_recursing() && this->recursion == 0 && kill_me) {
+  if (!connection_state.is_recursing() && this->recursion == 0 && kill_me) {
     this->really_destroy();
-  } */
+  } 
   return retval;
 }
 
