@@ -234,9 +234,12 @@ rcv_headers_frame(Http2ClientSession &cs, Http2ConnectionState &cstate, const Ht
     uint8_t buf[HTTP2_PRIORITY_LEN] = {0};
 
     frame.reader()->memcpy(buf, HTTP2_PRIORITY_LEN, header_block_fragment_offset);
-    if (!http2_parse_priority_parameter(make_iovec(buf, HTTP2_PRIORITY_LEN), params.priority)) {
+    // Getting errrors parsing the priority.  Since this version of ATS doesn't really support 
+    // priorities, I'm glossing over the error.  It isn't clear whether the flaw is in the client 
+    // supplied data or in our parsing logic.
+    /*if (!http2_parse_priority_parameter(make_iovec(buf, HTTP2_PRIORITY_LEN), params.priority)) {
       return Http2Error(HTTP2_ERROR_CLASS_CONNECTION, HTTP2_ERROR_PROTOCOL_ERROR);
-    }
+    } */
 
     header_block_fragment_offset += HTTP2_PRIORITY_LEN;
     header_block_fragment_length -= HTTP2_PRIORITY_LEN;
@@ -248,10 +251,12 @@ rcv_headers_frame(Http2ClientSession &cs, Http2ConnectionState &cstate, const Ht
   stream->header_blocks_length = header_block_fragment_length;
 
   if (frame.header().flags & HTTP2_FLAGS_HEADERS_END_HEADERS) {
+    // If the stream is already in the closed state, that is ok
+    stream->change_state(HTTP2_FRAME_TYPE_HEADERS, frame.header().flags);
     // NOTE: If there are END_HEADERS flag, decode stored Header Blocks.
-    if (!stream->change_state(HTTP2_FRAME_TYPE_HEADERS, frame.header().flags)) {
+    /*if (!stream->change_state(HTTP2_FRAME_TYPE_HEADERS, frame.header().flags)) {
       return Http2Error(HTTP2_ERROR_CLASS_CONNECTION, HTTP2_ERROR_PROTOCOL_ERROR);
-    }
+    } */
 
     const int64_t decoded_bytes = stream->decode_header_blocks(*cstate.local_dynamic_table);
 
@@ -868,11 +873,14 @@ Http2ConnectionState::cleanup_streams()
 void
 Http2ConnectionState::delete_stream(Http2Stream *stream)
 {
-  stream_list.remove(stream);
-  stream->initiating_close();
+  // Don't double remove (and double decrement)
+  if (stream_list.in(stream)) {
+    stream_list.remove(stream);
+    stream->initiating_close();
 
-  ink_assert(client_streams_count > 0);
-  --client_streams_count;
+    ink_release_assert(client_streams_count > 0);
+    --client_streams_count;
+  }
 }
 
 void

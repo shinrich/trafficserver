@@ -76,9 +76,28 @@ enum {
   HTTP2_STAT_SESSION_DIE_INACTIVE,
   HTTP2_STAT_SESSION_DIE_EOS,
   HTTP2_STAT_SESSION_DIE_ERROR,
-
+#ifdef HTTP_MONITOR_LOCK_PERF
+  HTTP2_STAT_SESSION_LOCK_BLOCK,
+  HTTP2_STAT_SESSION_LOCK_TOTAL,
+#endif
   HTTP2_N_STATS // Terminal counter, NOT A STAT INDEX.
 };
+
+// Added extra counters to see how often the stream locks blocked.  Initial measurements showed that they 
+// never blocked.  Removing the logic for now to eliminate overheads, but leaving the logic around for when we 
+// want to do this experiment again.
+#ifdef HTTP_MONITOR_LOCK_PERF
+#define HTTP2_LOCK(_l, _m, _t) \
+  HTTP2_INCREMENT_THREAD_DYN_STAT(HTTP2_STAT_SESSION_LOCK_TOTAL, _t); \
+  { MUTEX_TRY_LOCK(tmp_lock, _m, _t); \
+  if (!tmp_lock.is_locked()) { \
+    HTTP2_INCREMENT_THREAD_DYN_STAT(HTTP2_STAT_SESSION_LOCK_BLOCK, _t); \
+  } } \
+  MUTEX_LOCK(_l, _m, _t); 
+#else
+#define HTTP2_LOCK(_l, _m, _t) \
+  MUTEX_LOCK(_l, _m, _t); 
+#endif
 
 #define HTTP2_INCREMENT_THREAD_DYN_STAT(_s, _t) RecIncrRawStat(http2_rsb, _t, (int)_s, 1);
 #define HTTP2_DECREMENT_THREAD_DYN_STAT(_s, _t) RecIncrRawStat(http2_rsb, _t, (int)_s, -1);

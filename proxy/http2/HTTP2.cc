@@ -46,6 +46,10 @@ static char const *const HTTP2_STAT_SESSION_DIE_ACTIVE_NAME = "proxy.process.htt
 static char const *const HTTP2_STAT_SESSION_DIE_INACTIVE_NAME = "proxy.process.http2.session_die_inactive";
 static char const *const HTTP2_STAT_SESSION_DIE_EOS_NAME = "proxy.process.http2.session_die_eos";
 static char const *const HTTP2_STAT_SESSION_DIE_ERROR_NAME = "proxy.process.http2.session_die_error";
+#ifdef HTTP_MONITOR_LOCK_PERF
+static char const *const HTTP2_STAT_SESSION_LOCK_BLOCK_NAME = "proxy.process.http2.locks_blocked";
+static char const *const HTTP2_STAT_SESSION_LOCK_TOTAL_NAME = "proxy.process.http2.locks_total";
+#endif
 
 union byte_pointer {
   byte_pointer(void *p) : ptr(p) {}
@@ -804,6 +808,12 @@ Http2::init()
                      static_cast<int>(HTTP2_STAT_SESSION_DIE_INACTIVE), RecRawStatSyncSum);
   RecRegisterRawStat(http2_rsb, RECT_PROCESS, HTTP2_STAT_SESSION_DIE_ERROR_NAME, RECD_INT, RECP_PERSISTENT,
                      static_cast<int>(HTTP2_STAT_SESSION_DIE_ERROR), RecRawStatSyncSum);
+#ifdef HTTP_MONITOR_LOCK_PERF
+  RecRegisterRawStat(http2_rsb, RECT_PROCESS, HTTP2_STAT_SESSION_LOCK_BLOCK_NAME, RECD_INT, RECP_PERSISTENT,
+                     static_cast<int>(HTTP2_STAT_SESSION_LOCK_BLOCK), RecRawStatSyncSum);
+  RecRegisterRawStat(http2_rsb, RECT_PROCESS, HTTP2_STAT_SESSION_LOCK_TOTAL_NAME, RECD_INT, RECP_PERSISTENT,
+                     static_cast<int>(HTTP2_STAT_SESSION_LOCK_TOTAL), RecRawStatSyncSum);
+#endif
 }
 
 #if TS_HAS_TESTS

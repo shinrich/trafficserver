@@ -39,7 +39,7 @@ Http2Stream::main_event_handler(int event, void *edata)
     }
     return 0;
   }
-  MUTEX_LOCK(lock, this->mutex, this_ethread());
+  HTTP2_LOCK(lock, this->mutex, this_ethread());
   if (e == cross_thread_event) {
     cross_thread_event = NULL;
   } else if (e == active_event) {
@@ -365,9 +365,9 @@ Http2Stream::initiating_close()
      }
     } else if (current_reader) {
       MUTEX_LOCK(lock, current_reader->mutex, this_ethread());
-      current_reader->handleEvent(VC_EVENT_EOS);
+      current_reader->handleEvent(VC_EVENT_ERROR);
       if (sent_write_complete) {
-        Warning("Http2 initiating close: sent write complete and EOS to SM");
+        Warning("Http2 initiating close: sent write complete and VC_EVENT_ERROR to SM");
       }
     } else if (!sent_write_complete) {
       // Transaction is already gone.  Kill yourself!
@@ -418,10 +418,10 @@ Http2Stream::update_read_request(int64_t read_len, bool call_update)
           request_reader->consume(bytes_added);
           read_vio.ndone += bytes_added;
           int send_event = (read_vio.nbytes == read_vio.ndone) ? VC_EVENT_READ_COMPLETE : VC_EVENT_READ_READY;
-          /*if (call_update) { // Safe to call vio handler directly
+          if (call_update) { // Safe to call vio handler directly
             inactive_timeout_at = Thread::get_hrtime() + inactive_timeout;
             if (read_vio._cont && this->current_reader) read_vio._cont->handleEvent(send_event, &read_vio);
-          } else */ { // Called from do_io_read.  Still setting things up.  Send event to handle this after the dust settles
+          } else { // Called from do_io_read.  Still setting things up.  Send event to handle this after the dust settles
             read_event = send_tracked_event(read_event, send_event, &read_vio);
           }
         }
@@ -430,10 +430,10 @@ Http2Stream::update_read_request(int64_t read_len, bool call_update)
       // Try to be smart and only signal if there was additional data
       int send_event = (read_vio.nbytes == read_vio.ndone) ? VC_EVENT_READ_COMPLETE : VC_EVENT_READ_READY;
       if (request_reader->read_avail() > 0 || send_event == VC_EVENT_READ_COMPLETE) {
-        /*if (call_update) { // Safe to call vio handler directly
+        if (call_update) { // Safe to call vio handler directly
           inactive_timeout_at = Thread::get_hrtime() + inactive_timeout;
           if (read_vio._cont && this->current_reader) read_vio._cont->handleEvent(send_event, &read_vio);
-        }  else */ { // Called from do_io_read.  Still setting things up.  Send event to handle this after the dust settles
+        }  else { // Called from do_io_read.  Still setting things up.  Send event to handle this after the dust settles
           read_event = send_tracked_event(read_event, send_event, &read_vio);
         } 
       }
@@ -495,10 +495,10 @@ Http2Stream::update_write_request(IOBufferReader *buf_reader, int64_t write_len,
           // make sure to send the end of stream
           if (this->response_is_data_available() || send_event == VC_EVENT_WRITE_COMPLETE) {
             if (send_event != VC_EVENT_WRITE_COMPLETE) {
-              /*if (call_update) { // Coming from reenable.  Safe to call the handler directly
+              if (call_update) { // Coming from reenable.  Safe to call the handler directly
                 inactive_timeout_at = Thread::get_hrtime() + inactive_timeout;
                 if (write_vio._cont && this->current_reader) write_vio._cont->handleEvent(send_event, &write_vio);
-              } else */{ // Called from do_io_write.  Might still be setting up state.  Send an event to let the dust settle
+              } else { // Called from do_io_write.  Might still be setting up state.  Send an event to let the dust settle
                 write_event = send_tracked_event(write_event, send_event, &write_vio);
               }
             } else {
@@ -525,10 +525,10 @@ Http2Stream::update_write_request(IOBufferReader *buf_reader, int64_t write_len,
           retval = false;
         } else {
           parent->connection_state.send_data_frame(this);
-          /*if (call_update) { // Coming from reenable.  Safe to call the handler directly
+          if (call_update) { // Coming from reenable.  Safe to call the handler directly
             inactive_timeout_at = Thread::get_hrtime() + inactive_timeout;
             if (write_vio._cont && this->current_reader) write_vio._cont->handleEvent(send_event, &write_vio);
-          } else */ { // Called from do_io_write.  Might still be setting up state.  Send an event to let the dust settle
+          } else { // Called from do_io_write.  Might still be setting up state.  Send an event to let the dust settle
             write_event = send_tracked_event(write_event, send_event, &write_vio);
           }
         }
