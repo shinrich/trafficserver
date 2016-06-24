@@ -288,6 +288,8 @@ enum {
   https_incoming_requests_stat,
   https_total_client_connections_stat,
 
+  http_origin_connections_throttled_stat,
+
   http_stat_count
 };
 
