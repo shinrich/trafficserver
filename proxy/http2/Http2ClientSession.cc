@@ -24,7 +24,6 @@
 #include "Http2ClientSession.h"
 #include "HttpDebugNames.h"
 #include "IPAllow.h"
-#include "HttpConfig.h"
 
 #define STATE_ENTER(state_name, event)                                                       \
   do {                                                                                       \
@@ -87,6 +86,8 @@ void
 Http2ClientSession::really_destroy()
 {
   DebugHttp2Ssn0("session destroy");
+
+  HTTP2_DECREMENT_THREAD_DYN_STAT(HTTP2_STAT_CURRENT_CLIENT_SESSION_COUNT, this->mutex->thread_holding);
 
   // Update stats on how we died.  May want to eliminate this.  Was useful for
   // tracking down which cases we were having problems cleaning up.  But for general
@@ -167,10 +168,6 @@ Http2ClientSession::new_connection(NetVConnection *new_vc, MIOBuffer *iobuf, IOB
   this->client_vc = new_vc;
   client_vc->set_inactivity_timeout(HRTIME_SECONDS(Http2::accept_no_activity_timeout));
   this->mutex = new_vc->mutex;
-
-  // These macros must have the mutex set.
-  HTTP_INCREMENT_DYN_STAT(http_current_client_connections_stat);
-  HTTP_INCREMENT_DYN_STAT(http_total_client_connections_stat);
 
   this->connection_state.mutex = new_ProxyMutex();
 
@@ -269,8 +266,6 @@ Http2ClientSession::do_io_close(int alerrno)
   DebugHttp2Ssn0("session closed");
 
   ink_assert(this->mutex->thread_holding == this_ethread());
-  HTTP2_DECREMENT_THREAD_DYN_STAT(HTTP2_STAT_CURRENT_CLIENT_SESSION_COUNT, this->mutex->thread_holding);
-  HTTP_DECREMENT_DYN_STAT(http_current_client_connections_stat);
   send_connection_event(&this->connection_state, HTTP2_SESSION_EVENT_FINI, this);
 
   // Don't send the SSN_CLOSE_HOOK until we got rid of all the streams
