@@ -313,8 +313,8 @@ Http2Stream::transaction_done()
   if (closed) {
     // Safe to initiate SSN_CLOSE if this is the last stream
     if (cross_thread_event) cross_thread_event->cancel();
-    static_cast<Http2ClientSession *>(parent)->connection_state.release_stream(this);
-    this->destroy();
+    // Schedule the destroy to occur after we unwind here.  IF we call directly, may delete with reference on the stack.
+    cross_thread_event = this->get_thread()->schedule_imm(this, VC_EVENT_EOS, NULL);
   }
 }
 
