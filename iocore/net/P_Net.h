@@ -54,6 +54,8 @@ enum Net_Stats {
   keep_alive_lru_timeout_count_stat,
   default_inactivity_timeout_stat,
   net_tcp_accept_stat,
+  net_connections_throttled_in_stat, 
+  net_connections_throttled_out_stat, 
   Net_Stat_Count
 };
 
