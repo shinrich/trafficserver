@@ -265,7 +265,7 @@ Http2Stream::do_io_write(Continuation *c, int64_t nbytes, IOBufferReader *abuffe
 void 
 Http2Stream::do_io_close(int /* flags */)
 {
-  Mutex_lock(this->mutex, this_ethread());
+  MUTEX_LOCK(lock, this->mutex, this_ethread());
   // disengage us from the SM
   super::release(NULL);  
   if (!sent_delete) {
@@ -294,7 +294,6 @@ Http2Stream::do_io_close(int /* flags */)
 
     // Wait until transaction_done is called from HttpSM to signal that the TXN_CLOSE hook has been executed
   }
-  Mutex_unlock(this->mutex, this_ethread());
 }
 
 /*
