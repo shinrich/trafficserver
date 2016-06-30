@@ -380,7 +380,6 @@ HttpSM::cleanup()
 void
 HttpSM::destroy()
 {
-  HTTP_DECREMENT_DYN_STAT(http_current_client_transactions_stat);
   cleanup();
   httpSMAllocator.free(this);
 }
@@ -6875,6 +6874,7 @@ HttpSM::kill_this()
 
     DebugSM("http", "[%" PRId64 "] deallocating sm", sm_id);
     //    authAdapter.destroyState();
+    HTTP_DECREMENT_DYN_STAT(http_current_client_transactions_stat);
     destroy();
   }
 }
