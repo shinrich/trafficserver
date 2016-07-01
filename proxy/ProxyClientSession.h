@@ -42,8 +42,9 @@ class ProxyClientSession : public VConnection
 public:
   ProxyClientSession();
 
-  virtual void destroy();
+  virtual void free();
   virtual void start() = 0;
+  virtual void destroy() = 0;
 
   virtual void new_connection(NetVConnection *new_vc, MIOBuffer *iobuf, IOBufferReader *reader, bool backdoor) = 0;
 
@@ -104,18 +105,6 @@ public:
   // Initiate an API hook invocation.
   void do_api_callout(TSHttpHookID id);
 
-  /** Secondary event handling while hooks are active.
-
-      This is called for events that are not handled by this class in @c state_api_callout.  To
-      handle such events override the @c state_api_callout method and chain.
-
-      This is needed because frequently the data needed to deal with the event is in the subclass
-      and not this one.
-
-      @return @c true if the event was handled / expected, @c false otherwise.
-  */
-  virtual bool handle_api_event(int event, void* data) { return false; }
-
   static int64_t next_connection_id();
   virtual int get_transact_count() const = 0;
 
@@ -162,18 +151,8 @@ protected:
 
   int64_t con_id;
 
+  Event *schedule_event;
 
-protected:
-  /** Handle events while hooks are active.
-
-      Subclasses should override this only if the current handling of an event is unacceptable
-      either because it is incorrect or insufficient. In the latter case the subclass should chain
-      this method.
-
-      For events that are not handled use @c handle_api_event
-
-      @return 0
-  */
 
 private:
   APIHookScope api_scope;

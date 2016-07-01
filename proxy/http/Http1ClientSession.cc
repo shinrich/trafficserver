@@ -71,22 +71,19 @@ Http1ClientSession::Http1ClientSession()
 void
 Http1ClientSession::destroy() 
 {
-
-}
-
-void
-Http1ClientSession::really_destroy()
-{
   if (read_state != HCS_CLOSED) {
     return;
   } 
   DebugHttpSsn("[%" PRId64 "] session destroy", con_id);
-
   ink_release_assert(!client_vc);
   ink_assert(read_buffer);
 
   do_api_callout(TS_HTTP_SSN_CLOSE_HOOK);
+}
 
+void
+Http1ClientSession::free()
+{
   magic = HTTP_CS_MAGIC_DEAD;
   if (read_buffer) {
     free_MIOBuffer(read_buffer);
@@ -110,20 +107,8 @@ Http1ClientSession::really_destroy()
   // Free the transaction resources
   this->trans.cleanup();
 
-  super::destroy();
+  super::free();
   THREAD_FREE(this, http1ClientSessionAllocator, this_thread());
-}
-
-bool
-Http1ClientSession::handle_api_event(int event, void* data) {
-  bool zret = true;
-  if (VC_EVENT_INACTIVITY_TIMEOUT == event) {
-    do_io_write(NULL, 0, NULL);
-    client_vc = NULL;
-  } else {
-    zret = super::handle_api_event(event, data);
-  }
-  return zret;
 }
 
 void
@@ -145,6 +130,8 @@ Http1ClientSession::new_connection(NetVConnection *new_vc, MIOBuffer *iobuf, IOB
 
   // Unique client session identifier.
   con_id = ProxyClientSession::next_connection_id();
+
+  this->schedule_event = NULL;
 
   HTTP_INCREMENT_DYN_STAT(http_current_client_connections_stat);
   conn_decrease = true;
@@ -296,7 +283,7 @@ Http1ClientSession::do_io_close(int alerrno)
     }
   }
   if (trans.get_sm() == NULL) { // Destroying from keep_alive state
-    this->really_destroy();
+    this->destroy();
   }
 }
 
@@ -304,6 +291,11 @@ int
 Http1ClientSession::state_wait_for_close(int event, void *data)
 {
   STATE_ENTER(&Http1ClientSession::state_wait_for_close, event, data);
+
+  Event *e = static_cast<Event *>(data);
+  if (e == schedule_event) {
+    schedule_event = NULL;
+  }
 
   ink_assert(data == ka_vio);
   ink_assert(read_state == HCS_HALF_CLOSED);
@@ -319,6 +311,13 @@ Http1ClientSession::state_wait_for_close(int event, void *data)
   case VC_EVENT_READ_READY:
     // Drain any data read
     sm_reader->consume(sm_reader->read_avail());
+    break;
+  // If this is hook stuff, call the hook handler
+  case EVENT_NONE:
+  case EVENT_INTERVAL:
+  case TS_EVENT_HTTP_CONTINUE:
+  case TS_EVENT_HTTP_ERROR:
+    return this->state_api_callout(event, data);
     break;
   default:
     ink_release_assert(0);
@@ -406,6 +405,13 @@ Http1ClientSession::state_keep_alive(int event, void *data)
   case VC_EVENT_INACTIVITY_TIMEOUT:
     // Keep-alive timed out
     this->do_io_close();
+    break;
+  // If this is hook stuff, call the hook handler
+  case EVENT_NONE:
+  case EVENT_INTERVAL:
+  case TS_EVENT_HTTP_CONTINUE:
+  case TS_EVENT_HTTP_ERROR:
+    return this->state_api_callout(event, data);
     break;
   }
 

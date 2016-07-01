@@ -786,8 +786,10 @@ Http2ConnectionState::main_event_handler(int event, void *edata)
 
   --recursion;
   if (recursion == 0 && ua_session && !ua_session->is_recursing()) {
-    if (this->ua_session->do_destroy()) {
-      this->ua_session->really_destroy();
+    if (this->ua_session->ready_to_free()) {
+      this->ua_session->free();
+      // After the free, the Http2ConnectionState object is also freed.
+      // The Http2ConnectionState object is allocted within the Http2ClientSession object
     }
   }
 
@@ -891,7 +893,7 @@ Http2ConnectionState::release_stream(Http2Stream *stream)
   }
   if (ua_session && fini_received && total_client_streams_count == 0) {
     // We were shutting down, go ahead and terminate the session
-    ua_session->do_api_callout(TS_HTTP_SSN_CLOSE_HOOK);
+    ua_session->destroy();
   }
 }
 

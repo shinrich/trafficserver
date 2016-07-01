@@ -155,9 +155,8 @@ public:
   // Implement ProxyClientSession interface.
   void start();
   virtual void destroy();
-  virtual void really_destroy();
+  virtual void free();
   void new_connection(NetVConnection *new_vc, MIOBuffer *iobuf, IOBufferReader *reader, bool backdoor);
-  virtual bool handle_api_event(int event, void* data);
 
   // Implement VConnection interface.
   VIO *do_io_read(Continuation *c, int64_t nbytes = INT64_MAX, MIOBuffer *buf = 0);
@@ -176,6 +175,8 @@ public:
     // Make sure the vio's are also released to avoid
     // later surprises in inactivity timeout
     if (client_vc) {
+      client_vc->set_inactivity_timeout(0);
+      client_vc->set_active_timeout(0);
       client_vc->do_io_read(NULL, 0, NULL); 
       client_vc->do_io_write(NULL, 0, NULL); 
       client_vc->set_action(NULL);
@@ -215,7 +216,7 @@ public:
   Http2ConnectionState connection_state;
   void set_dying_event(int event) { dying_event = event; }
   int get_dying_event() const { return dying_event; }
-  bool do_destroy() const { return kill_me == true; }
+  bool ready_to_free() const { return kill_me; }
   bool is_recursing() const { return recursion > 0; }
 
 private:

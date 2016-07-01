@@ -713,8 +713,6 @@ void
 Http2Stream::release(IOBufferReader *r) 
 { 
   super::release(r); // disengage us from the SM
-  if (current_reader) {
-    current_reader = NULL;
-  }
+  current_reader = NULL;
   this->do_io_close(); 
 }
