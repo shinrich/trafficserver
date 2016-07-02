@@ -70,22 +70,26 @@ Http2ClientSession::Http2ClientSession()
 void
 Http2ClientSession::destroy()
 {
+  DebugHttp2Ssn0("session destroy");
+
+  // Let everyone know we are going down
+  do_api_callout(TS_HTTP_SSN_CLOSE_HOOK);
+}
+
+void
+Http2ClientSession::free()
+{
+  DebugHttp2Ssn0("session free");
+
   if (client_vc) {
     release_netvc();
     client_vc->do_io_close();
     client_vc = NULL;
   }
-  if (!connection_state.is_recursing() && this->recursion == 0) {
-    really_destroy();
-  } else {
+  if (connection_state.is_recursing() || this->recursion != 0) {
     kill_me = true;
+    return;
   }
-}
-
-void
-Http2ClientSession::really_destroy()
-{
-  DebugHttp2Ssn0("session destroy");
 
   HTTP2_DECREMENT_THREAD_DYN_STAT(HTTP2_STAT_CURRENT_CLIENT_SESSION_COUNT, this->mutex->thread_holding);
 
@@ -117,7 +121,7 @@ Http2ClientSession::really_destroy()
 
   this->connection_state.destroy();
 
-  super::destroy();
+  super::free();
 
   free_MIOBuffer(this->read_buffer);
   free_MIOBuffer(this->write_buffer);
@@ -168,6 +172,7 @@ Http2ClientSession::new_connection(NetVConnection *new_vc, MIOBuffer *iobuf, IOB
   this->client_vc = new_vc;
   client_vc->set_inactivity_timeout(HRTIME_SECONDS(Http2::accept_no_activity_timeout));
   this->mutex = new_vc->mutex;
+  this->schedule_event = NULL;
 
   this->connection_state.mutex = new_ProxyMutex();
 
@@ -181,23 +186,6 @@ Http2ClientSession::new_connection(NetVConnection *new_vc, MIOBuffer *iobuf, IOB
   this->sm_writer = this->write_buffer->alloc_reader();
 
   do_api_callout(TS_HTTP_SSN_START_HOOK);
-}
-
-bool
-Http2ClientSession::handle_api_event(int event, void* data) {
-  bool zret = true;
-  if (VC_EVENT_INACTIVITY_TIMEOUT == event) {
-    this->release_netvc();
-    this->client_vc = NULL;
-  } else if (TS_EVENT_VCONN_WRITE_READY == event ||
-	     TS_EVENT_ERROR == event) {
-    // If the SSN_START processing takes a while then we can get these events here.
-    // It's an failure if that happens (the user agent disconnected) but that will
-    // handled by @c start so they are ignored here.
-  } else {
-    zret = super::handle_api_event(event, data);
-  }
-  return zret;
 }
 
 void
@@ -290,6 +278,11 @@ Http2ClientSession::main_event_handler(int event, void *edata)
 {
   ink_assert(this->mutex->thread_holding == this_ethread());
   int retval;
+  Event *e = static_cast<Event *>(edata);
+
+  if (e == schedule_event) {
+    schedule_event = NULL;
+  }
 
   recursion++;
 
@@ -323,6 +316,14 @@ Http2ClientSession::main_event_handler(int event, void *edata)
     retval = 0;
     break;
 
+  // If this is hook stuff, call the hook handler
+  case EVENT_NONE:
+  case EVENT_INTERVAL:
+  case TS_EVENT_HTTP_CONTINUE:
+  case TS_EVENT_HTTP_ERROR:
+    retval = this->state_api_callout(event, edata);
+    break;
+    
   default:
     DebugHttp2Ssn("unexpected event=%d edata=%p", event, edata);
     ink_release_assert(0);
@@ -331,7 +332,7 @@ Http2ClientSession::main_event_handler(int event, void *edata)
   }
   recursion--;
   if (!connection_state.is_recursing() && this->recursion == 0 && kill_me) {
-    this->really_destroy();
+    this->free();
   } 
   return retval;
 }

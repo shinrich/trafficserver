@@ -66,15 +66,23 @@ is_valid_hook(TSHttpHookID hookid)
 }
 
 void
-ProxyClientSession::destroy()
+ProxyClientSession::free()
 {
-  this->api_hooks.clear();
+  if (schedule_event) {
+    schedule_event->cancel();
+  }
   this->mutex.clear();
+  this->api_hooks.clear();
 }
 
 int
 ProxyClientSession::state_api_callout(int event, void *data)
 {
+  Event *e = static_cast<Event *>(data);
+  if (e == schedule_event) {
+    schedule_event = NULL;
+  }
+
   switch (event) {
   case EVENT_NONE:
   case EVENT_INTERVAL:
@@ -99,8 +107,9 @@ ProxyClientSession::state_api_callout(int event, void *data)
           plugin_mutex = hook->m_cont->mutex;
           plugin_lock = MUTEX_TAKE_TRY_LOCK(hook->m_cont->mutex, mutex->thread_holding);
           if (!plugin_lock) {
-            SET_HANDLER(&ProxyClientSession::state_api_callout);
-            mutex->thread_holding->schedule_in(this, HRTIME_MSECONDS(10));
+            if (!schedule_event) {  // Don't bother to schedule is there is already one out.
+              schedule_event = mutex->thread_holding->schedule_in(this, HRTIME_MSECONDS(10));
+            }
             return 0;
           }
         }
@@ -124,8 +133,7 @@ ProxyClientSession::state_api_callout(int event, void *data)
     break;
 
   default:
-    bool handled_p = this->handle_api_event(event, data);
-    ink_assert(handled_p);
+    ink_release_assert(false);
     break;
   }
 
@@ -142,7 +150,9 @@ ProxyClientSession::do_api_callout(TSHttpHookID id)
   this->api_current = NULL;
 
   if (this->hooks_on && this->has_hooks()) {
-    SET_HANDLER(&ProxyClientSession::state_api_callout);
+    if (!this->handler) { // Set the handler if it is not already set
+      SET_HANDLER(&ProxyClientSession::state_api_callout);
+    }
     this->state_api_callout(EVENT_NONE, NULL);
   } else {
     this->handle_api_return(TS_EVENT_HTTP_CONTINUE);
@@ -153,8 +163,6 @@ void
 ProxyClientSession::handle_api_return(int event)
 {
   TSHttpHookID hookid = this->api_hookid;
-
-  SET_HANDLER(&ProxyClientSession::state_api_callout);
 
   this->api_hookid = TS_HTTP_LAST_HOOK;
   this->api_scope = API_HOOK_SCOPE_NONE;
@@ -174,7 +182,7 @@ ProxyClientSession::handle_api_return(int event)
       vc->do_io_close();
       this->release_netvc();
     }
-    this->destroy();
+    this->free();	// You can now clean things up
     break;
   }
   default:
