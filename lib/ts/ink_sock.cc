@@ -249,7 +249,8 @@ fd_read_line(int fd, char *s, int len)
 int
 close_socket(int s)
 {
-  return close(s);
+  ink_release_assert(0==close(s));
+  return 0;
 }
 
 int

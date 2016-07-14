@@ -168,7 +168,7 @@ RecPipeCreate(const char *base_path, const char *name)
   // set so that child process doesn't inherit our fd
   if (fcntl(listenfd, F_SETFD, FD_CLOEXEC) < 0) {
     RecLog(DL_Warning, "[RecPipeCreate] fcntl error\n");
-    close(listenfd);
+    RecCloseListener(listenfd);
     return REC_HANDLE_INVALID;
   }
 
@@ -179,30 +179,30 @@ RecPipeCreate(const char *base_path, const char *name)
   int optval = 1;
   if (setsockopt(listenfd, SOL_SOCKET, SO_REUSEADDR, (char *)&optval, sizeof(int)) < 0) {
     RecLog(DL_Warning, "[RecPipeCreate] setsockopt error\n");
-    close(listenfd);
+    RecCloseListener(listenfd);
     return REC_HANDLE_INVALID;
   }
 
   servaddr_len = sizeof(servaddr.sun_family) + strlen(servaddr.sun_path);
   if ((bind(listenfd, (struct sockaddr *)&servaddr, servaddr_len)) < 0) {
     RecLog(DL_Warning, "[RecPipeCreate] bind error\n");
-    close(listenfd);
+    RecCloseListener(listenfd);
     return REC_HANDLE_INVALID;
   }
   // listen, backlog of 1 (expecting only one client)
   if ((listen(listenfd, 1)) < 0) {
     RecLog(DL_Warning, "[RecPipeCreate] listen error\n");
-    close(listenfd);
+    RecCloseListener(listenfd);
     return REC_HANDLE_INVALID;
   }
   // block until we get a connection from the other side
   cliaddr_len = sizeof(cliaddr);
   if ((acceptfd = accept(listenfd, (struct sockaddr *)&cliaddr, &cliaddr_len)) < 0) {
-    close(listenfd);
+    RecCloseListener(listenfd);
     return REC_HANDLE_INVALID;
   }
 
-  close(listenfd);
+  RecCloseListener(listenfd);
 
   return acceptfd;
 }
@@ -238,13 +238,13 @@ RecPipeConnect(const char *base_path, const char *name)
   // set so that child process doesn't inherit our fd
   if (fcntl(sockfd, F_SETFD, FD_CLOEXEC) < 0) {
     RecLog(DL_Warning, "[RecPipeConnect] fcntl error\n");
-    close(sockfd);
+    ink_release_assert(0==close(sockfd));
     return REC_HANDLE_INVALID;
   }
   // blocking connect
   if ((connect(sockfd, (struct sockaddr *)&servaddr, servaddr_len)) < 0) {
     RecLog(DL_Warning, "[RecPipeConnect] connect error\n");
-    close(sockfd);
+    ink_release_assert(0==close(sockfd));
     return REC_HANDLE_INVALID;
   }
 
@@ -305,3 +305,13 @@ RecPipeClose(RecHandle h_pipe)
 {
   return (close(h_pipe) == 0) ? REC_ERR_OKAY : REC_ERR_FAIL;
 }
+
+//-------------------------------------------------------------------------
+// RecCloseListener
+//
+
+void RecCloseListener(RecHandle listener_fd)
+{
+    ink_release_assert(close(listener_fd) ==0);
+}
+

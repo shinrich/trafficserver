@@ -53,5 +53,5 @@ RecHandle RecPipeConnect(const char *base_path, const char *name);
 int RecPipeClose(RecHandle h_pipe);
 int RecPipeRead(RecHandle h_pipe, char *buf, int size);
 int RecPipeWrite(RecHandle h_pipe, char *buf, int size);
-
+void RecCloseListener(RecHandle listener_fd);
 #endif
