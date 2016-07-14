@@ -266,6 +266,6 @@ plugin_init(bool validateOnly)
       ats_free(vars[i]);
   }
 
-  close(fd);
+  ink_release_assert(0==close(fd));
   return retVal;
 }
