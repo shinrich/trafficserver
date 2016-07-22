@@ -407,7 +407,7 @@ Http2Stream::send_tracked_event(Event *in_event, int send_event, VIO *vio)
 void
 Http2Stream::update_read_request(int64_t read_len, bool call_update) 
 {
-  if (closed || sent_delete || parent == NULL) return;
+  if (closed || sent_delete || parent == NULL || read_vio.mutex == NULL) return;
   if (this->get_thread() != this_ethread()) {
     MUTEX_LOCK(stream_lock, this->mutex, this_ethread());
     if (cross_thread_event == NULL) {
@@ -456,6 +456,9 @@ bool
 Http2Stream::update_write_request(IOBufferReader *buf_reader, int64_t write_len, bool call_update)
 {
   bool retval = true;
+  if (!this->is_client_state_writeable() || closed || sent_delete || parent == NULL || write_vio.mutex == NULL) {
+    return retval;
+  }
   if (this->get_thread() != this_ethread()) {
     MUTEX_LOCK(stream_lock, this->mutex, this_ethread());
     if (cross_thread_event == NULL) {
@@ -470,9 +473,6 @@ Http2Stream::update_write_request(IOBufferReader *buf_reader, int64_t write_len,
   // WRITE_COMPLETE event
   MUTEX_LOCK(lock, write_vio.mutex, this_ethread());
 
-  if (!this->is_client_state_writeable() || closed || sent_delete || parent == NULL) {
-    return retval;
-  }
 
   if (write_vio.nbytes > 0 && write_vio.ndone < write_vio.nbytes) {
     int64_t num_to_write = write_vio.nbytes - write_vio.ndone;
