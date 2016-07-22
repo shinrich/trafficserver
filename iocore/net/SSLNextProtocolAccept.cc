@@ -96,7 +96,7 @@ struct SSLNextProtocolTrampoline : public Continuation {
       return EVENT_ERROR;
     }
 
-    // Cancel the action, so later timeouts and errors don't try to 
+    // Cancel the action, so later timeouts and errors don't try to
     // send the event to the Accept object.  After this point, the accept
     // object does not care.
     netvc->set_action(NULL);
@@ -139,7 +139,7 @@ SSLNextProtocolAccept::mainEvent(int event, void *edata)
     // force the SSLNetVConnection to complete the SSL handshake. Don't tell
     // the endpoint that there is an accept to handle until the read completes
     // and we know which protocol was negotiated.
-    netvc->registerNextProtocolSet(&this->protoset);
+    netvc->setNextProtocolSet(&this->protoset);
     netvc->do_io(VIO::READ, new SSLNextProtocolTrampoline(this, netvc->mutex), 0, this->buffer, 0);
     return EVENT_CONT;
   default:
@@ -153,6 +153,12 @@ SSLNextProtocolAccept::accept(NetVConnection *, MIOBuffer *, IOBufferReader *)
 {
   ink_release_assert(0);
 }
+
+SSLNextProtocolSet*
+SSLNextProtocolAccept::getNextProtocolSet() {
+    return &this->protoset;
+}
+
 
 bool
 SSLNextProtocolAccept::registerEndpoint(const char *protocol, Continuation *handler)

@@ -844,6 +844,7 @@ typedef struct tsapi_bufferblock *TSIOBufferBlock;
 typedef struct tsapi_bufferreader *TSIOBufferReader;
 typedef struct tsapi_hostlookupresult *TSHostLookupResult;
 typedef struct tsapi_aiocallback *TSAIOCallback;
+typedef struct tsapi_sslnplist *TSSslNPList;
 
 typedef void *(*TSThreadFunc)(void *data);
 typedef int (*TSEventFunc)(TSCont contp, TSEvent event, void *edata);

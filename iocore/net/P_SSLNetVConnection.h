@@ -121,7 +121,13 @@ public:
   int sslClientHandShakeEvent(int &err);
   virtual void net_read_io(NetHandler *nh, EThread *lthread);
   virtual int64_t load_buffer_and_write(int64_t towrite, MIOBufferAccessor &buf, int64_t &total_written, int &needs);
-  void registerNextProtocolSet(const SSLNextProtocolSet *);
+  /// Set the next protocol set, which includes the protocol tags and associated accept objects.
+  /// @note This must be called only once and before any other access to the NPN set.
+  void setNextProtocolSet(const SSLNextProtocolSet *);
+  /// Set the next protocol set, which includes the protocol tags and associated accept objects.
+  /// This can be called multiple times.
+  void resetNextProtocolSet(const SSLNextProtocolSet *);
+
   virtual void do_io_close(int lerrno = -1);
 
   ////////////////////////////////////////////////////////////
@@ -224,9 +230,9 @@ public:
     sslTrace = state;
   };
 
-  bool computeSSLTrace(); 
+  bool computeSSLTrace();
 
-  bool 
+  bool
   getClientVerifyEnable() const
   {
     return clientVerifyEnable;
@@ -238,7 +244,7 @@ public:
   }
 
   /**
-   * Populate the current object based on the socket information in in the 
+   * Populate the current object based on the socket information in in the
    * con parameter and the ssl object in the arg parameter
    * This is logic is invoked when the NetVC object is created in a new thread context
    */

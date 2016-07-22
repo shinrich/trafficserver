@@ -62,8 +62,7 @@
 #include "I_RecDefs.h"
 #include "I_RecCore.h"
 #include "HttpProxyServerMain.h"
-
-
+#include "P_SSLNextProtocolSet.h"
 /****************************************************************
  *  IMPORTANT - READ ME
  * Any plugin using the IO Core must enter
@@ -969,7 +968,7 @@ INKContInternal::destroy()
     //TSContSchedule((TSCont) this, 0, TS_THREAD_POOL_DEFAULT);
     ink_atomic_increment((int *)&m_event_count, 1);	// Bump up our count because we are going through the handler again
     this_ethread()->schedule_imm(this);
-    /*if (m_event_count <= 0) 
+    /*if (m_event_count <= 0)
     {
       Warning("INKCont not deletable %d %p", m_event_count, this);
     }*/
@@ -8878,4 +8877,45 @@ TSVConnReenable(TSVConn vconn)
       ssl_vc->reenable(ssl_vc->nh);
     }
   }
+}
+
+tsapi TSReturnCode TSSslVConnNPListSet(TSVConn vconn, TSSslNPList protolist)
+{
+  TSReturnCode zret = TS_ERROR;
+
+  NetVConnection *vc = reinterpret_cast<NetVConnection *>(vconn);
+  SSLNetVConnection *ssl_vc = dynamic_cast<SSLNetVConnection *>(vc);
+  if (ssl_vc) {
+    SSLNextProtocolSet* spl=reinterpret_cast<SSLNextProtocolSet *>(protolist);
+    ssl_vc->resetNextProtocolSet(spl);
+    zret = TS_SUCCESS;
+  }
+  return zret;
+}
+
+//the returned SSLNextProtocolSet should contain just the protocols mentioned in the descriptor string
+tsapi TSSslNPList TSSslNPListCreateFromString(char const* descriptor)
+{
+  HttpProxyPort proxy_port;
+  HttpSessionAccept::Options accept_opt;
+
+  // from /proxy/http/HttpProxyServerMain.cc
+  extern void MakeAcceptOptions(HttpSessionAccept::Options& accept_opt,HttpProxyPort const& port);
+  extern void MakeSSLNextProtocolSet(SSLNextProtocolSet* ssl,HttpProxyPort const& port, HttpSessionAccept::Options& accept_opt, HttpSessionAccept* http);
+
+  proxy_port.processOptions(descriptor);
+  MakeAcceptOptions(accept_opt, proxy_port);
+
+  HttpSessionAccept *http = new HttpSessionAccept(accept_opt);
+  SSLNextProtocolSet* snpList = new SSLNextProtocolSet;
+
+  MakeSSLNextProtocolSet(snpList,proxy_port,accept_opt,http);
+
+  return reinterpret_cast<TSSslNPList>(snpList);
+}
+
+tsapi TSReturnCode TSSslNPListDestroy(TSSslNPList protolist)
+{
+  reinterpret_cast<SSLNextProtocolSet*>(protolist)->~SSLNextProtocolSet();
+  return TS_SUCCESS;
 }

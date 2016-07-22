@@ -47,7 +47,7 @@ public:
   // Unregister the handler. Returns false if this protocol is not registered
   // or if it is not registered for the specified handler.
   bool unregisterEndpoint(const char *protocol, Continuation *handler);
-
+  SSLNextProtocolSet* getNextProtocolSet();
   SLINK(SSLNextProtocolAccept, link);
 
 private:

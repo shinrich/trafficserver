@@ -196,7 +196,7 @@ ssl_read_from_net(SSLNetVConnection *sslvc, EThread *lthread, int64_t &ret)
   int64_t bytes_read;
   ssl_error_t sslErr = SSL_ERROR_NONE;
   int64_t nread = 0;
-  
+
   bool trace = sslvc->getSSLTrace();
   Debug("ssl", "trace=%s", trace ? "TRUE" : "FALSE");
   bytes_read = 0;
@@ -221,7 +221,7 @@ ssl_read_from_net(SSLNetVConnection *sslvc, EThread *lthread, int64_t &ret)
       TraceIn((0 < nread && trace), sslvc->get_remote_addr(), sslvc->get_remote_port(),
           "WIRE TRACE\tbytes=%d\n%.*s", (int)nread, (int)nread, current_block);
     } else {
-      char origin_trace_ip[INET6_ADDRSTRLEN];        
+      char origin_trace_ip[INET6_ADDRSTRLEN];
       ats_ip_ntop(sslvc->origin_trace_addr, origin_trace_ip, sizeof (origin_trace_ip));
       TraceIn((0 < nread && trace), sslvc->get_remote_addr(), sslvc->get_remote_port(),
           "CLIENT %s:%d\ttbytes=%d\n%.*s", origin_trace_ip, sslvc->origin_trace_port,
@@ -251,7 +251,7 @@ ssl_read_from_net(SSLNetVConnection *sslvc, EThread *lthread, int64_t &ret)
       Debug("ssl.error", "[SSL_NetVConnection::ssl_read_from_net] SSL_ERROR_WOULD_BLOCK(read)");
       break;
     case SSL_ERROR_WANT_X509_LOOKUP:
-      TraceIn(trace, sslvc->get_remote_addr(), sslvc->get_remote_port(), 
+      TraceIn(trace, sslvc->get_remote_addr(), sslvc->get_remote_port(),
           "Want X509 lookup");
       event = SSL_READ_WOULD_BLOCK;
       SSL_INCREMENT_DYN_STAT(ssl_error_want_x509_lookup);
@@ -305,7 +305,7 @@ ssl_read_from_net(SSLNetVConnection *sslvc, EThread *lthread, int64_t &ret)
     sslvc->netActivity(lthread);
     ret = bytes_read;
     event =  (s->vio.ntodo() <= 0) ?  SSL_READ_COMPLETE : SSL_READ_READY;
-  } else { // if( bytes_read > 0 ) 
+  } else { // if( bytes_read > 0 )
 #if defined(_DEBUG)
     if (bytes_read == 0) {
       Debug("ssl", "[SSL_NetVConnection::ssl_read_from_net] bytes_read == 0");
@@ -664,10 +664,10 @@ SSLNetVConnection::load_buffer_and_write(int64_t towrite, MIOBufferAccessor &buf
   if (HttpProxyPort::TRANSPORT_BLIND_TUNNEL == this->attributes) {
     return this->super::load_buffer_and_write(towrite, buf, total_written, needs);
   }
-  
-  bool trace = getSSLTrace(); 
+
+  bool trace = getSSLTrace();
   Debug("ssl", "trace=%s", trace ? "TRUE" : "FALSE");
-  
+
   do {
     // What is remaining left in the next block?
     l = buf.reader()->block_read_avail();
@@ -711,7 +711,7 @@ SSLNetVConnection::load_buffer_and_write(int64_t towrite, MIOBufferAccessor &buf
       TraceOut((0 < num_really_written && trace), get_remote_addr(), get_remote_port(),
           "WIRE TRACE\tbytes=%d\n%.*s", (int)num_really_written, (int)num_really_written, current_block);
     } else {
-      char origin_trace_ip[INET6_ADDRSTRLEN];        
+      char origin_trace_ip[INET6_ADDRSTRLEN];
       ats_ip_ntop(origin_trace_addr, origin_trace_ip, sizeof (origin_trace_ip));
       TraceOut((0 < num_really_written && trace), get_remote_addr(), get_remote_port(),
           "CLIENT %s:%d\ttbytes=%d\n%.*s", origin_trace_ip, origin_trace_port,
@@ -749,14 +749,14 @@ SSLNetVConnection::load_buffer_and_write(int64_t towrite, MIOBufferAccessor &buf
       break;
     case SSL_ERROR_WANT_WRITE:
     case SSL_ERROR_WANT_X509_LOOKUP: {
-      if (SSL_ERROR_WANT_WRITE == err) { 
+      if (SSL_ERROR_WANT_WRITE == err) {
         SSL_INCREMENT_DYN_STAT(ssl_error_want_write);
       } else if (SSL_ERROR_WANT_X509_LOOKUP == err) {
         SSL_INCREMENT_DYN_STAT(ssl_error_want_x509_lookup);
-        TraceOut(trace, get_remote_addr(), get_remote_port(), 
+        TraceOut(trace, get_remote_addr(), get_remote_port(),
             "Want X509 lookup");
       }
-      
+
       needs |= EVENTIO_WRITE;
       num_really_written = -EAGAIN;
       Debug("ssl.error", "SSL_write-SSL_ERROR_WANT_WRITE");
@@ -832,7 +832,7 @@ SSLNetVConnection::do_io_close(int lerrno)
     } else { // x == 0
       // If we've received a FIN, we still need to set SSL_SENT_SHUTDOWN, otheriwse
       // openssl will dump a perfectly good session in SSL_SESS_CACHE_SERVER mode
-      // Since we do not rely on the openssl caching, not clear whether this is an issue for 
+      // Since we do not rely on the openssl caching, not clear whether this is an issue for
       // ATS, but it doesn't seem to hurt
       if ((SSL_RECEIVED_SHUTDOWN | SSL_SENT_SHUTDOWN) != SSL_get_shutdown(ssl)) {
         SSL_set_shutdown(ssl, (SSL_RECEIVED_SHUTDOWN | SSL_SENT_SHUTDOWN));
@@ -934,7 +934,7 @@ SSLNetVConnection::sslStartHandShake(int event, int &err)
 #if !(TS_USE_TLS_SNI)
       // set SSL trace
       if(SSLConfigParams::ssl_wire_trace_enabled){
-        bool trace = computeSSLTrace();      
+        bool trace = computeSSLTrace();
         Debug("ssl", "sslnetvc. setting trace to=%s", trace ? "true" : "false");
         setSSLTrace(trace);
       }
@@ -1078,7 +1078,7 @@ SSLNetVConnection::sslServerHandShakeEvent(int &err)
     }
 
     sslHandShakeComplete = true;
-    
+
     TraceIn(trace, get_remote_addr(), get_remote_port(),
           "SSL server handshake completed successfully");
     // do we want to include cert info in trace?
@@ -1194,7 +1194,7 @@ SSLNetVConnection::sslServerHandShakeEvent(int &err)
   case SSL_ERROR_ZERO_RETURN:
     TraceIn(trace, get_remote_addr(), get_remote_port(),
         "SSL server handshake ERROR_ZERO_RETURN");
-    return EVENT_ERROR; 
+    return EVENT_ERROR;
   case SSL_ERROR_SYSCALL:
     TraceIn(trace, get_remote_addr(), get_remote_port(),
         "SSL server handshake ERROR_SYSCALL");
@@ -1319,9 +1319,15 @@ SSLNetVConnection::sslClientHandShakeEvent(int &err)
 }
 
 void
-SSLNetVConnection::registerNextProtocolSet(const SSLNextProtocolSet *s)
+SSLNetVConnection::setNextProtocolSet(const SSLNextProtocolSet *s)
 {
   ink_release_assert(this->npnSet == NULL);
+  this->resetNextProtocolSet(s);
+}
+
+void
+SSLNetVConnection::resetNextProtocolSet(const SSLNextProtocolSet *s)
+{
   this->npnSet = s;
 }
 
@@ -1457,7 +1463,7 @@ bool
 SSLNetVConnection::computeSSLTrace()
 {
   // this has to happen before the handshake or else sni_servername will be NULL
-#if TS_USE_TLS_SNI 
+#if TS_USE_TLS_SNI
   bool sni_trace;
   if (ssl) {
     const char *ssl_servername = SSL_get_servername(ssl, TLSEXT_NAMETYPE_host_name);
@@ -1474,12 +1480,12 @@ SSLNetVConnection::computeSSLTrace()
   //count based on ip only if they set an IP value
   const sockaddr *remote_addr = get_remote_addr();
   bool ip_trace = false;
-  if (SSLConfigParams::ssl_wire_trace_ip) { 
+  if (SSLConfigParams::ssl_wire_trace_ip) {
     ip_trace = (*SSLConfigParams::ssl_wire_trace_ip == remote_addr);
   }
-  
+
   //count based on percentage
-  int percentage = SSLConfigParams::ssl_wire_trace_percentage; 
+  int percentage = SSLConfigParams::ssl_wire_trace_percentage;
   int random;
   bool trace;
 
@@ -1497,13 +1503,13 @@ SSLNetVConnection::computeSSLTrace()
     random = this_ethread()->generator.random() % 100; // range [0-99]
     trace = percentage > random;
   }
-  
+
   Debug("ssl", "ssl_netvc random=%d, trace=%s", random, trace ? "TRUE" : "FALSE");
 
   return trace;
-} 
+}
 
-int 
+int
 SSLNetVConnection::populate(Connection &con, Continuation *c, void *arg)
 {
   int retval = UnixNetVConnection::populate(con, c, arg);
@@ -1511,7 +1517,7 @@ SSLNetVConnection::populate(Connection &con, Continuation *c, void *arg)
   // Add in the SSL data
   this->ssl = (SSL *)arg;
   // Maybe bring over the stats?
-  
+
   this->sslHandShakeComplete = true;
   this->sslClientConnection = true;
   SSL_set_ex_data(this->ssl, get_ssl_client_data_index(), this);
