@@ -139,7 +139,9 @@ HttpServerSession::do_io_close(int alerrno)
             ats_ip_nptop(&server_ip.sa, addrbuf, sizeof(addrbuf)),
             connection_count->getCount(server_ip, hostname_hash, sharing_match));
     } else {
-      Error("[%" PRId64 "] number of connections should be greater than or equal to zero: %u", con_id,
+      ip_port_text_buffer addrbuf;
+      Error("[%" PRId64 "] number of connections for ip %s should be greater than or equal to zero: %u", con_id,
+            ats_ip_nptop(&server_ip.sa, addrbuf, sizeof(addrbuf)),
             connection_count->getCount(server_ip, hostname_hash, sharing_match));
     }
   }
