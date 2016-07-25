@@ -293,9 +293,12 @@ Http2ClientSession::main_event_handler(int event, void *edata)
     break;
 
   case HTTP2_SESSION_EVENT_XMIT: {
-    Http2Frame *frame = (Http2Frame *)edata;
-    frame->xmit(this->write_buffer);
-    write_reenable();
+    // If the client thinks we are closed, no point in writing on
+    if (!connection_state.is_state_closed()) {
+      Http2Frame *frame = (Http2Frame *)edata;
+      frame->xmit(this->write_buffer);
+      write_reenable();
+    }
     retval = 0;
     break;
   }
