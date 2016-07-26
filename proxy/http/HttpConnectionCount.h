@@ -143,15 +143,17 @@ public:
     static int
     equal(ConnAddr &a, ConnAddr &b)
     {
-      char addrbuf1[INET6_ADDRSTRLEN];
-      char addrbuf2[INET6_ADDRSTRLEN];
-      char md5buf1[33];
-      char md5buf2[33];
-      ink_code_md5_stringify(md5buf1, sizeof(md5buf1), reinterpret_cast<const char *>(a._hostname_hash.u8));
-      ink_code_md5_stringify(md5buf2, sizeof(md5buf2), reinterpret_cast<const char *>(b._hostname_hash.u8));
-      Debug("conn_count", "Comparing hostname hash %s dest %s match method %d to hostname hash %s dest %s match method %d", md5buf1,
+      if(is_debug_tag_set("conn_count")) {
+        char addrbuf1[INET6_ADDRSTRLEN];
+        char addrbuf2[INET6_ADDRSTRLEN];
+        char md5buf1[33];
+        char md5buf2[33];
+        ink_code_to_hex_str(md5buf1, a._hostname_hash.u8);
+        ink_code_to_hex_str(md5buf2, b._hostname_hash.u8);
+        Debug("conn_count", "Comparing hostname hash %s dest %s match method %d to hostname hash %s dest %s match method %d", md5buf1,
             ats_ip_nptop(&a._addr.sa, addrbuf1, sizeof(addrbuf1)), a._match_type, md5buf2,
             ats_ip_nptop(&b._addr.sa, addrbuf2, sizeof(addrbuf2)), b._match_type);
+      }
 
       if (a._match_type != b._match_type || a._match_type == TS_SERVER_SESSION_SHARING_MATCH_NONE) {
         Debug("conn_count", "result = 0, a._match_type != b._match_type || a._match_type == TS_SERVER_SESSION_SHARING_MATCH_NONE");
