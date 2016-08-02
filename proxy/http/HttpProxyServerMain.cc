@@ -131,21 +131,8 @@ make_net_accept_options(const HttpProxyPort &port, unsigned nthreads)
 
   return net;
 }
-
-static void
-MakeHttpProxyAcceptor(HttpProxyAcceptor &acceptor, HttpProxyPort &port, unsigned nthreads)
+void MakeAcceptOptions(HttpSessionAccept::Options& accept_opt,HttpProxyPort const& port)
 {
-  NetProcessor::AcceptOptions &net_opt = acceptor._net_opt;
-  HttpSessionAccept::Options accept_opt;
-  int enable_spdy = 0;
-
-  net_opt = make_net_accept_options(port, nthreads);
-  REC_ReadConfigInteger(net_opt.recv_bufsize, "proxy.config.net.sock_recv_buffer_size_in");
-  REC_ReadConfigInteger(net_opt.send_bufsize, "proxy.config.net.sock_send_buffer_size_in");
-  REC_ReadConfigInteger(net_opt.packet_mark, "proxy.config.net.sock_packet_mark_in");
-  REC_ReadConfigInteger(net_opt.packet_tos, "proxy.config.net.sock_packet_tos_in");
-  REC_ReadConfigInteger(enable_spdy, "proxy.config.spdy.enabled");
-
   accept_opt.f_outbound_transparent = port.m_outbound_transparent_p;
   accept_opt.transport_type = port.m_type;
   accept_opt.setHostResPreference(port.m_host_res_preference);
@@ -163,6 +150,53 @@ MakeHttpProxyAcceptor(HttpProxyAcceptor &acceptor, HttpProxyPort &port, unsigned
   } else if (HttpConfig::m_master.outbound_ip6.isValid()) {
     accept_opt.outbound_ip6 = HttpConfig::m_master.outbound_ip6;
   }
+}
+void MakeSSLNextProtocolSet(SSLNextProtocolSet* spl,HttpProxyPort const& port,HttpSessionAccept::Options& accept_opt, HttpSessionAccept* http)
+{
+    // ALPN selects the first server-offered protocol,
+    // so make sure that we offer the newest protocol first.
+    // But since registerEndpoint prepends you want to
+    // register them backwards, so you'd want to register
+    // the least important protocol first:
+    // http/1.0, http/1.1, spdy/3, spdy/3.1
+
+    // HTTP
+     if (port.m_session_protocol_preference.contains(TS_NPN_PROTOCOL_INDEX_HTTP_1_0)) {
+      spl->registerEndpoint(TS_NPN_PROTOCOL_HTTP_1_0, http);
+    }
+
+    if (port.m_session_protocol_preference.contains(TS_NPN_PROTOCOL_INDEX_HTTP_1_1)) {
+      spl->registerEndpoint(TS_NPN_PROTOCOL_HTTP_1_1, http);
+    }
+     // HTTP2
+    if (port.m_session_protocol_preference.contains(TS_NPN_PROTOCOL_INDEX_HTTP_2_0)) {
+      Http2SessionAccept *acc = new Http2SessionAccept(accept_opt);
+
+      // TODO: Should be removed when h2-14 is gone and dead, and h2 is widely supported in UAs
+      spl->registerEndpoint(TS_NPN_PROTOCOL_HTTP_2_0_14, acc);
+      spl->registerEndpoint(TS_NPN_PROTOCOL_HTTP_2_0, acc);
+    }
+}
+void MakeSSLNextProtocolAccept(SSLNextProtocolAccept* ssl,HttpProxyPort const& port, HttpSessionAccept::Options& accept_opt, HttpSessionAccept* http)
+{
+  MakeSSLNextProtocolSet(ssl->getNextProtocolSet(), port, accept_opt, http);
+}
+
+static void
+MakeHttpProxyAcceptor(HttpProxyAcceptor &acceptor, HttpProxyPort &port, unsigned nthreads)
+{
+  NetProcessor::AcceptOptions &net_opt = acceptor._net_opt;
+  HttpSessionAccept::Options accept_opt;
+  int enable_spdy = 0;
+
+  net_opt = make_net_accept_options(port, nthreads);
+  REC_ReadConfigInteger(net_opt.recv_bufsize, "proxy.config.net.sock_recv_buffer_size_in");
+  REC_ReadConfigInteger(net_opt.send_bufsize, "proxy.config.net.sock_send_buffer_size_in");
+  REC_ReadConfigInteger(net_opt.packet_mark, "proxy.config.net.sock_packet_mark_in");
+  REC_ReadConfigInteger(net_opt.packet_tos, "proxy.config.net.sock_packet_tos_in");
+  REC_ReadConfigInteger(enable_spdy, "proxy.config.spdy.enabled");
+
+  MakeAcceptOptions(accept_opt,port);
 
   // OK the way this works is that the fallback for each port is a protocol
   // probe acceptor. For SSL ports, we can stack a NPN+ALPN acceptor in front
@@ -193,22 +227,7 @@ MakeHttpProxyAcceptor(HttpProxyAcceptor &acceptor, HttpProxyPort &port, unsigned
 
   if (port.isSSL()) {
     SSLNextProtocolAccept *ssl = new SSLNextProtocolAccept(probe, port.m_transparent_passthrough);
-
-    // ALPN selects the first server-offered protocol,
-    // so make sure that we offer the newest protocol first.
-    // But since registerEndpoint prepends you want to
-    // register them backwards, so you'd want to register
-    // the least important protocol first:
-    // http/1.0, http/1.1, spdy/3, spdy/3.1
-
-    // HTTP
-    if (port.m_session_protocol_preference.contains(TS_NPN_PROTOCOL_INDEX_HTTP_1_0)) {
-      ssl->registerEndpoint(TS_NPN_PROTOCOL_HTTP_1_0, http);
-    }
-
-    if (port.m_session_protocol_preference.contains(TS_NPN_PROTOCOL_INDEX_HTTP_1_1)) {
-      ssl->registerEndpoint(TS_NPN_PROTOCOL_HTTP_1_1, http);
-    }
+    MakeSSLNextProtocolAccept(ssl,port,accept_opt,http);
 
 // SPDY
     if (enable_spdy & 0x02) {
@@ -223,14 +242,7 @@ MakeHttpProxyAcceptor(HttpProxyAcceptor &acceptor, HttpProxyPort &port, unsigned
 #endif
     }
 
-    // HTTP2
-    if (port.m_session_protocol_preference.contains(TS_NPN_PROTOCOL_INDEX_HTTP_2_0)) {
-      Http2SessionAccept *acc = new Http2SessionAccept(accept_opt);
 
-      // TODO: Should be removed when h2-14 is gone and dead, and h2 is widely supported in UAs
-      ssl->registerEndpoint(TS_NPN_PROTOCOL_HTTP_2_0_14, acc);
-      ssl->registerEndpoint(TS_NPN_PROTOCOL_HTTP_2_0, acc);
-    }
 
     MUTEX_LOCK(lock, ssl_plugin_mutex, this_ethread());
     ssl_plugin_acceptors.push(ssl);
