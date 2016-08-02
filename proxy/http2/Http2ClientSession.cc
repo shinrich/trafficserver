@@ -303,13 +303,10 @@ Http2ClientSession::main_event_handler(int event, void *edata)
     break;
   }
 
-  case VC_EVENT_EOS:
   case VC_EVENT_ACTIVE_TIMEOUT:
   case VC_EVENT_INACTIVITY_TIMEOUT:
   case VC_EVENT_ERROR:
-    // If this is a shutdown event, the client_vc is already going to shut itself down
-    // no need to keep tracking it.
-    client_vc = NULL;
+  case VC_EVENT_EOS:
     this->set_dying_event(event);
     this->do_io_close();
     retval = 0;
