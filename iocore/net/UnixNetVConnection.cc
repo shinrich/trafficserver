@@ -614,7 +614,6 @@ UnixNetVConnection::get_data(int id, void *data)
 VIO *
 UnixNetVConnection::do_io_read(Continuation *c, int64_t nbytes, MIOBuffer *buf)
 {
-  ink_assert(!closed);
   ink_assert(c || 0 == nbytes);
   read.vio.op = VIO::READ;
   read.vio.mutex = c ? c->mutex : this->mutex;
@@ -623,6 +622,7 @@ UnixNetVConnection::do_io_read(Continuation *c, int64_t nbytes, MIOBuffer *buf)
   read.vio.ndone = 0;
   read.vio.vc_server = (VConnection *)this;
   if (buf) {
+    ink_release_assert(!closed);
     read.vio.buffer.writer_for(buf);
     if (!read.enabled)
       read.vio.reenable();
@@ -636,7 +636,6 @@ UnixNetVConnection::do_io_read(Continuation *c, int64_t nbytes, MIOBuffer *buf)
 VIO *
 UnixNetVConnection::do_io_write(Continuation *c, int64_t nbytes, IOBufferReader *reader, bool owner)
 {
-  ink_assert(!closed);
   write.vio.op = VIO::WRITE;
   write.vio.mutex = c ? c->mutex : this->mutex;
   write.vio._cont = c;
@@ -644,6 +643,7 @@ UnixNetVConnection::do_io_write(Continuation *c, int64_t nbytes, IOBufferReader 
   write.vio.ndone = 0;
   write.vio.vc_server = (VConnection *)this;
   if (reader) {
+    ink_release_assert(!closed);
     ink_assert(!owner);
     write.vio.buffer.reader_for(reader);
     if (nbytes && !write.enabled)
@@ -787,7 +787,7 @@ UnixNetVConnection::reenable(VIO *vio)
     return;
   EThread *t = vio->mutex->thread_holding;
   ink_assert(t == this_ethread());
-  ink_assert(!closed);
+  ink_release_assert(!closed);
   if (nh->mutex->thread_holding == t) {
     if (vio == &read.vio) {
       ep.modify(EVENTIO_READ);
@@ -890,7 +890,7 @@ void
 UnixNetVConnection::set_enabled(VIO *vio)
 {
   ink_assert(vio->mutex->thread_holding == this_ethread() && thread);
-  ink_assert(!closed);
+  ink_release_assert(!closed);
   STATE_FROM_VIO(vio)->enabled = 1;
 #ifdef INACTIVITY_TIMEOUT
   if (!inactivity_timeout && inactivity_timeout_in) {
