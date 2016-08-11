@@ -219,6 +219,12 @@ public:
   bool ready_to_free() const { return kill_me; }
   bool is_recursing() const { return recursion > 0; }
 
+  bool
+  is_client_closed()
+  {
+    return client_vc == NULL;
+  }
+
 private:
   Http2ClientSession(Http2ClientSession &);                  // noncopyable
   Http2ClientSession &operator=(const Http2ClientSession &); // noncopyable

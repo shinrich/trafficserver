@@ -79,8 +79,6 @@ Http2ClientSession::destroy()
 void
 Http2ClientSession::free()
 {
-  DebugHttp2Ssn0("session free");
-
   if (client_vc) {
     release_netvc();
     client_vc->do_io_close();
@@ -90,6 +88,8 @@ Http2ClientSession::free()
     kill_me = true;
     return;
   }
+
+  DebugHttp2Ssn0("session free");
 
   HTTP2_DECREMENT_THREAD_DYN_STAT(HTTP2_STAT_CURRENT_CLIENT_SESSION_COUNT, this->mutex->thread_holding);
 
@@ -508,8 +508,9 @@ Http2ClientSession::state_process_frame_read(int event, VIO *vio, bool inside_fr
     // Set the event handler if there is no more data to process a new frame
     HTTP2_SET_SESSION_HANDLER(&Http2ClientSession::state_start_frame_read);
   }
-
-  vio->reenable();
+  if (!is_client_closed()) {
+    vio->reenable();
+  }
   return 0;
 }
 
