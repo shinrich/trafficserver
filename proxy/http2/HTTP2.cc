@@ -656,6 +656,7 @@ http2_decode_header_blocks(HTTPHdr *hdr, const uint8_t *buf_start, const uint8_t
   const uint8_t *cursor = buf_start;
   HdrHeap *heap = hdr->m_heap;
   HTTPHdrImpl *hh = hdr->m_http;
+  uint32_t total_header_size = 0;
 
   while (cursor < buf_end) {
     int64_t read_bytes = 0;
@@ -693,6 +694,15 @@ http2_decode_header_blocks(HTTPHdr *hdr, const uint8_t *buf_start, const uint8_t
 
     int name_len = 0;
     const char *name = field->name_get(&name_len);
+
+    int value_len = 0;
+    field->value_get(&value_len);
+
+    total_header_size += name_len + value_len;
+
+    if (total_header_size > Http2::max_request_header_size) {
+      return HPACK_ERROR_HTTP2_PROTOCOL_ERROR;
+    }
 
     // ':' started header name is only allowed for pseudo headers
     if (hdr->fields_count() >= 4 && (name_len <= 0 || name[0] == ':')) {
