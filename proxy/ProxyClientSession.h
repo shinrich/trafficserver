@@ -141,6 +141,11 @@ public:
   virtual void set_inactivity_timeout(ink_hrtime timeout_in) {}
   virtual void cancel_inactivity_timeout() {}
 
+  virtual sockaddr const * get_client_addr() {
+    NetVConnection *netvc = get_netvc();
+    return netvc ? netvc->get_remote_addr() : NULL;
+  }
+
 protected:
   // XXX Consider using a bitwise flags variable for the following flags, so that we can make the best
   // use of internal alignment padding.

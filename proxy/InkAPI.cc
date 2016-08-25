@@ -5256,11 +5256,7 @@ TSHttpSsnClientAddrGet(TSHttpSsn ssnp)
   if (cs == NULL)
     return 0;
 
-  NetVConnection *vc = cs->get_netvc();
-  if (vc == NULL)
-    return 0;
-
-  return vc->get_remote_addr();
+  return cs->get_client_addr();
 }
 sockaddr const *
 TSHttpTxnClientAddrGet(TSHttpTxn txnp)
