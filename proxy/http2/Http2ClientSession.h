@@ -186,7 +186,11 @@ public:
   sockaddr const *
   get_client_addr()
   {
-    return client_vc->get_remote_addr();
+    if (client_vc) {
+      return client_vc->get_remote_addr();
+    } else {
+      return &cached_client_addr.sa;
+    }
   }
 
   void
@@ -248,6 +252,8 @@ private:
   MIOBuffer *write_buffer;
   IOBufferReader *sm_writer;
   Http2FrameHeader current_hdr;
+
+  IpEndpoint cached_client_addr;
 
   // For Upgrade: h2c
   Http2UpgradeContext upgrade_context;
