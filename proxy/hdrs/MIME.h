@@ -388,7 +388,6 @@ extern const char *MIME_FIELD_X_FORWARDED_FOR;
 extern const char *MIME_FIELD_SEC_WEBSOCKET_KEY;
 extern const char *MIME_FIELD_SEC_WEBSOCKET_VERSION;
 extern const char *MIME_FIELD_HTTP2_SETTINGS;
-extern const char *MIME_FIELD_HTTP2_NUM_REQUESTS;
 
 extern const char *MIME_VALUE_BYTES;
 extern const char *MIME_VALUE_CHUNKED;

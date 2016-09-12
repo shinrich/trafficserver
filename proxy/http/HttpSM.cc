@@ -546,7 +546,7 @@ HttpSM::attach_client_session(ProxyClientTransaction *client_vc, IOBufferReader 
   ua_session = client_vc;
 
   // Collect log & stats information
-  client_tcp_reused = (1 < ua_session->get_transact_count());
+  client_tcp_reused = !(ua_session->is_first_transaction());
   SSLNetVConnection *ssl_vc = dynamic_cast<SSLNetVConnection *>(netvc);
   if (ssl_vc != NULL) {
     client_connection_is_ssl = true;
@@ -847,15 +847,6 @@ HttpSM::state_read_client_request_header(int event, void *data)
     if ((t_state.txn_conf->number_of_redirections > 0) ||
         (t_state.method == HTTP_WKSIDX_POST && HttpConfig::m_master.post_copy_size))
       enable_redirection = t_state.txn_conf->redirection_enabled;
-
-    // Update Connection Reuse Info for HTTP2
-    MIMEField *nrequests_field;
-    int nrequests;
-    if ((nrequests_field = t_state.hdr_info.client_request.field_find(MIME_FIELD_HTTP2_NUM_REQUESTS, MIME_LEN_HTTP2_NUM_REQUESTS)) != NULL) {
-      nrequests = nrequests_field->value_get_int();
-      client_tcp_reused = (1 < nrequests) ? true : false;
-      DebugSM("http_seq", "http2 nrequests = %d", nrequests);
-    }
 
     call_transact_and_set_next_state(HttpTransact::ModifyRequest);
 
