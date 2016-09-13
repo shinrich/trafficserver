@@ -63,8 +63,7 @@ ClassAllocator<Http1ClientSession> http1ClientSessionAllocator("http1ClientSessi
 Http1ClientSession::Http1ClientSession()
   : con_id(0), client_vc(NULL), magic(HTTP_CS_MAGIC_DEAD), transact_count(0), tcp_init_cwnd_set(false), half_close(false),
     conn_decrease(false), read_buffer(NULL), read_state(HCS_INIT),
-    ka_vio(NULL), slave_ka_vio(NULL), outbound_port(0), f_outbound_transparent(false), 
-    m_active(false)
+    ka_vio(NULL), slave_ka_vio(NULL), outbound_port(0), f_outbound_transparent(false) 
 {
 }
 
@@ -229,10 +228,7 @@ Http1ClientSession::do_io_close(int alerrno)
 {
   if (read_state == HCS_CLOSED) return; // Don't double call session close
   if (read_state == HCS_ACTIVE_READER) {
-    if (m_active) {
-      m_active = false;
-      HTTP_DECREMENT_DYN_STAT(http_current_active_client_connections_stat);
-    }
+    clear_session_active();
   }
 
   // Prevent double closing
@@ -489,10 +485,8 @@ Http1ClientSession::attach_server_session(HttpServerSession *ssession, bool tran
     ink_assert(ssession->get_netvc() != this->get_netvc());
 
     // handling potential keep-alive here
-    if (m_active) {
-      m_active = false;
-      HTTP_DECREMENT_DYN_STAT(http_current_active_client_connections_stat);
-    }
+    clear_session_active();
+
     // Since this our slave, issue an IO to detect a close and
     //  have it call the client session back.  This IO also prevent
     //  the server net conneciton from calling back a dead sm
