@@ -145,6 +145,10 @@ public:
     NetVConnection *netvc = get_netvc();
     return netvc ? netvc->get_remote_addr() : NULL;
   }
+  virtual sockaddr const * get_local_addr() {
+    NetVConnection *netvc = get_netvc();
+    return netvc ? netvc->get_local_addr() : NULL;
+  }
 
 protected:
   // XXX Consider using a bitwise flags variable for the following flags, so that we can make the best

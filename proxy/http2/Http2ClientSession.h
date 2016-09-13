@@ -186,11 +186,13 @@ public:
   sockaddr const *
   get_client_addr()
   {
-    if (client_vc) {
-      return client_vc->get_remote_addr();
-    } else {
-      return &cached_client_addr.sa;
-    }
+    return client_vc ? client_vc->get_remote_addr() : &cached_client_addr.sa;
+  }
+
+  sockaddr const *
+  get_local_addr()
+  {
+    return client_vc ? client_vc->get_local_addr() : &cached_local_addr.sa;
   }
 
   void
@@ -254,6 +256,7 @@ private:
   Http2FrameHeader current_hdr;
 
   IpEndpoint cached_client_addr;
+  IpEndpoint cached_local_addr;
 
   // For Upgrade: h2c
   Http2UpgradeContext upgrade_context;
