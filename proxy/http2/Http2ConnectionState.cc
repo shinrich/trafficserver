@@ -832,6 +832,8 @@ Http2ConnectionState::create_stream(Http2StreamId new_id)
   ++total_client_streams_count;
   new_stream->set_parent(ua_session);
   new_stream->mutex = ua_session->mutex;
+  new_stream->is_first_transaction_flag = get_stream_requests() == 0;
+  increment_stream_requests();
   return new_stream;
 }
 
