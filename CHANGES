@@ -2,9 +2,15 @@
 Changes with Apache Traffic Server 6.0.0
 
   *) [TS-3266] core dump in connect_re_internal
+
   *) [TS-3589] Add TXN-COUNT condition to header_rewrite plugin.
 
+  *) [TS-3483] Fix regex remap to work with CONNECT.
+
+  *) [TS-3479] Remove verbose Warning() from HTTP/2 connections.
+
   *) [TS-3058]: Fix TSVConnGetClosed to return a useful value in more situations.
+
   *) [TS-3539] Close excess file descriptors in crash log helper.
 
   *) [TS-3576] Remove the need for FIPS locking for OpenSSL
