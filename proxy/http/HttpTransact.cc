@@ -1696,7 +1696,9 @@ HttpTransact::OSDNSLookup(State *s)
   // update some state variables with hostdb information that has
   // been provided.
   ats_ip_copy(&s->server_info.dst_addr, s->host_db_info.ip());
-  s->server_info.dst_addr.port() = htons(s->hdr_info.client_request.port_get()); // now we can set the port.
+  if (!s->api_server_addr_set) {
+    s->server_info.dst_addr.port() = htons(s->hdr_info.client_request.port_get()); // now we can set the port.
+  }
   ats_ip_copy(&s->request_data.dest_ip, &s->server_info.dst_addr);
   get_ka_info_from_host_db(s, &s->server_info, &s->client_info, &s->host_db_info);
 
