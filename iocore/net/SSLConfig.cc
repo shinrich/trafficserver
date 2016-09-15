@@ -301,24 +301,17 @@ SSLConfigParams::initialize()
 
   //SSL Wire Trace configurations
   REC_EstablishStaticConfigInt32(ssl_wire_trace_enabled, "proxy.config.ssl.wire_trace_enabled");
-  if(ssl_wire_trace_enabled){
     // wire trace specific source ip
-    REC_EstablishStaticConfigStringAlloc(ssl_wire_trace_addr, "proxy.config.ssl.wire_trace_addr");
-    if(ssl_wire_trace_addr){
-      ssl_wire_trace_ip = new IpAddr();
-      ssl_wire_trace_ip->load(ssl_wire_trace_addr);
-    } else {
-      ssl_wire_trace_ip = NULL;
-    }
-    // wire trace percentage of requests
-    REC_EstablishStaticConfigInt32(ssl_wire_trace_percentage, "proxy.config.ssl.wire_trace_percentage");
-    REC_EstablishStaticConfigStringAlloc(ssl_wire_trace_server_name, "proxy.config.ssl.wire_trace_server_name");
+  REC_EstablishStaticConfigStringAlloc(ssl_wire_trace_addr, "proxy.config.ssl.wire_trace_addr");
+  if(ssl_wire_trace_addr){
+    ssl_wire_trace_ip = new IpAddr();
+    ssl_wire_trace_ip->load(ssl_wire_trace_addr);
   } else {
-    ssl_wire_trace_addr = NULL;
     ssl_wire_trace_ip = NULL;
-    ssl_wire_trace_percentage = 0;
-    ssl_wire_trace_server_name = NULL;
   }
+  // wire trace percentage of requests
+  REC_EstablishStaticConfigInt32(ssl_wire_trace_percentage, "proxy.config.ssl.wire_trace_percentage");
+  REC_EstablishStaticConfigStringAlloc(ssl_wire_trace_server_name, "proxy.config.ssl.wire_trace_server_name");
 }
 
 void
