@@ -44,7 +44,8 @@
 #define MULTI_CACHE_MAX_FILES 256
 #define MULTI_CACHE_PARTITIONS 64
 
-#define MULTI_CACHE_EVENT_SYNC MULTI_CACHE_EVENT_EVENTS_START
+static const int MULTI_CACHE_EVENT_SYNC = MULTI_CACHE_EVENT_EVENTS_START;
+static const int MULTI_CACHE_EVENT_GC = MULTI_CACHE_EVENT_EVENTS_START + 1;
 
 
 // for heap_offset() and heap_size(), indicates no data
@@ -291,6 +292,11 @@ struct MultiCacheBase : public MultiCacheHeader {
   estimated_heap_bytes_per_entry() const
   {
     return 0;
+  }
+
+  int heap_in_use() const
+  {
+    return heap_used[0] + heap_used[1];
   }
 
   void print_info(FILE *fp);

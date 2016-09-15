@@ -159,7 +159,9 @@ enum HostDB_Stats {
   hostdb_ttl_stat,         // D average TTL
   hostdb_ttl_expires_stat, // D == TTL Expires
   hostdb_re_dns_on_reload_stat,
-  hostdb_bytes_stat,
+  hostdb_bytes_stat, ///< Total number of bytes in HostDB.
+  hostdb_bytes_in_use_stat, ///< Instaneous bytes in use.
+  hostdb_gc_count_stat, ///< Number of garbage collections.
   HostDB_Stat_Count
 };
 

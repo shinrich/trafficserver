@@ -1145,7 +1145,7 @@ struct MultiCacheHeapGC : public Continuation {
       return EVENT_CONT;
     }
     mc->heap_used[mc->heap_halfspace ? 0 : 1] = 8; // skip 0
-    cont->handleEvent(MULTI_CACHE_EVENT_SYNC, 0);
+    cont->handleEvent(MULTI_CACHE_EVENT_GC, 0);
     Debug("multicache", "MultiCacheHeapGC done");
     delete this;
     return EVENT_DONE;
