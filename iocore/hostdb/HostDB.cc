@@ -395,9 +395,12 @@ HostDBSyncer::sync_event(int, void *)
 
 
 int
-HostDBSyncer::wait_event(int, void *)
+HostDBSyncer::wait_event(int event_id, void *)
 {
   ink_hrtime next_sync = HRTIME_SECONDS(hostdb_sync_frequency) - (Thread::get_hrtime() - start_time);
+
+  if (MULTI_CACHE_EVENT_GC == event_id)
+    RecIncrGlobalRawStatCount(hostdb_rsb, hostdb_gc_count_stat);
 
   SET_HANDLER(&HostDBSyncer::sync_event);
   if (next_sync > HRTIME_MSECONDS(100))
@@ -2145,6 +2148,11 @@ HostDBContinuation::backgroundEvent(int /* event ATS_UNUSED */, Event * /* e ATS
       Debug("hostdb", "Failed to stat host file '%s'", hostdb_hostfile_path);
     }
   }
+  // I still don't completely understand the stat system, but unless the count gets bumped to something
+  // non-zero, the external value will appear to be zero regardless of what the sum is set to, which
+  // means both of these are necessary.
+  RecSetGlobalRawStatSum(hostdb_rsb, hostdb_bytes_in_use_stat, hostDBProcessor.cache()->heap_in_use());
+  RecIncrGlobalRawStatCount(hostdb_rsb, hostdb_bytes_in_use_stat, hostDBProcessor.cache()->heap_in_use());
 
   return EVENT_CONT;
 }
@@ -2493,6 +2501,8 @@ ink_hostdb_init(ModuleVersion v)
 
   RecRegisterRawStat(hostdb_rsb, RECT_PROCESS, "proxy.process.hostdb.bytes", RECD_INT, RECP_PERSISTENT, (int)hostdb_bytes_stat,
                      RecRawStatSyncCount);
+  RecRegisterRawStat(hostdb_rsb, RECT_PROCESS, "proxy.process.hostdb.bytes_in_use", RECD_INT, RECP_NON_PERSISTENT, static_cast<int>(hostdb_bytes_in_use_stat), RecRawStatSyncSum);
+                     RecRegisterRawStat(hostdb_rsb, RECT_PROCESS, "proxy.process.hostdb.gc_count", RECD_INT, RECP_NON_PERSISTENT, static_cast<int>(hostdb_gc_count_stat), RecRawStatSyncCount);
 
   ts_host_res_global_init();
 }
