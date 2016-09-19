@@ -1171,9 +1171,10 @@ test_mgmt_cli_port()
 {
   TSString val = NULL;
   int ret = 0;
+  int ret = TSRecordGetString("proxy.config.manager_binary", &val);
 
-  if (TSRecordGetString("proxy.config.manager_binary", &val) != TS_ERR_OKAY) {
-    cop_log(COP_WARNING, "(cli test) unable to retrieve manager_binary\n");
+  if (ret != TS_ERR_OKAY) {
+    cop_log(COP_WARNING, "(cli test) unable to retrieve manager_binary (cannot talk to traffic manager?)  %d\n", ret);
     ret = -1;
   } else {
     if (strcmp(val, manager_binary) != 0) {
@@ -1708,7 +1709,8 @@ init_signals()
   sigaction(SIGILL, &action, NULL);
   sigaction(SIGFPE, &action, NULL);
   sigaction(SIGBUS, &action, NULL);
-  sigaction(SIGSEGV, &action, NULL);
+  // Let's go ahead and get the core for a SIGSEGV
+  //sigaction(SIGSEGV, &action, NULL);
 #if !defined(linux)
   sigaction(SIGEMT, &action, NULL);
   sigaction(SIGSYS, &action, NULL);
