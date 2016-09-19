@@ -157,7 +157,7 @@ crash_logger_invoke(int signo, siginfo_t *info, void *ctx)
     ATS_UNUSED_RETURN(write(crash_logger_fd, (ucontext_t *)ctx, sizeof(ucontext_t)));
 #endif
 
-    ink_release_assert(0==close(crash_logger_fd));
+    close(crash_logger_fd);
     crash_logger_fd = NO_FD;
 
     // Wait for the logger to finish ...
