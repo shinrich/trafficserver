@@ -1170,7 +1170,6 @@ static int
 test_mgmt_cli_port()
 {
   TSString val = NULL;
-  int ret = 0;
   int ret = TSRecordGetString("proxy.config.manager_binary", &val);
 
   if (ret != TS_ERR_OKAY) {
