@@ -73,9 +73,9 @@ ServerSessionPool::match(HttpServerSession *ss, sockaddr const *addr, INK_MD5 co
   return TS_SERVER_SESSION_SHARING_MATCH_NONE != match_style && // if no matching allowed, fail immediately.
          // The hostname matches if we're not checking it or it (and the port!) is a match.
          (TS_SERVER_SESSION_SHARING_MATCH_IP == match_style ||
-          (ats_ip_port_cast(addr) == ats_ip_port_cast(ss->server_ip) && ss->hostname_hash == hostname_hash)) &&
+          (ats_ip_port_cast(addr) == ats_ip_port_cast(ss->get_server_ip()) && ss->hostname_hash == hostname_hash)) &&
          // The IP address matches if we're not checking it or it is a match.
-         (TS_SERVER_SESSION_SHARING_MATCH_HOST == match_style || ats_ip_addr_port_eq(ss->server_ip, addr));
+         (TS_SERVER_SESSION_SHARING_MATCH_HOST == match_style || ats_ip_addr_port_eq(ss->get_server_ip(), addr));
 }
 
 HSMresult_t
@@ -86,7 +86,7 @@ ServerSessionPool::acquireSession(sockaddr const *addr, INK_MD5 const &hostname_
     // This is broken out because only in this case do we check the host hash first.
     HostHashTable::Location loc = m_host_pool.find(hostname_hash);
     in_port_t port = ats_ip_port_cast(addr);
-    while (loc && port != ats_ip_port_cast(loc->server_ip))
+    while (loc && port != ats_ip_port_cast(loc->get_server_ip()))
       ++loc; // scan for matching port.
     if (loc) {
       to_return = loc;
@@ -175,7 +175,7 @@ ServerSessionPool::eventHandler(int event, void *data)
       // origin, then reset the timeouts on our end and do not close the connection
       if ((event == VC_EVENT_INACTIVITY_TIMEOUT || event == VC_EVENT_ACTIVE_TIMEOUT) && s->state == HSS_KA_SHARED &&
           s->enable_origin_connection_tracking) {
-        bool connection_count_below_min = s->connection_count->getCount(s->server_ip, s->hostname_hash, s->sharing_match) <=
+        bool connection_count_below_min = s->connection_count->getCount(s->get_server_ip(), s->hostname_hash, s->sharing_match) <=
                                           http_config_params->origin_min_keep_alive_connections;
 
         if (connection_count_below_min) {
@@ -195,7 +195,7 @@ ServerSessionPool::eventHandler(int event, void *data)
         Debug("http_ss", "[%" PRId64 "] [session_pool] session %p received io notice [%s]", s->con_id, s,
               HttpDebugNames::get_event_name(event));
         ip_port_text_buffer text_remote_addr, text_server_ip; 
-        Debug("http_ss", "remote_ip=%s, server_ip=%s", ats_ip_nptop(s->get_netvc()->get_remote_addr(), text_remote_addr, sizeof text_remote_addr ), ats_ip_nptop(&s->server_ip, text_server_ip, sizeof text_server_ip));
+        Debug("http_ss", "remote_ip=%s, server_ip=%s", ats_ip_nptop(s->get_netvc()->get_remote_addr(), text_remote_addr, sizeof text_remote_addr ), ats_ip_nptop(&s->get_server_ip(), text_server_ip, sizeof text_server_ip));
       }
       ink_assert(s->state == HSS_KA_SHARED);
       // Out of the pool! Now!
