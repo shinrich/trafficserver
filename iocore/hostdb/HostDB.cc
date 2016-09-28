@@ -2502,7 +2502,7 @@ ink_hostdb_init(ModuleVersion v)
   RecRegisterRawStat(hostdb_rsb, RECT_PROCESS, "proxy.process.hostdb.bytes", RECD_INT, RECP_PERSISTENT, (int)hostdb_bytes_stat,
                      RecRawStatSyncCount);
   RecRegisterRawStat(hostdb_rsb, RECT_PROCESS, "proxy.process.hostdb.bytes_in_use", RECD_INT, RECP_NON_PERSISTENT, static_cast<int>(hostdb_bytes_in_use_stat), RecRawStatSyncSum);
-                     RecRegisterRawStat(hostdb_rsb, RECT_PROCESS, "proxy.process.hostdb.gc_count", RECD_INT, RECP_NON_PERSISTENT, static_cast<int>(hostdb_gc_count_stat), RecRawStatSyncCount);
+  RecRegisterRawStat(hostdb_rsb, RECT_PROCESS, "proxy.process.hostdb.gc_count", RECD_INT, RECP_NON_PERSISTENT, static_cast<int>(hostdb_gc_count_stat), RecRawStatSyncCount);
 
   ts_host_res_global_init();
 }

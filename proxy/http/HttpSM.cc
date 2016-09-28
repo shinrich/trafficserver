@@ -339,7 +339,7 @@ HttpSM::HttpSM()
     cache_response_hdr_bytes(0), cache_response_body_bytes(0), pushed_response_hdr_bytes(0), pushed_response_body_bytes(0),
     client_tcp_reused(false), client_ssl_reused(false), client_connection_is_ssl(false), client_sec_protocol("-"),
     client_cipher_suite("-"), server_transact_count(0), server_connection_is_ssl(false), server_connection_count(0), plugin_tag(0), plugin_id(0),
-    hooks_set(false), cur_hook_id(TS_HTTP_LAST_HOOK), cur_hook(NULL), cur_hooks(0), callout_state(HTTP_API_NO_CALLOUT), terminate_sm(false), 
+    hooks_set(false), cur_hook_id(TS_HTTP_LAST_HOOK), cur_hook(NULL), cur_hooks(0), callout_state(HTTP_API_NO_CALLOUT), terminate_sm(false),
     kill_this_async_done(false), parse_range_done(false)
 {
   static int scatter_init = 0;
@@ -554,7 +554,7 @@ HttpSM::attach_client_session(ProxyClientTransaction *client_vc, IOBufferReader 
     const char * protocol = ssl_vc->getSSLProtocol();
     client_sec_protocol = protocol ? protocol : "-";
     const char * cipher = ssl_vc->getSSLCipherSuite();
-    client_cipher_suite = cipher ? cipher : "-"; 
+    client_cipher_suite = cipher ? cipher : "-";
   }
 
   ink_release_assert(ua_session->get_half_close_flag() == false);
@@ -924,8 +924,8 @@ HttpSM::state_watch_for_client_abort(int event, void *data)
    * client.
    */
   case VC_EVENT_EOS:
-  { 
-    // We got an early EOS.  
+  {
+    // We got an early EOS.
     NetVConnection *netvc = ua_session->get_netvc();
     if (ua_session->allow_half_open()) {
       if (netvc)
@@ -1158,8 +1158,6 @@ HttpSM::state_raw_http_server_open(int event, void *data)
     server_entry->vc = netvc = (NetVConnection *)data;
     server_entry->vc_type = HTTP_RAW_SERVER_VC;
     t_state.current.state = HttpTransact::CONNECTION_ALIVE;
-    
-    
     netvc->set_inactivity_timeout(HRTIME_SECONDS(t_state.txn_conf->transaction_no_activity_timeout_out));
     netvc->set_active_timeout(HRTIME_SECONDS(t_state.txn_conf->transaction_active_timeout_out));
     break;
@@ -4743,7 +4741,7 @@ HttpSM::do_http_server_open(bool raw)
   ConnectionCount *connections = ConnectionCount::getInstance();
   server_connection_count = connections->getCount(t_state.current.server->dst_addr, hostname_hash,
                               (TSServerSessionSharingMatchType)t_state.txn_conf->server_session_sharing_match);
- 
+
   milestones[TS_MILESTONE_SERVER_CONNECT] = Thread::get_hrtime();
   if (milestones[TS_MILESTONE_SERVER_FIRST_CONNECT] == 0) {
     milestones[TS_MILESTONE_SERVER_FIRST_CONNECT] = milestones[TS_MILESTONE_SERVER_CONNECT];
@@ -5435,7 +5433,7 @@ HttpSM::handle_server_setup_error(int event, void *data)
       }
     } else {
       // c could be null here as well
-      if (c != NULL) 
+      if (c != NULL)
         tunnel.handleEvent(event, c->write_vio);
     }
     return;
@@ -5612,7 +5610,7 @@ HttpSM::do_setup_post_tunnel(HttpVC_t to_vc_type)
     // Next order of business if copy the remaining data from the
     //  header buffer into new buffer
     client_request_body_bytes = post_buffer->write(ua_buffer_reader, chunked ? ua_buffer_reader->read_avail() : post_bytes);
-   
+
     ua_buffer_reader->consume(client_request_body_bytes);
     p = tunnel.add_producer(ua_entry->vc, post_bytes - transfered_bytes, buf_start, &HttpSM::tunnel_handler_post_ua, HT_HTTP_CLIENT,
                             "user agent post");
@@ -5835,7 +5833,7 @@ HttpSM::attach_server_session(HttpServerSession *s)
   server_entry->vc = server_session;
   server_entry->vc_type = HTTP_SERVER_VC;
   server_entry->vc_handler = &HttpSM::state_send_server_request_header;
-  
+
   // es - is this a concern here in HttpSM?  Does it belong somewhere else?
   // Get server and client connections
   UnixNetVConnection *server_vc = dynamic_cast<UnixNetVConnection *>(server_session->get_netvc());
@@ -5861,7 +5859,7 @@ HttpSM::attach_server_session(HttpServerSession *s)
       server_vc->setOriginTraceAddr(NULL);
       server_vc->setOriginTracePort(0);
     }
-  }  
+  }
 
   // set flag for server session is SSL
   server_connection_is_ssl = (NULL != dynamic_cast<SSLNetVConnection *>(server_vc));
