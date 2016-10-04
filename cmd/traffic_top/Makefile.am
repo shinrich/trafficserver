@@ -19,11 +19,6 @@
 if BUILD_TSTOP
 
 AM_CPPFLAGS = \
-  $(iocore_include_dirs) \
-  -I$(top_srcdir)/lib \
-  -I$(top_builddir)/lib \
-  -I$(top_srcdir)/lib/ts \
-  -I$(top_builddir)/lib/ts \
   -I$(top_srcdir)/mgmt/api/include \
   @CURL_CFLAGS@
 
@@ -35,6 +30,11 @@ AM_LDFLAGS = \
 bin_PROGRAMS = traffic_top
 
 traffic_top_SOURCES = traffic_top.cc
+
+# Why can't this go in AM_CPPFLAGS? I have no idea, but it doesn't work. Because the
+# CXX flags are used with the linker and not the compiler?
+# traffic_top_CXXFLAGS works but causes traffic_top-traffic_top.o to be generated.
+AM_CXXFLAGS += -Wl,--add-needed
 
 traffic_top_LDADD = \
   $(top_builddir)/mgmt/api/libtsmgmt.la \
