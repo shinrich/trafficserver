@@ -136,6 +136,19 @@ public:
     ink_release_assert(server_vc != NULL);
     return server_vc->get_remote_endpoint();
   }
+
+  void
+  set_active_timeout(ink_hrtime timeout_in)
+  {
+    if (server_vc)
+      server_vc->set_active_timeout(timeout_in);
+  }
+  void
+  set_inactivity_timeout(ink_hrtime timeout_in)
+  {
+    if (server_vc)
+      server_vc->set_inactivity_timeout(timeout_in);
+  }
   INK_MD5 hostname_hash;
 
   int64_t con_id;

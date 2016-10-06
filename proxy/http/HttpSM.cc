@@ -1640,16 +1640,16 @@ HttpSM::handle_api_return()
           DebugSM("http_websocket",
                   "(client session) Setting websocket active timeout=%" PRId64 "s and inactive timeout=%" PRId64 "s",
                   t_state.txn_conf->websocket_active_timeout, t_state.txn_conf->websocket_inactive_timeout);
-          ua_session->get_netvc()->set_active_timeout(HRTIME_SECONDS(t_state.txn_conf->websocket_active_timeout));
-          ua_session->get_netvc()->set_inactivity_timeout(HRTIME_SECONDS(t_state.txn_conf->websocket_inactive_timeout));
+          ua_session->set_active_timeout(HRTIME_SECONDS(t_state.txn_conf->websocket_active_timeout));
+          ua_session->set_inactivity_timeout(HRTIME_SECONDS(t_state.txn_conf->websocket_inactive_timeout));
         }
 
         if (server_session) {
           DebugSM("http_websocket",
                   "(server session) Setting websocket active timeout=%" PRId64 "s and inactive timeout=%" PRId64 "s",
                   t_state.txn_conf->websocket_active_timeout, t_state.txn_conf->websocket_inactive_timeout);
-          server_session->get_netvc()->set_active_timeout(HRTIME_SECONDS(t_state.txn_conf->websocket_active_timeout));
-          server_session->get_netvc()->set_inactivity_timeout(HRTIME_SECONDS(t_state.txn_conf->websocket_inactive_timeout));
+          server_session->set_active_timeout(HRTIME_SECONDS(t_state.txn_conf->websocket_active_timeout));
+          server_session->set_inactivity_timeout(HRTIME_SECONDS(t_state.txn_conf->websocket_inactive_timeout));
         }
       }
 
@@ -1847,10 +1847,12 @@ HttpSM::state_read_server_response_header(int event, void *data)
   if (server_response_hdr_bytes == 0) {
     milestones[TS_MILESTONE_SERVER_FIRST_READ] = Thread::get_hrtime();
 
-    if (t_state.api_txn_no_activity_timeout_value != -1) {
-      server_session->get_netvc()->set_inactivity_timeout(HRTIME_MSECONDS(t_state.api_txn_no_activity_timeout_value));
-    } else {
-      server_session->get_netvc()->set_inactivity_timeout(HRTIME_SECONDS(t_state.txn_conf->transaction_no_activity_timeout_out));
+    if (server_session) {
+      if (t_state.api_txn_no_activity_timeout_value != -1) {
+        server_session->set_inactivity_timeout(HRTIME_MSECONDS(t_state.api_txn_no_activity_timeout_value));
+      } else {
+        server_session->set_inactivity_timeout(HRTIME_SECONDS(t_state.txn_conf->transaction_no_activity_timeout_out));
+      }
     }
 
     // For requests that contain a body, we can cancel the ua inactivity timeout.
@@ -2112,14 +2114,17 @@ HttpSM::process_hostdb_info(HostDBInfo *r)
   bool use_client_addr        = t_state.http_config_param->use_client_target_addr == 1 && t_state.client_info.is_transparent &&
                          t_state.dns_info.os_addr_style == HttpTransact::DNSLookupInfo::OS_ADDR_TRY_DEFAULT;
   if (use_client_addr) {
-    client_addr = t_state.state_machine->ua_session->get_netvc()->get_local_addr();
-    // Regardless of whether the client address matches the DNS record or not,
-    // we want to use that address.  Therefore, we copy over the client address
-    // info and skip the assignment from the DNS cache
-    ats_ip_copy(t_state.host_db_info.ip(), client_addr);
-    t_state.dns_info.os_addr_style  = HttpTransact::DNSLookupInfo::OS_ADDR_TRY_CLIENT;
-    t_state.dns_info.lookup_success = true;
-    // Leave ret unassigned, so we don't overwrite the host_db_info
+    NetVConnection *vc = t_state.state_machine->ua_session ? t_state.state_machine->ua_session->get_netvc() : NULL;
+    if (vc) {
+      client_addr = vc->get_local_addr();
+      // Regardless of whether the client address matches the DNS record or not,
+      // we want to use that address.  Therefore, we copy over the client address
+      // info and skip the assignment from the DNS cache
+      ats_ip_copy(t_state.host_db_info.ip(), client_addr);
+      t_state.dns_info.os_addr_style  = HttpTransact::DNSLookupInfo::OS_ADDR_TRY_CLIENT;
+      t_state.dns_info.lookup_success = true;
+      // Leave ret unassigned, so we don't overwrite the host_db_info
+    }
   }
 
   if (r && !r->is_failed()) {
@@ -3113,7 +3118,7 @@ HttpSM::tunnel_handler_server(int event, HttpTunnelProducer *p)
       ua_session->attach_server_session(server_session);
     } else {
       // Release the session back into the shared session pool
-      server_session->get_netvc()->set_inactivity_timeout(HRTIME_SECONDS(t_state.txn_conf->keep_alive_no_activity_timeout_out));
+      server_session->set_inactivity_timeout(HRTIME_SECONDS(t_state.txn_conf->keep_alive_no_activity_timeout_out));
       server_session->release();
     }
   }
@@ -3228,7 +3233,7 @@ HttpSM::tunnel_handler_ua(int event, HttpTunnelConsumer *c)
       //  detach the user agent
       ink_assert(server_entry->vc == server_session);
       ink_assert(c->is_downstream_from(server_session));
-      server_session->get_netvc()->set_active_timeout(HRTIME_SECONDS(t_state.txn_conf->background_fill_active_timeout));
+      server_session->set_active_timeout(HRTIME_SECONDS(t_state.txn_conf->background_fill_active_timeout));
     } else {
       // No background fill
       p = c->producer;
@@ -4827,7 +4832,7 @@ HttpSM::do_http_server_open(bool raw)
       } else {
         // As this is in the non-sharing configuration, we want to close
         // the existing connection and call connect_re to get a new one
-        existing_ss->get_netvc()->set_inactivity_timeout(HRTIME_SECONDS(t_state.txn_conf->keep_alive_no_activity_timeout_out));
+        existing_ss->set_inactivity_timeout(HRTIME_SECONDS(t_state.txn_conf->keep_alive_no_activity_timeout_out));
         existing_ss->release();
         ua_session->attach_server_session(NULL);
       }
@@ -4839,7 +4844,7 @@ HttpSM::do_http_server_open(bool raw)
   else if (ua_session != NULL) {
     HttpServerSession *existing_ss = ua_session->get_server_session();
     if (existing_ss) {
-      existing_ss->get_netvc()->set_inactivity_timeout(HRTIME_SECONDS(t_state.txn_conf->keep_alive_no_activity_timeout_out));
+      existing_ss->set_inactivity_timeout(HRTIME_SECONDS(t_state.txn_conf->keep_alive_no_activity_timeout_out));
       existing_ss->release();
       ua_session->attach_server_session(NULL);
     }
@@ -5245,7 +5250,7 @@ HttpSM::release_server_session(bool serve_from_cache)
     server_session->attach_hostname(t_state.current.server->name);
     if (t_state.www_auth_content == HttpTransact::CACHE_AUTH_NONE || serve_from_cache == false) {
       // Must explicitly set the keep_alive_no_activity time before doing the release
-      server_session->get_netvc()->set_inactivity_timeout(HRTIME_SECONDS(t_state.txn_conf->keep_alive_no_activity_timeout_out));
+      server_session->set_inactivity_timeout(HRTIME_SECONDS(t_state.txn_conf->keep_alive_no_activity_timeout_out));
       server_session->release();
     } else {
       // an authenticated server connection - attach to the local client
@@ -5441,7 +5446,10 @@ HttpSM::handle_server_setup_error(int event, void *data)
   }
 
   if (event == VC_EVENT_ERROR) {
-    t_state.cause_of_death_errno = server_session->get_netvc()->lerrno;
+    NetVConnection *vc = server_session->get_netvc();
+    if (vc) {
+      t_state.cause_of_death_errno = vc->lerrno;
+    }
   }
 
   switch (event) {
@@ -5640,7 +5648,7 @@ HttpSM::do_setup_post_tunnel(HttpVC_t to_vc_type)
   }
 
   ua_session->set_inactivity_timeout(HRTIME_SECONDS(t_state.txn_conf->transaction_no_activity_timeout_in));
-  server_session->get_netvc()->set_inactivity_timeout(HRTIME_SECONDS(t_state.txn_conf->transaction_no_activity_timeout_out));
+  server_session->set_inactivity_timeout(HRTIME_SECONDS(t_state.txn_conf->transaction_no_activity_timeout_out));
 
   tunnel.tunnel_run(p);
 
@@ -5909,15 +5917,15 @@ HttpSM::attach_server_session(HttpServerSession *s)
   }
 
   if (t_state.api_txn_connect_timeout_value != -1) {
-    server_session->get_netvc()->set_inactivity_timeout(HRTIME_MSECONDS(t_state.api_txn_connect_timeout_value));
+    server_session->set_inactivity_timeout(HRTIME_MSECONDS(t_state.api_txn_connect_timeout_value));
   } else {
-    server_session->get_netvc()->set_inactivity_timeout(HRTIME_SECONDS(connect_timeout));
+    server_session->set_inactivity_timeout(HRTIME_SECONDS(connect_timeout));
   }
 
   if (t_state.api_txn_active_timeout_value != -1) {
-    server_session->get_netvc()->set_active_timeout(HRTIME_MSECONDS(t_state.api_txn_active_timeout_value));
+    server_session->set_active_timeout(HRTIME_MSECONDS(t_state.api_txn_active_timeout_value));
   } else {
-    server_session->get_netvc()->set_active_timeout(HRTIME_SECONDS(t_state.txn_conf->transaction_active_timeout_out));
+    server_session->set_active_timeout(HRTIME_SECONDS(t_state.txn_conf->transaction_active_timeout_out));
   }
 
   if (plugin_tunnel_type != HTTP_NO_PLUGIN_TUNNEL || will_be_private_ss) {
@@ -7242,7 +7250,10 @@ HttpSM::set_next_state()
     } else if (t_state.dns_info.looking_up == HttpTransact::ORIGIN_SERVER && t_state.http_config_param->no_dns_forward_to_parent &&
                t_state.parent_result.result != PARENT_UNDEFINED) {
       if (t_state.cop_test_page) {
-        ats_ip_copy(t_state.host_db_info.ip(), t_state.state_machine->ua_session->get_netvc()->get_local_addr());
+        NetVConnection *vc = t_state.state_machine->ua_session->get_netvc();
+        if (vc) {
+          ats_ip_copy(t_state.host_db_info.ip(), vc->get_local_addr());
+        }
       }
 
       t_state.dns_info.lookup_success = true;
@@ -7297,13 +7308,7 @@ HttpSM::set_next_state()
       // sending its request and for this reason, the inactivity timeout
       // cannot be cancelled.
       if (ua_session && !t_state.hdr_info.request_content_length) {
-        NetVConnection *vc = ua_session->get_netvc();
-        if (vc) {
-          ua_session->cancel_inactivity_timeout();
-        } else {
-          terminate_sm = true;
-          return; // Give up if there is no session netvc
-        }
+        ua_session->cancel_inactivity_timeout();
       } else if (!ua_session) {
         terminate_sm = true;
         return; // Give up if there is no session
