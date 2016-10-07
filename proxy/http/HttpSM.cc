@@ -5825,12 +5825,6 @@ HttpSM::attach_server_session(HttpServerSession *s)
     return;
   }
 
-  if (ua_session) {
-    NetVConnection *server_vc = s->get_netvc();
-    NetVConnection *ua_vc     = ua_session->get_netvc();
-    ink_release_assert(server_vc->thread == ua_vc->thread);
-  }
-
   // Set the mutex so that we have something to update
   //   stats with
   server_session->mutex = this->mutex;
@@ -5849,7 +5843,9 @@ HttpSM::attach_server_session(HttpServerSession *s)
   UnixNetVConnection *server_vc = dynamic_cast<UnixNetVConnection *>(server_session->get_netvc());
   UnixNetVConnection *client_vc = (UnixNetVConnection *)(ua_session->get_netvc());
   SSLNetVConnection *ssl_vc     = dynamic_cast<SSLNetVConnection *>(client_vc);
-  bool associated_connection    = false;
+
+  ink_release_assert(!server_vc || !client_vc || server_vc->thread == client_vc->thread);
+  bool associated_connection = false;
   if (server_vc) { // if server_vc isn't a PluginVC
     if (ssl_vc) {  // if incoming connection is SSL
       bool client_trace = ssl_vc->getSSLTrace();
