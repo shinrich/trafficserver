@@ -123,6 +123,7 @@ PriorityQueue<T, Comp>::erase(PriorityQueueEntry<T> *entry)
     return;
   }
 
+  ink_release_assert(entry->index < _v.length());
   _v[entry->index] = _v[_v.length() - 1];
   _v.pop();
   _bubble_down(entry->index);

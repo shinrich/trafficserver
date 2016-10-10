@@ -292,8 +292,8 @@ RefCountCachePartition<C>::make_space_for(unsigned int size)
 
     // If the first item has expired, lets evict it, and then go around again
     if (top_item->node->meta.expiry_time < now) {
-      this->erase(top_item->node->meta.key);
-      expiry_queue.pop();
+      this->erase(top_item->node->meta.key); // SKH - I think the erase will do the pop
+      // expiry_queue.pop();
     } else { // if the first item isn't expired-- the rest won't be either (queue is sorted)
       return false;
     }
