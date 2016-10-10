@@ -569,8 +569,6 @@ void
 HttpTransact::HandleBlindTunnel(State *s)
 {
   NetVConnection *vc = s->state_machine->ua_session->get_netvc();
-  if (!vc)
-    return;
   bool inbound_transparent_p = vc->get_is_transparent();
   URL u;
   // IpEndpoint dest_addr;
@@ -5713,7 +5711,7 @@ HttpTransact::initialize_state_variables_from_request(State *s, HTTPHdr *obsolet
     vc = s->state_machine->ua_session->get_netvc();
   }
 
-  if (s->state_machine->ua_session && vc) {
+  if (vc) {
     s->request_data.incoming_port = vc->get_local_port();
     s->request_data.internal_txn  = vc->get_is_internal_request();
   }
@@ -5799,7 +5797,7 @@ HttpTransact::initialize_state_variables_from_request(State *s, HTTPHdr *obsolet
   s->request_data.hostname_str = s->arena.str_store(host_name, host_len);
   ats_ip_copy(&s->request_data.src_ip, &s->client_info.src_addr);
   memset(&s->request_data.dest_ip, 0, sizeof(s->request_data.dest_ip));
-  if (s->state_machine->ua_session && vc) {
+  if (vc) {
     s->request_data.incoming_port = vc->get_local_port();
   }
   s->request_data.xact_start                      = s->client_request_time;
