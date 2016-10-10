@@ -568,7 +568,7 @@ HttpTransact::BadRequest(State *s)
 void
 HttpTransact::HandleBlindTunnel(State *s)
 {
-  NetVConnection *vc = s->state_machine->ua_session->get_netvc();
+  NetVConnection *vc         = s->state_machine->ua_session->get_netvc();
   bool inbound_transparent_p = vc->get_is_transparent();
   URL u;
   // IpEndpoint dest_addr;

@@ -5839,7 +5839,7 @@ HttpSM::attach_server_session(HttpServerSession *s)
   UnixNetVConnection *client_vc = (UnixNetVConnection *)(ua_session->get_netvc());
   SSLNetVConnection *ssl_vc     = dynamic_cast<SSLNetVConnection *>(client_vc);
 
-  // Verifying that the user agent and server sessions/transactions are operating on the same thread.  
+  // Verifying that the user agent and server sessions/transactions are operating on the same thread.
   ink_release_assert(!server_vc || !client_vc || server_vc->thread == client_vc->thread);
   bool associated_connection = false;
   if (server_vc) { // if server_vc isn't a PluginVC
