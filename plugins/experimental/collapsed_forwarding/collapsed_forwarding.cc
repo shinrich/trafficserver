@@ -74,6 +74,8 @@ static const char *ATS_INTERNAL_MESSAGE = "@Ats-Internal";
 static int OPEN_WRITE_FAIL_MAX_REQ_DELAY_RETRIES = 5;
 static int OPEN_WRITE_FAIL_REQ_DELAY_TIMEOUT = 500;
 
+static bool global_init = false;
+
 typedef struct _RequestData {
   TSHttpTxn txnp;
   int wl_retry; // write lock failure retry count
@@ -220,13 +222,45 @@ on_send_response_header(RequestData *req, TSHttpTxn &txnp, TSCont &contp)
     req->wl_retry = 0;
   }
 
-  // done..cleanup
-  TSfree(req);
-  TSContDestroy(contp);
-
   TSHandleMLocRelease(bufp, TS_NULL_MLOC, hdr_loc);
   TSHttpTxnReenable(txnp, TS_EVENT_HTTP_CONTINUE);
   return TS_SUCCESS;
+}
+
+static int
+on_txn_close(RequestData *req, TSHttpTxn &txnp, TSCont &contp)
+{
+  // done..cleanup
+  TSfree(req);
+  TSContDestroy(contp);
+  TSHttpTxnReenable(txnp, TS_EVENT_HTTP_CONTINUE);
+  return TS_SUCCESS;
+}
+
+static int collapsed_cont(TSCont contp, TSEvent event, void *edata);
+
+void
+setup_transaction_cont(TSHttpTxn rh)
+{
+  TSCont cont = TSContCreate(collapsed_cont, TSMutexCreate());
+
+  RequestData *req_data = new RequestData();
+
+  req_data->txnp     = rh;
+  req_data->wl_retry = 0;
+
+  int url_len = 0;
+  char *url   = TSHttpTxnEffectiveUrlStringGet(rh, &url_len);
+  req_data->req_url.assign(url, url_len);
+
+  TSfree(url);
+  TSContDataSet(cont, req_data);
+
+  TSHttpTxnHookAdd(rh, TS_HTTP_SEND_REQUEST_HDR_HOOK, cont);
+  TSHttpTxnHookAdd(rh, TS_HTTP_SEND_RESPONSE_HDR_HOOK, cont);
+  TSHttpTxnHookAdd(rh, TS_HTTP_READ_RESPONSE_HDR_HOOK, cont);
+  TSHttpTxnHookAdd(rh, TS_HTTP_OS_DNS_HOOK, cont);
+  TSHttpTxnHookAdd(rh, TS_HTTP_TXN_CLOSE_HOOK, cont);
 }
 
 static int
@@ -236,6 +270,11 @@ collapsed_cont(TSCont contp, TSEvent event, void *edata)
   RequestData *my_req = static_cast<RequestData *>(TSContDataGet(contp));
 
   switch (event) {
+  case TS_EVENT_HTTP_READ_REQUEST_HDR:
+    // Create per transaction state
+    setup_transaction_cont(txnp);
+    break;
+
   case TS_EVENT_HTTP_OS_DNS: {
     return on_OS_DNS(my_req, txnp);
   }
@@ -254,6 +293,9 @@ collapsed_cont(TSCont contp, TSEvent event, void *edata)
   case TS_EVENT_HTTP_SEND_RESPONSE_HDR: {
     return on_send_response_header(my_req, txnp, contp);
   }
+  case TS_EVENT_HTTP_TXN_CLOSE: {
+    return on_txn_close(my_req, txnp, contp);
+  }
   default: {
     TSDebug(DEBUG_TAG, "Unexpected event: %d", event);
     break;
@@ -264,52 +306,69 @@ collapsed_cont(TSCont contp, TSEvent event, void *edata)
   return TS_SUCCESS;
 }
 
-TSReturnCode
-TSRemapInit(TSRemapInterface * /* api_info */, char * /* errbuf */, int /* errbuf_size */)
-{
-  TSDebug(DEBUG_TAG, "plugin is succesfully initialized");
-  return TS_SUCCESS;
-}
-
-TSReturnCode
-TSRemapNewInstance(int argc, char *argv[], void ** /* ih */, char * /* errbuf */, int /* errbuf_size */)
+void
+process_args(int argc, const char **argv)
 {
   // basic argv processing..
-  for (int i = 2; i < argc; ++i) {
+  for (int i = 1; i < argc; ++i) {
     if (strncmp(argv[i], "--delay=", 8) == 0) {
       OPEN_WRITE_FAIL_REQ_DELAY_TIMEOUT = atoi((char *)(argv[i] + 8));
     } else if (strncmp(argv[i], "--retries=", 10) == 0) {
       OPEN_WRITE_FAIL_MAX_REQ_DELAY_RETRIES = atoi((char *)(argv[i] + 10));
     }
   }
+}
 
+/*
+ * Initialize globally
+ */
+void
+TSPluginInit(int argc, const char *argv[])
+{
+  TSPluginRegistrationInfo info;
+
+  info.plugin_name   = (char *)DEBUG_TAG;
+  info.vendor_name   = (char *)"Apache Software Foundation";
+  info.support_email = (char *)"dev@trafficserver.apache.org";
+
+  if (TS_SUCCESS != TSPluginRegister(TS_SDK_VERSION_3_0, &info)) {
+    TSError("[%s] Plugin registration failed.", DEBUG_TAG);
+  }
+
+  process_args(argc, argv);
+
+  TSCont cont = TSContCreate(collapsed_cont, TSMutexCreate());
+
+  TSDebug(DEBUG_TAG, "Global Initialized");
+  // Set up the per transaction state in the READ_REQUEST event
+  TSHttpHookAdd(TS_HTTP_READ_REQUEST_HDR_HOOK, cont);
+
+  global_init = true;
+}
+
+TSReturnCode
+TSRemapInit(TSRemapInterface * /* api_info */, char * /* errbuf */, int /* errbuf_size */)
+{
+  if (global_init) {
+    TSError("Cannot initialize %s as both global and remap plugin", DEBUG_TAG);
+    return TS_ERROR;
+  } else {
+    TSDebug(DEBUG_TAG, "plugin is succesfully initialized for remap");
+    return TS_SUCCESS;
+  }
+}
+
+TSReturnCode
+TSRemapNewInstance(int argc, char *argv[], void ** /* ih */, char * /* errbuf */, int /* errbuf_size */)
+{
+  process_args(argc - 1, const_cast<const char **>(argv + 1));
   return TS_SUCCESS;
 }
 
 TSRemapStatus
 TSRemapDoRemap(void *ih, TSHttpTxn rh, TSRemapRequestInfo *rri)
 {
-  TSCont cont = TSContCreate(collapsed_cont, TSMutexCreate());
-
-  RequestData *req_data;
-  //req_data = static_cast<RequestData *>(TSmalloc(sizeof(RequestData)));
-  // memset(req_data, 0, sizeof(RequestData));
-  req_data = new RequestData();
-
-  req_data->txnp = rh;
-  req_data->wl_retry = 0;
-
-  int url_len = 0;
-  char *url = TSHttpTxnEffectiveUrlStringGet(rh, &url_len);
-  req_data->req_url.assign(url, url_len);
-
-  TSfree(url);
-  TSContDataSet(cont, req_data);
-
-  TSHttpTxnHookAdd(rh, TS_HTTP_SEND_REQUEST_HDR_HOOK, cont);
-  TSHttpTxnHookAdd(rh, TS_HTTP_SEND_RESPONSE_HDR_HOOK, cont);
-  TSHttpTxnHookAdd(rh, TS_HTTP_READ_RESPONSE_HDR_HOOK, cont);
-  TSHttpTxnHookAdd(rh, TS_HTTP_OS_DNS_HOOK, cont);
+  setup_transaction_cont(rh);
 
   return TSREMAP_DID_REMAP;
 }
