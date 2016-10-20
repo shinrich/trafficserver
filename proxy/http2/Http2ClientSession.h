@@ -265,6 +265,7 @@ private:
   int dying_event;
   bool kill_me;
   int recursion;
+  bool called_destroy;
 };
 
 extern ClassAllocator<Http2ClientSession> http2ClientSessionAllocator;

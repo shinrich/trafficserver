@@ -57,6 +57,7 @@ public:
   // Implement ProxyClientSession interface.
   virtual void destroy();
   void free();
+  void release_transaction();
 
   virtual void
   start()
@@ -173,6 +174,8 @@ private:
 
   HttpServerSession *bound_ss;
 
+  int released_transactions;
+  bool called_destroy;
 public:
   //Link<Http1ClientSession> debug_link;
   LINK(Http1ClientSession, debug_link);

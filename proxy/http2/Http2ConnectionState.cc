@@ -871,7 +871,6 @@ Http2ConnectionState::cleanup_streams()
     this->delete_stream(s);
     s = next;
   }
-  client_streams_count = 0;
 }
 
 void
@@ -881,9 +880,6 @@ Http2ConnectionState::delete_stream(Http2Stream *stream)
   if (stream_list.in(stream)) {
     stream_list.remove(stream);
     stream->initiating_close();
-
-    ink_release_assert(client_streams_count > 0);
-    --client_streams_count;
   }
 }
 
@@ -892,6 +888,9 @@ Http2ConnectionState::release_stream(Http2Stream *stream)
 {
   if (stream) {
     --total_client_streams_count;
+    ink_release_assert(client_streams_count > 0);
+    --client_streams_count;
+    stream->set_parent(NULL);
   }
   // If the number of clients is 0, then mark the connection as inactive
   if (total_client_streams_count == 0 && ua_session) {

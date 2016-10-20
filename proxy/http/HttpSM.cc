@@ -339,7 +339,7 @@ HttpSM::HttpSM()
     cache_response_hdr_bytes(0), cache_response_body_bytes(0), pushed_response_hdr_bytes(0), pushed_response_body_bytes(0),
     client_tcp_reused(false), client_ssl_reused(false), client_connection_is_ssl(false), client_sec_protocol("-"),
     client_cipher_suite("-"), server_transact_count(0), server_connection_is_ssl(false), server_connection_count(0), plugin_tag(0), plugin_id(0),
-    hooks_set(false), cur_hook_id(TS_HTTP_LAST_HOOK), cur_hook(NULL), cur_hooks(0), callout_state(HTTP_API_NO_CALLOUT), terminate_sm(false),
+    hooks_set(false), have_seen_txn_close(true), cur_hook_id(TS_HTTP_LAST_HOOK), cur_hook(NULL), cur_hooks(0), callout_state(HTTP_API_NO_CALLOUT), terminate_sm(false),
     kill_this_async_done(false), parse_range_done(false)
 {
   static int scatter_init = 0;
@@ -389,6 +389,7 @@ HttpSM::init()
 {
   milestones[TS_MILESTONE_SM_START] = Thread::get_hrtime();
 
+  have_seen_txn_close = false;
   magic = HTTP_SM_MAGIC_ALIVE;
   sm_id = 0;
 
@@ -543,6 +544,7 @@ HttpSM::attach_client_session(ProxyClientTransaction *client_vc, IOBufferReader 
 
   NetVConnection *netvc = client_vc->get_netvc();
   if (!netvc) return;
+  ink_release_assert(client_vc);
   ua_session = client_vc;
 
   // Collect log & stats information
@@ -1417,6 +1419,8 @@ HttpSM::state_api_callout(int event, void *data)
   if (event != EVENT_NONE) {
     STATE_ENTER(&HttpSM::state_api_callout, event);
   }
+
+  if (cur_hook_id == TS_HTTP_TXN_CLOSE_HOOK) have_seen_txn_close = true;
 
   if (api_timer < 0) {
     // This happens when either the plugin lock was missed and the hook rescheduled or
@@ -5081,6 +5085,7 @@ HttpSM::do_api_callout_internal()
       return;
     } else {
       cur_hook_id = TS_HTTP_TXN_CLOSE_HOOK;
+      have_seen_txn_close = true;
     }
     break;
   default:
@@ -6802,6 +6807,9 @@ HttpSM::kill_this()
   //   then the value of kill_this_async_done has changed so
   //   we must check it again
   if (kill_this_async_done == true) {
+
+    ink_release_assert(api_hooks.get(TS_HTTP_TXN_CLOSE_HOOK) == NULL || have_seen_txn_close);
+
 
     if (ua_session) {
       ua_session->transaction_done();
