@@ -2395,6 +2395,7 @@ tsapi const char* TSHttpTxnPluginTagGet(TSHttpTxn txnp);
 tsapi TSReturnCode TSSslVConnNPListSet(TSVConn vconn, TSSslNPList protolist);
 tsapi TSSslNPList TSSslNPListCreateFromString(char const* descriptor);
 tsapi TSReturnCode TSSslNPListDestroy(TSSslNPList protolist);
+tsapi uint64_t TSHttpTxnIdGet(TSHttpTxn txnp);
   
 #ifdef __cplusplus
 }
