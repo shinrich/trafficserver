@@ -24,6 +24,7 @@ SUBDIRS = \
   libloader \
   regex_remap \
   stats_over_http \
+  background_fetch \
   tcpinfo
 
 if BUILD_EXPERIMENTAL_PLUGINS

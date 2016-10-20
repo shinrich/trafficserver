@@ -1908,6 +1908,7 @@ AC_CONFIG_FILES([
   plugins/libloader/Makefile
   plugins/regex_remap/Makefile
   plugins/stats_over_http/Makefile
+  plugins/background_fetch/Makefile
   plugins/tcpinfo/Makefile
   proxy/Makefile
   proxy/api/ts/Makefile
@@ -1943,7 +1944,6 @@ AS_IF([test "x$enable_experimental_plugins" = xyes], [
   AC_CONFIG_FILES([
     plugins/experimental/Makefile
     plugins/experimental/authproxy/Makefile
-    plugins/experimental/background_fetch/Makefile
     plugins/experimental/balancer/Makefile
     plugins/experimental/buffer_upload/Makefile
     plugins/experimental/channel_stats/Makefile
