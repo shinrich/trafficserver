@@ -180,6 +180,7 @@ signal_format_siginfo(int signo, siginfo_t *info, const char *msg)
 void
 signal_crash_handler(int signo, siginfo_t *, void *)
 {
+  signal_register_crash_handler(NULL);
   ink_stack_trace_dump();
 
   // Make sure to drop a core for signals that normally would do so.
