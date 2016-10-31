@@ -39,6 +39,7 @@
 #include <openssl/rand.h>
 #include <openssl/dh.h>
 #include <openssl/bn.h>
+#include <openssl/engine.h>
 #include <unistd.h>
 #include <termios.h>
 #include "ts/Vec.h"
@@ -70,6 +71,8 @@
 #define SSL_SESSION_TICKET_KEY_FILE_TAG "ticket_key_name"
 #define SSL_KEY_DIALOG "ssl_key_dialog"
 #define SSL_CERT_SEPARATE_DELIM ','
+
+ENGINE *TPMEngine = NULL;
 
 // openssl version must be 0.9.4 or greater
 #if (OPENSSL_VERSION_NUMBER < 0x00090400L)
@@ -876,6 +879,12 @@ SSLInitializeLibrary()
     SSL_load_error_strings();
     SSL_library_init();
 
+    ENGINE_load_dynamic();
+    ENGINE *e = ENGINE_by_id("tpm");
+    Debug("ssl", "tpm engine is %p", e);
+    TPMEngine = e;
+    ENGINE_init(e);
+
 #ifdef OPENSSL_FIPS
     // calling FIPS_mode_set() will force FIPS to POST (Power On Self Test)
     // After POST we don't have to lock for FIPS
@@ -1292,6 +1301,16 @@ SSLDefaultServerContext()
 static bool
 SSLPrivateKeyHandler(SSL_CTX *ctx, const SSLConfigParams *params, const ats_scoped_str &completeServerCertPath, const char *keyPath)
 {
+  if (TPMEngine) {
+    ats_scoped_str completeServerKeyPath(Layout::get()->relative_to(params->serverKeyPathOnly, keyPath));
+    EVP_PKEY *pkey = ENGINE_load_private_key(TPMEngine, completeServerKeyPath, NULL, NULL);
+    if (!pkey) {
+      printf("Cannot load from engine\n");
+    } else {
+      SSL_CTX_use_PrivateKey(ctx, pkey);
+      return true;
+    }
+  }
   if (!keyPath) {
     // assume private key is contained in cert obtained from multicert file.
     if (!SSL_CTX_use_PrivateKey_file(ctx, completeServerCertPath, SSL_FILETYPE_PEM)) {
