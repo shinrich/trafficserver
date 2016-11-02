@@ -26,8 +26,12 @@
 #include "ReverseProxy.h"
 #include "I_Layout.h"
 #include "HTTP.h"
-#include "libts.h"
-#include "ink_cap.h"
+#include "ts/ink_platform.h"
+#include "ts/List.h"
+#include "ts/ink_cap.h"
+#include "ts/ink_file.h"
+#include "ts/Tokenizer.h"
+#include "../../proxy/IPAllow.h"
 
 #define modulePrefix "[ReverseProxy]"
 
@@ -72,7 +76,8 @@ clear_xstr_array(char *v[], size_t vsize)
   }
 }
 
-BUILD_TABLE_INFO::BUILD_TABLE_INFO() : remap_optflg(0), paramc(0), argc(0), rules_list(NULL), rewrite(NULL)
+BUILD_TABLE_INFO::BUILD_TABLE_INFO()
+  : remap_optflg(0), paramc(0), argc(0), ip_allow_check_enabled_p(true), accept_check_p(true), rules_list(nullptr), rewrite(nullptr)
 {
   memset(this->paramv, 0, sizeof(this->paramv));
   memset(this->argv, 0, sizeof(this->argv));
@@ -117,6 +122,9 @@ process_filter_opt(url_mapping *mp, const BUILD_TABLE_INFO *bti, char *errStrBuf
       ;
     errStr = remap_validate_filter_args(rpp, (const char **)bti->argv, bti->argc, errStrBuf, errStrBufSize);
   }
+  // Set the ip allow flag for this rule to the current ip allow flag state
+  mp->ip_allow_check_enabled_p = bti->ip_allow_check_enabled_p;
+
   return errStr;
 }
 
@@ -204,7 +212,13 @@ parse_activate_directive(const char *directive, BUILD_TABLE_INFO *bti, char *err
     return (const char *)errbuf;
   }
 
-  if ((rp = acl_filter_rule::find_byname(bti->rules_list, (const char *)bti->paramv[1])) == NULL) {
+  // Check if for ip_allow filter
+  if (strcmp((const char *)bti->paramv[1], "ip_allow") == 0) {
+    bti->ip_allow_check_enabled_p = true;
+    return nullptr;
+  }
+
+  if ((rp = acl_filter_rule::find_byname(bti->rules_list, (const char *)bti->paramv[1])) == nullptr) {
     snprintf(errbuf, errbufsize, "Undefined filter \"%s\" in directive \"%s\"", bti->paramv[1], directive);
     Debug("url_rewrite", "[parse_directive] %s", errbuf);
     return (const char *)errbuf;
@@ -225,7 +239,13 @@ parse_deactivate_directive(const char *directive, BUILD_TABLE_INFO *bti, char *e
     return (const char *)errbuf;
   }
 
-  if ((rp = acl_filter_rule::find_byname(bti->rules_list, (const char *)bti->paramv[1])) == NULL) {
+  // Check if for ip_allow filter
+  if (strcmp((const char *)bti->paramv[1], "ip_allow") == 0) {
+    bti->ip_allow_check_enabled_p = false;
+    return nullptr;
+  }
+
+  if ((rp = acl_filter_rule::find_byname(bti->rules_list, (const char *)bti->paramv[1])) == nullptr) {
     snprintf(errbuf, errbufsize, "Undefined filter \"%s\" in directive \"%s\"", bti->paramv[1], directive);
     Debug("url_rewrite", "[parse_directive] %s", errbuf);
     return (const char *)errbuf;
@@ -471,9 +491,9 @@ remap_validate_filter_args(acl_filter_rule **rule_pp, const char **argv, int arg
     }
 
     if (ul & REMAP_OPTFLG_ACTION) { /* "action=" option */
-      if (is_inkeylist(argptr, "0", "off", "deny", "disable", NULL)) {
+      if (is_inkeylist(argptr, "0", "off", "deny", "disable", nullptr)) {
         rule->allow_flag = 0;
-      } else if (is_inkeylist(argptr, "1", "on", "allow", "enable", NULL)) {
+      } else if (is_inkeylist(argptr, "1", "on", "allow", "enable", nullptr)) {
         rule->allow_flag = 1;
       } else {
         Debug("url_rewrite", "[validate_filter_args] Unknown argument \"%s\"", argv[i]);
@@ -607,7 +627,7 @@ remap_load_plugin(const char **argv, int argc, url_mapping *mp, char *errbuf, in
     }
   } else {
     if (unlikely(!mp || (remap_check_option(argv, argc, REMAP_OPTFLG_PLUGIN, &idx) & REMAP_OPTFLG_PLUGIN) == 0)) {
-      snprintf(errbuf, errbufsize, "Can't find remap plugin keyword or \"url_mapping\" is NULL");
+      snprintf(errbuf, errbufsize, "Can't find remap plugin keyword or \"url_mapping\" is nullptr");
       return -1; /* incorrect input data - almost impossible case */
     }
   }
@@ -1003,6 +1023,9 @@ remap_parse_config_bti(const char *path, BUILD_TABLE_INFO *bti)
       goto MAP_ERROR;
     }
 
+    // update sticky flag
+    bti->accept_check_p = bti->accept_check_p && bti->ip_allow_check_enabled_p;
+
     new_mapping->map_id = 0;
     if ((bti->remap_optflg & REMAP_OPTFLG_MAP_ID) != 0) {
       int idx = 0;
@@ -1260,8 +1283,9 @@ remap_parse_config_bti(const char *path, BUILD_TABLE_INFO *bti)
     delete reg_map;
     delete new_mapping;
     return false;
-  } /* end of while(cur_line != NULL) */
+  } /* end of while(cur_line != nullptr) */
 
+  IpAllow::enableAcceptCheck(bti->accept_check_p);
   return true;
 }
 

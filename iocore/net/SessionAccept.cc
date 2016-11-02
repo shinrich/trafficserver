@@ -31,9 +31,9 @@ SessionAccept::testIpAllowPolicy(sockaddr const *client_ip)
   IpAllow::scoped_config ipallow;
   const AclRecord *acl_record = NULL;
   if (ipallow) {
-    acl_record = ipallow->match(client_ip);
-    if (acl_record && acl_record->isEmpty()) {
-      acl_record = NULL;
+    acl_record = ipallow->match(client_ip, IpAllow::SRC_ADDR);
+    if (acl_record && acl_record->isEmpty() && ipallow->isAcceptCheckEnabled()) {
+      acl_record = nullptr;
     }
   }
   return acl_record;
