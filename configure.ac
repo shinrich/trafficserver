@@ -504,6 +504,8 @@ AC_ARG_ENABLE([luajit],
 )
 AC_MSG_RESULT([$enable_luajit])
 AM_CONDITIONAL([BUILD_LUAJIT], [ test "x${enable_luajit}" = "xyes" ])
+LUA_LIBS
+AC_SUBST(LUA_LIBS)
 
 #
 # Installation directories

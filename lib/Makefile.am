@@ -48,7 +48,7 @@ all-local:
 	test -d "$(top_srcdir)/$(subdir)/luajit/src" || (cd "$(top_srcdir)" && git submodule update --init)
 	test -d "$(top_builddir)/$(subdir)/luajit/src" || cp -rf "$(srcdir)/luajit" "$(top_builddir)/$(subdir)/"
 	cd luajit && $(MAKE) $(AM_MAKEFLAGS) BUILDMODE="static" PREFIX="$(prefix)" CC="$(CC)" \
-	                     CFLAGS="$(LUA_CFLAGS)" LDFLAGS="@LUA_LDFLAGS@"
+	                     CFLAGS="$(LUA_CFLAGS)" LDFLAGS="@LUA_LDFLAGS@" LIBS="$(LUA_LIBS)"
 
 clean-local:
 	test "$(top_srcdir)" != "$(top_builddir)" || (cd "$(top_builddir)/$(subdir)/luajit" && $(MAKE) clean)
