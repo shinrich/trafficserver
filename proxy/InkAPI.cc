@@ -4578,7 +4578,7 @@ TSHttpTxnPristineUrlGet(TSHttpTxn txnp, TSMBuffer *bufp, TSMLoc *url_loc)
 
   if (hptr->valid()) {
     *(reinterpret_cast<HTTPHdr **>(bufp)) = hptr;
-    *url_loc = (TSMLoc)sm->t_state.pristine_url.m_url_impl;
+    *url_loc                              = (TSMLoc)sm->t_state.unmapped_url.m_url_impl;
 
     if (sdk_sanity_check_mbuffer(*bufp) == TS_SUCCESS) {
       if (*url_loc == NULL) {
@@ -8918,10 +8918,9 @@ tsapi TSReturnCode TSSslNPListDestroy(TSSslNPList protolist)
 
 // Expose the HttpSM's sequence number (ID)
 tsapi uint64_t TSHttpTxnIdGet(TSHttpTxn txnp)
-{ 
+{
   sdk_assert(sdk_sanity_check_txn(txnp) == TS_SUCCESS);
   HttpSM *sm = (HttpSM *)txnp;
 
   return (uint64_t)sm->sm_id;
 }
-
