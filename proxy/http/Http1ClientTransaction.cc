@@ -64,8 +64,11 @@ void
 Http1ClientTransaction::transaction_done() {
   current_reader = NULL;
   // If the parent session is not in the closed state, the destroy will not occur.
-  if (parent) parent->destroy();
-} 
+  if (parent) {
+    parent->destroy();
+    parent = NULL;
+  }
+}
 
 void 
 Http1ClientTransaction::destroy() 
