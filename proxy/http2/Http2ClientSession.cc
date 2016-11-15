@@ -62,7 +62,7 @@ send_connection_event(Continuation *cont, int event, void *edata)
 }
 
 Http2ClientSession::Http2ClientSession()
-  : client_vc(NULL), read_buffer(NULL), sm_reader(NULL), write_buffer(NULL), sm_writer(NULL), upgrade_context(), dying_event(VC_EVENT_NONE), kill_me(false), recursion(0)
+  : client_vc(NULL), read_buffer(NULL), sm_reader(NULL), write_buffer(NULL), sm_writer(NULL), upgrade_context(), dying_event(VC_EVENT_NONE), kill_me(false), recursion(0), called_destroy(false)
 {
   // For now bypass IpAllow checks.  TBD
   this->acl_record = IpAllow::AllMethodAcl();
@@ -72,9 +72,11 @@ void
 Http2ClientSession::destroy()
 {
   DebugHttp2Ssn0("session destroy");
-
-  // Let everyone know we are going down
-  do_api_callout(TS_HTTP_SSN_CLOSE_HOOK);
+  if (!called_destroy) {
+    called_destroy = true;
+    // Let everyone know we are going down
+    do_api_callout(TS_HTTP_SSN_CLOSE_HOOK);
+  } 
 }
 
 void
@@ -174,6 +176,7 @@ Http2ClientSession::new_connection(NetVConnection *new_vc, MIOBuffer *iobuf, IOB
   client_vc->set_inactivity_timeout(HRTIME_SECONDS(Http2::accept_no_activity_timeout));
   this->mutex = new_vc->mutex;
   this->schedule_event = NULL;
+  this->called_destroy = false;
 
   this->connection_state.mutex = new_ProxyMutex();
 

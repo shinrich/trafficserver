@@ -63,7 +63,7 @@ ClassAllocator<Http1ClientSession> http1ClientSessionAllocator("http1ClientSessi
 Http1ClientSession::Http1ClientSession()
   : con_id(0), client_vc(NULL), magic(HTTP_CS_MAGIC_DEAD), transact_count(0), tcp_init_cwnd_set(false), half_close(false),
     conn_decrease(false), read_buffer(NULL), read_state(HCS_INIT),
-    ka_vio(NULL), slave_ka_vio(NULL), outbound_port(0), f_outbound_transparent(false) 
+    ka_vio(NULL), slave_ka_vio(NULL), released_transactions(0), called_destroy(false), outbound_port(0), f_outbound_transparent(false)
 {
 }
 
@@ -76,8 +76,23 @@ Http1ClientSession::destroy()
   DebugHttpSsn("[%" PRId64 "] session destroy", con_id);
   ink_release_assert(!client_vc);
   ink_assert(read_buffer);
+  ink_release_assert(transact_count == released_transactions);
 
-  do_api_callout(TS_HTTP_SSN_CLOSE_HOOK);
+  if (!called_destroy) {
+    called_destroy = true;
+    do_api_callout(TS_HTTP_SSN_CLOSE_HOOK);
+  } else {
+    Warning("http1: Attempt to double ssn close");
+  }
+}
+
+void
+Http1ClientSession::release_transaction()
+{
+  released_transactions++;
+  if (transact_count == released_transactions) {
+    destroy();
+  }
 }
 
 void
@@ -100,11 +115,11 @@ Http1ClientSession::free()
     conn_decrease = false;
   }
 
-  // Clean up the write VIO in case of inactivity timeout
-  this->do_io_write(NULL, 0, NULL);
-
   // Free the transaction resources
   this->trans.cleanup();
+
+  // Clean up the write VIO in case of inactivity timeout
+  this->do_io_write(NULL, 0, NULL);
 
   super::free();
   THREAD_FREE(this, http1ClientSessionAllocator, this_thread());
@@ -120,6 +135,7 @@ Http1ClientSession::new_connection(NetVConnection *new_vc, MIOBuffer *iobuf, IOB
   mutex = new_vc->mutex;
   trans.mutex = mutex;	// Share this mutex with the transaction
   ssn_start_time = Thread::get_hrtime();
+  called_destroy = false;
 
   MUTEX_TRY_LOCK(lock, mutex, this_ethread());
   ink_assert(lock.is_locked());
@@ -241,7 +257,10 @@ Http1ClientSession::do_io_close(int alerrno)
     bound_ss = NULL;
     slave_ka_vio = NULL;
   }
-
+  // Completed the last transaction.  Just shutdown already
+  if (transact_count == released_transactions) { 
+    half_close = false;
+  }
   if (half_close && this->trans.get_sm()) {
     read_state = HCS_HALF_CLOSED;
     SET_HANDLER(&Http1ClientSession::state_wait_for_close);
@@ -278,7 +297,7 @@ Http1ClientSession::do_io_close(int alerrno)
       client_vc = NULL;
     }
   }
-  if (trans.get_sm() == NULL) { // Destroying from keep_alive state
+  if (transact_count == released_transactions) {
     this->destroy();
   }
 }
@@ -379,16 +398,7 @@ Http1ClientSession::state_keep_alive(int event, void *data)
     break;
 
   case VC_EVENT_EOS:
-    // If there is data in the buffer, start a new
-    //  transaction, otherwise the client gave up
-    //  SKH - A bit odd starting a transaction when the client has closed
-    //  already.  At a minimum, should have to do some half open connection
-    //  tracking
-    //if (sm_reader->read_avail() > 0) {
-    //  new_transaction();
-    //} else {
-      this->do_io_close();
-    //}
+    this->do_io_close();
     break;
 
   case VC_EVENT_READ_COMPLETE:
@@ -434,7 +444,6 @@ Http1ClientSession::release(ProxyClientTransaction *trans)
   //  IO to wait for new data
   bool more_to_read = this->sm_reader->is_read_avail_more_than(0);
   if (more_to_read) {
-    trans->destroy();
     trans->set_restart_immediate(true);
     DebugHttpSsn("[%" PRId64 "] data already in buffer, starting new transaction", con_id);
     new_transaction();
@@ -448,7 +457,6 @@ Http1ClientSession::release(ProxyClientTransaction *trans)
 
     client_vc->add_to_keep_alive_lru();
     client_vc->cancel_active_timeout();
-    trans->destroy();
   }
 }
 

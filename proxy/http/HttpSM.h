@@ -519,6 +519,7 @@ public:
   //  to this transaction.  Used to avoid costly calls
   //  do_api_callout_internal()
   bool hooks_set;
+  bool have_seen_txn_close;
 
 protected:
   TSHttpHookID cur_hook_id;
