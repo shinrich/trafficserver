@@ -16,7 +16,6 @@
 
 SUBDIRS = \
  authproxy \
- background_fetch \
  balancer \
  buffer_upload \
  channel_stats \
