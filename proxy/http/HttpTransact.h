@@ -943,7 +943,7 @@ public:
     unsigned int filter_mask;
 
     bool already_downgraded;
-    URL pristine_url; // pristine url is the url before remap
+    URL unmapped_url; // unmapped url is the effective url before remap
 
     bool api_skip_all_remapping;
 
@@ -974,7 +974,7 @@ public:
         is_revalidation_necessary(false), request_will_not_selfloop(false), // YTS Team, yamsat
         source(SOURCE_NONE), pre_transform_source(SOURCE_NONE), req_flavor(REQ_FLAVOR_FWDPROXY), pending_work(NULL),
         cdn_saved_next_action(SM_ACTION_UNDEFINED), cdn_saved_transact_return_point(NULL), cdn_remap_complete(false),
-        first_dns_lookup(true), parent_params(NULL), cache_lookup_result(CACHE_LOOKUP_NONE), backdoor_request(false), 
+        first_dns_lookup(true), parent_params(NULL), cache_lookup_result(CACHE_LOOKUP_NONE), backdoor_request(false),
         cop_test_page(false), next_action(SM_ACTION_UNDEFINED), api_next_action(SM_ACTION_UNDEFINED), transact_return_point(NULL),
         is_upgrade_request(false), post_remap_upgrade_return_point(NULL), upgrade_token_wks(NULL), is_websocket(false),
         did_upgrade_succeed(false), origin_request_queued(false), internal_msg_buffer(NULL), internal_msg_buffer_type(NULL), internal_msg_buffer_size(0),
@@ -989,11 +989,11 @@ public:
         api_cleanup_cache_read(false), api_server_response_no_store(false), api_server_response_ignore(false),
         api_http_sm_shutdown(false), api_modifiable_cached_resp(false), api_server_request_body_set(false),
         api_req_cacheable(false), api_resp_cacheable(false), api_server_addr_set(false),
-        api_update_cached_object(UPDATE_CACHED_OBJECT_NONE), api_lock_url(LOCK_URL_FIRST), 
+        api_update_cached_object(UPDATE_CACHED_OBJECT_NONE), api_lock_url(LOCK_URL_FIRST),
         saved_update_next_action(SM_ACTION_UNDEFINED), saved_update_cache_action(CACHE_DO_UNDEFINED), stale_icp_lookup(false), url_map(),
         pCongestionEntry(NULL), congest_saved_next_action(SM_ACTION_UNDEFINED), congestion_control_crat(0),
         congestion_congested_or_failed(0), congestion_connection_opened(0), reverse_proxy(false), url_remap_success(false), remap_redirect(NULL), filter_mask(0),
-        already_downgraded(false), pristine_url(), api_skip_all_remapping(false), 
+        already_downgraded(false), api_skip_all_remapping(false),
         range_setup(RANGE_NONE), num_range_fields(0), range_output_cl(0), ranges(NULL), txn_conf(NULL),
         transparent_passthrough(false), range_in_cache(false)
     {
@@ -1077,7 +1077,7 @@ public:
 
       url_map.clear();
       arena.reset();
-      pristine_url.clear();
+      unmapped_url.clear();
 
       delete[] ranges;
       ranges = NULL;
