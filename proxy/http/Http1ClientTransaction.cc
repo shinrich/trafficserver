@@ -65,7 +65,6 @@ Http1ClientTransaction::transaction_done() {
   // If the parent session is not in the closed state, the destroy will not occur.
   if (parent) {
     dynamic_cast<Http1ClientSession*>(parent)->release_transaction();
-    parent = NULL;
   }
 } 
 
