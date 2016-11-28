@@ -515,20 +515,7 @@ Http2Stream::update_write_request(IOBufferReader *buf_reader, int64_t write_len,
           // If there is additional data, send it along in a data frame.  Or if this was header only
           // make sure to send the end of stream
           if (this->response_is_data_available() || send_event == VC_EVENT_WRITE_COMPLETE) {
-            if (send_event != VC_EVENT_WRITE_COMPLETE) {
-              parent->connection_state.send_data_frame(this);
-              if (call_update) { // Coming from reenable.  Safe to call the handler directly
-                inactive_timeout_at = Thread::get_hrtime() + inactive_timeout;
-                if (write_vio._cont && this->current_reader) write_vio._cont->handleEvent(send_event, &write_vio);
-              } else { // Called from do_io_write.  Might still be setting up state.  Send an event to let the dust settle
-                write_event = send_tracked_event(write_event, send_event, &write_vio);
-              }
-            } else {
-              this->mark_body_done();
-              // Send the data frame
-              parent->connection_state.send_data_frame(this);
-              retval = false;
-            }
+            retval = send_and_signal(send_event, call_update); 
           }
           break;
         }
@@ -540,21 +527,7 @@ Http2Stream::update_write_request(IOBufferReader *buf_reader, int64_t write_len,
         }
       } else {
         Debug("http2_cs", "pre write update stream_id=%d event=%d state=%d", this->get_id(), send_event, _state);
-        if (send_event == VC_EVENT_WRITE_COMPLETE) {
-          // Defer sending the write complete until the send_data_frame has sent it all
-          //this_ethread()->schedule_imm(this, send_event, &write_vio);
-          this->mark_body_done();
-          parent->connection_state.send_data_frame(this);
-          retval = false;
-        } else {
-          parent->connection_state.send_data_frame(this);
-          if (call_update) { // Coming from reenable.  Safe to call the handler directly
-            inactive_timeout_at = Thread::get_hrtime() + inactive_timeout;
-            if (write_vio._cont && this->current_reader) write_vio._cont->handleEvent(send_event, &write_vio);
-          } else { // Called from do_io_write.  Might still be setting up state.  Send an event to let the dust settle
-            write_event = send_tracked_event(write_event, send_event, &write_vio);
-          }
-        }
+        retval = send_and_signal(send_event, call_update); 
       }
 
       Debug("http2_cs", "write update stream_id=%d event=%d state=%d", this->get_id(), send_event, _state);
@@ -562,6 +535,26 @@ Http2Stream::update_write_request(IOBufferReader *buf_reader, int64_t write_len,
   }
   return retval;
 }
+
+bool
+Http2Stream::send_and_signal(int send_event, bool call_update)
+{
+  bool retval = true;
+  if (send_event == VC_EVENT_WRITE_COMPLETE) {
+    this->mark_body_done();
+    retval = false;
+  } 
+  Http2ClientSession *http2_parent = static_cast<Http2ClientSession*>(this->get_parent());
+  http2_parent->connection_state.send_data_frame(this);
+  if (call_update) { // Coming from reenable.  Safe to call the handler directly
+    inactive_timeout_at = Thread::get_hrtime() + inactive_timeout;
+    if (write_vio._cont && this->current_reader) write_vio._cont->handleEvent(send_event, &write_vio);
+  } else { // Called from do_io_write.  Might still be setting up state.  Send an event to let the dust settle
+    write_event = send_tracked_event(write_event, send_event, &write_vio);
+  }
+  return retval;
+}
+
 
 void
 Http2Stream::reenable(VIO *vio)
