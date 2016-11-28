@@ -187,6 +187,7 @@ public:
   {
     return is_first_transaction_flag;
   }
+  bool send_and_signal(int send_event, bool call_update);
 
 private:
   Event *send_tracked_event(Event *event, int send_event, VIO *vio);
