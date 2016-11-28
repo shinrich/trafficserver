@@ -6866,6 +6866,8 @@ HttpSM::kill_this()
 
     ink_release_assert(api_hooks.get(TS_HTTP_TXN_CLOSE_HOOK) == NULL || have_seen_txn_close);
 
+    if (t_state.http_config_param->enable_http_stats)
+      update_stats();
 
     if (ua_session) {
       ua_session->transaction_done();
@@ -6890,9 +6892,6 @@ HttpSM::kill_this()
     ink_release_assert(tunnel.is_tunnel_active() == false);
 
     HTTP_SM_SET_DEFAULT_HANDLER(NULL);
-
-    if (t_state.http_config_param->enable_http_stats)
-      update_stats();
 
     if (!t_state.cop_test_page || t_state.http_config_param->record_cop_page) {
       //////////////
@@ -7053,6 +7052,7 @@ HttpSM::update_stats()
     ats_ip_ntop(&t_state.client_info.src_addr, client_ip, sizeof(client_ip));
     Error("[%" PRId64 "] Slow Request: "
           "client_ip: %s:%u "
+          "protocol: %s "
           "url: %s "
           "status: %d "
           "unique id: %s "
@@ -7071,11 +7071,12 @@ HttpSM::update_stats()
           "server_first_read: %.3f "
           "server_read_header_done: %.3f "
           "server_close: %.3f "
+          "ua_write: %.3f "
           "ua_close: %.3f "
           "sm_finish: %.3f "
           "plugin_active: %.3f "
           "plugin_total: %.3f",
-          sm_id, client_ip, ats_ip_port_host_order(&t_state.client_info.src_addr), url_string, status, unique_id_string,
+          sm_id, client_ip, ats_ip_port_host_order(&t_state.client_info.src_addr), ua_session ? ua_session->get_protocol_string() : "-1", url_string, status, unique_id_string,
           client_response_body_bytes, fd, t_state.client_info.state, t_state.server_info.state,
           milestones.difference(TS_MILESTONE_SM_START, TS_MILESTONE_UA_BEGIN),
           milestones.difference(TS_MILESTONE_SM_START, TS_MILESTONE_UA_READ_HEADER_DONE),
@@ -7088,6 +7089,7 @@ HttpSM::update_stats()
           milestones.difference(TS_MILESTONE_SM_START, TS_MILESTONE_SERVER_FIRST_READ),
           milestones.difference(TS_MILESTONE_SM_START, TS_MILESTONE_SERVER_READ_HEADER_DONE),
           milestones.difference(TS_MILESTONE_SM_START, TS_MILESTONE_SERVER_CLOSE),
+          milestones.difference(TS_MILESTONE_SM_START, TS_MILESTONE_UA_BEGIN_WRITE),
           milestones.difference(TS_MILESTONE_SM_START, TS_MILESTONE_UA_CLOSE),
           milestones.difference(TS_MILESTONE_SM_START, TS_MILESTONE_SM_FINISH),
           milestones.difference(TS_MILESTONE_SM_START, TS_MILESTONE_PLUGIN_ACTIVE),
