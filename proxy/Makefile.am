@@ -17,7 +17,7 @@
 #  limitations under the License.
 
 # Note that hdrs is targeted from ../Makefile.am
-SUBDIRS = congest http http2 spdy logging config
+SUBDIRS = congest http http2 logging config
 noinst_LIBRARIES =
 bin_PROGRAMS = \
   traffic_server \
@@ -39,7 +39,6 @@ AM_CPPFLAGS = \
   -I$(top_srcdir)/lib/ts \
   -I$(srcdir)/http \
   -I$(srcdir)/http2 \
-  -I$(srcdir)/spdy \
   -I$(srcdir)/logging \
   -I$(srcdir)/http/remap  \
   -I$(srcdir)/hdrs \
@@ -207,7 +206,6 @@ endif
 traffic_server_LDADD = \
   http/libhttp.a \
   http2/libhttp2.a \
-  spdy/libspdy.a \
   http/remap/libhttp_remap.a \
   congest/libCongestionControl.a \
   logging/liblogging.a \
@@ -312,7 +310,6 @@ traffic_sac_SOURCES = \
 traffic_sac_LDADD = \
   http/libhttp.a \
   http2/libhttp2.a \
-  spdy/libspdy.a \
   shared/libdiagsconfig.a \
   http/remap/libhttp_remap.a \
   congest/libCongestionControl.a \
