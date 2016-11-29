@@ -18,8 +18,6 @@
 
 lib_LTLIBRARIES = libtsconfig.la
 noinst_PROGRAMS = test-tsconfig
-check_PROGRAMS = test-tsconfig
-TESTS = $(check_PROGRAMS)
 libtsconfig_la_LDFLAGS = -no-undefined -version-info @TS_LIBTOOL_VERSION@
 
 AM_CFLAGS += @FLEX_CFLAGS@
