@@ -256,14 +256,18 @@ struct Http2FrameHeader {
 
 // 5.4.  Error Handling
 struct Http2Error {
-  Http2Error(const Http2ErrorClass error_class = HTTP2_ERROR_CLASS_NONE, const Http2ErrorCode error_code = HTTP2_ERROR_NO_ERROR)
+  Http2Error(const Http2ErrorClass error_class = HTTP2_ERROR_CLASS_NONE, const Http2ErrorCode error_code = HTTP2_ERROR_NO_ERROR, const char *err_msg = NULL, Http2StreamId id = 0)
   {
     cls = error_class;
     code = error_code;
+    stream_id = id;
+    msg = err_msg; 
   };
 
   Http2ErrorClass cls;
   Http2ErrorCode code;
+  Http2StreamId stream_id;
+  const char *msg;
 };
 
 // 6.5.1. SETTINGS Format
