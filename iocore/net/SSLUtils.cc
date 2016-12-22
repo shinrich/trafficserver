@@ -380,17 +380,35 @@ ssl_cert_callback(SSL *ssl, void * /*arg*/)
   // Return 1 for success, 0 for error, or -1 to pause
   return retval;
 }
+
+/* 
+ * Cannot stop this callback. Always reeneabled
+ */
+static int
+ssl_servername_only_callback(SSL *ssl, int * /* ad */, void * /*arg*/)
+{
+  SSLNetVConnection *netvc = (SSLNetVConnection *)SSL_get_app_data(ssl);
+  int retval = 1;
+
+  netvc->callHooks(TS_SSL_SERVERNAME_HOOK);
+  return SSL_TLSEXT_ERR_OK;
+}
+
 #else
 static int
-ssl_servername_callback(SSL *ssl, int * /* ad */, void * /*arg*/)
+ssl_servername_and_cert_callback(SSL *ssl, int * /* ad */, void * /*arg*/)
 {
   SSLNetVConnection *netvc = (SSLNetVConnection *)SSL_get_app_data(ssl);
   bool reenabled;
   int retval = 1;
 
-  // Do the common certificate lookup only once.  If we pause
+  // Do the common certificate lookup and pure SNI hook only once.  If we pause
   // and restart processing, do not execute the common logic again
   if (!netvc->calledHooks(TS_SSL_CERT_HOOK)) {
+
+    // Call the pure SNI hook first.  This should not stall.
+    netvc->callHooks(TS_SSL_SERVERNAME_HOOK);
+
     retval = set_context_cert(ssl);
     if (retval != 1) {
       goto done;
@@ -1665,8 +1683,9 @@ ssl_set_handshake_callbacks(SSL_CTX *ctx)
 // Make sure the callbacks are set
 #if TS_USE_CERT_CB
   SSL_CTX_set_cert_cb(ctx, ssl_cert_callback, NULL);
+  SSL_CTX_set_tlsext_servername_callback(ctx, ssl_servername_only_callback);
 #else
-  SSL_CTX_set_tlsext_servername_callback(ctx, ssl_servername_callback);
+  SSL_CTX_set_tlsext_servername_callback(ctx, ssl_servername_and_cert_callback);
 #endif
 #endif
 }
