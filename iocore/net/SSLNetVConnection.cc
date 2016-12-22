@@ -1427,11 +1427,11 @@ SSLNetVConnection::callHooks(TSHttpHookID eventId)
 {
   // Only dealing with the SNI/CERT hook so far.
   // TS_SSL_SNI_HOOK and TS_SSL_CERT_HOOK are the same value
-  ink_assert(eventId == TS_SSL_CERT_HOOK);
+  ink_assert(eventId == TS_SSL_CERT_HOOK || eventId == TS_SSL_SERVERNAME_HOOK);
 
   // First time through, set the type of the hook that is currently
   // being invoked
-  if (this->sslHandshakeHookState == HANDSHAKE_HOOKS_PRE) {
+  if (this->sslHandshakeHookState == HANDSHAKE_HOOKS_PRE && eventId == TS_SSL_CERT_HOOK) {
     this->sslHandshakeHookState = HANDSHAKE_HOOKS_CERT;
   }
 
@@ -1440,6 +1440,12 @@ SSLNetVConnection::callHooks(TSHttpHookID eventId)
       curHook = curHook->next();
     } else {
       curHook = ssl_hooks->get(TS_SSL_CERT_INTERNAL_HOOK);
+    }
+  } else if (eventId == TS_SSL_SERVERNAME_HOOK) {
+    if (curHook != NULL) {
+      curHook = curHook->next();
+    } else {
+      curHook = ssl_hooks->get(TS_SSL_SERVERNAME_INTERNAL_HOOK);
     }
   } else {
     // Not in the right state, or no plugins registered for this hook
