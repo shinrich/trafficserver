@@ -249,6 +249,10 @@ load_config(plugin_state_t *pstate, invalidate_t **ilist)
       TSDebug(LOG_PREFIX, "Processing: %d %s", ln, line);
       rc = pcre_exec(config_re, NULL, line, strlen(line), 0, 0, ovector, OVECTOR_SIZE);
       if (rc == 3) {
+        // 'i' does not leak memory
+        // 'i' is carried inside both of the plugin continuations. Every now and then, the configuration continuation
+        // wakes up and reloads all the invalidate_t structs from the specified config file, and will free any expired
+        // invalidate_t structs
         i = (invalidate_t *)TSmalloc(sizeof(invalidate_t));
         init_invalidate_t(i);
         pcre_get_substring(line, ovector, rc, 1, &i->regex_text);
