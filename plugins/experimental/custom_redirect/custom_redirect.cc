@@ -69,8 +69,8 @@ handle_response(TSHttpTxn txnp, TSCont /* contp ATS_UNUSED */)
             redirect_url_str = TSMimeHdrFieldValueStringGet(resp_bufp, resp_loc, redirect_url_loc, -1, &redirect_url_length);
             if (redirect_url_str) {
               if (redirect_url_length > 0) {
+                // no leaks here; ownership of url is transferred to TSHttpTxnRedirectUrlSet()
                 char *url = (char *)TSmalloc(redirect_url_length + 1);
-
                 TSstrlcpy(url, redirect_url_str, redirect_url_length + 1);
                 TSHttpTxnRedirectUrlSet(txnp, url, redirect_url_length);
               }
@@ -142,12 +142,15 @@ TSPluginInit(int argc, const char *argv[])
   if (argc > 1) {
     if (isNumber(argv[1])) {
       return_code         = atoi(argv[1]);
+      // not a memory leak; redirect_url_header is allocated once and used throughout life of plugin
       redirect_url_header = TSstrdup(TS_MIME_FIELD_LOCATION);
     } else {
+      // not a memory leak
       redirect_url_header = TSstrdup(argv[1]);
     }
   } else {
     // default header name is x-redirect-url
+    // not a memory leak
     redirect_url_header     = TSstrdup("x-redirect-url");
     redirect_url_header_len = strlen(redirect_url_header);
   }
