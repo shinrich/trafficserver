@@ -337,12 +337,16 @@ pvc_process_p_read(TSCont contp, TSEvent event, pvc_state *my_state)
           TSMutexUnlock(my_state->disk_io_mutex);
         } else {
           // never get chance to test this line, didn't get a test case to fall into this situation
+          // this buffer will get freed on a future call to pvc_plugin(..) which eventually calls pvc_process_accept(..),
+          // which would then call pvc_cleanup(..), which frees the buffer
           TSIOBufferCopy(my_state->req_hdr_buffer, my_state->req_reader, size, 0);
         }
         TSIOBufferReaderConsume(my_state->req_reader, size);
       }
       if (!uconfig->use_disk_buffer) {
         size = TSIOBufferReaderAvail(my_state->req_hdr_reader);
+        // this buffer will get freed on a future call to pvc_plugin(..) which eventually calls pvc_process_accept(..),
+        // which would then call pvc_cleanup(..), which frees the buffer
         TSIOBufferCopy(my_state->req_buffer, my_state->req_hdr_reader, size, 0);
       }
       my_state->nbytes_to_consume = -2; // -2 indicates the header replacement is done
@@ -1015,6 +1019,7 @@ load_urls(char *filename)
       while (TSfgets(file, url_buf, uconfig->max_url_length) != nullptr) {
         uconfig->url_num++;
       }
+      // not a memory leak - this string is allocated once and used throughout life of plugin
       uconfig->urls = (char **)TSmalloc(sizeof(char *) * uconfig->url_num);
     } else { // second round
       int idx = 0;
@@ -1093,6 +1098,7 @@ parse_config_line(char *line, const struct config_val_ul *cv)
         case TYPE_STRING: {
           size_t len = strlen(tok);
           if (len > 0) {
+            // not a memory leak - this string is allocated once and used throughout life of plugin
             *((char **)cv->val) = (char *)TSmalloc(len + 1);
             strcpy(*((char **)cv->val), tok);
             TSError("[buffer_upload] Parsed string config value %s : %s", cv->str, tok);
@@ -1126,6 +1132,7 @@ bool
 read_upload_config(const char *file_name)
 {
   TSDebug(DEBUG_TAG, "read_upload_config: %s", file_name);
+  // not a memory leak - this string is allocated once and used throughout life of plugin
   uconfig                  = (upload_config *)TSmalloc(sizeof(upload_config));
   uconfig->use_disk_buffer = true;
   uconfig->convert_url     = false;
@@ -1167,6 +1174,7 @@ read_upload_config(const char *file_name)
   }
 
   if (uconfig->base_dir == nullptr) {
+    // not a memory leak - this string is allocated once and used throughout life of plugin
     uconfig->base_dir = TSstrdup("/FOOBAR/var/buffer_upload_tmp");
   } else {
     // remove the "/" at the end.
