@@ -141,7 +141,7 @@ TSPluginInit(int argc, const char *argv[])
   */
   if (argc > 1) {
     if (isNumber(argv[1])) {
-      return_code         = atoi(argv[1]);
+      return_code = atoi(argv[1]);
       // not a memory leak; redirect_url_header is allocated once and used throughout life of plugin
       redirect_url_header = TSstrdup(TS_MIME_FIELD_LOCATION);
     } else {
