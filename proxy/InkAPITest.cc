@@ -7577,6 +7577,7 @@ const char *SDK_Overridable_Configs[TS_CONFIG_LAST_ENTRY] = {
   "proxy.config.http.global_user_agent_header",
   "proxy.config.http.auth_server_session_private",
   "proxy.config.http.slow.log.threshold",
+  "proxy.config.ssl.client.verify.server",
   "proxy.config.http.cache.generation",
   "proxy.config.body_factory.template_base",
   "proxy.config.http.cache.open_write_fail_action",
