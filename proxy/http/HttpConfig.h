@@ -463,6 +463,7 @@ struct OverridableHttpConfigParams {
       default_buffer_size_index(8),
       default_buffer_water_mark(32768),
       slow_log_threshold(0),
+      ssl_client_verify_server(0),
       body_factory_template_base(NULL),
       body_factory_template_base_len(0),
       proxy_response_server_string(NULL),
@@ -670,6 +671,7 @@ struct OverridableHttpConfigParams {
   MgmtInt default_buffer_size_index;
   MgmtInt default_buffer_water_mark;
   MgmtInt slow_log_threshold;
+  MgmtInt ssl_client_verify_server;
 
   ///////////////////////////////////////////////////////////////////
   // Server header                                                 //

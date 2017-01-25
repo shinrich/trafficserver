@@ -850,8 +850,9 @@ SSLNetVConnection::do_io_close(int lerrno)
 void
 SSLNetVConnection::free(EThread *t)
 {
-  got_remote_addr = 0;
-  got_local_addr  = 0;
+  clientVerifyEnable = false;
+  got_remote_addr    = 0;
+  got_local_addr     = 0;
   read.vio.mutex.clear();
   write.vio.mutex.clear();
   this->mutex.clear();
@@ -915,7 +916,6 @@ SSLNetVConnection::free(EThread *t)
     THREAD_FREE(this, sslNetVCAllocator, t);
   }
 }
-
 int
 SSLNetVConnection::sslStartHandShake(int event, int &err)
 {
@@ -994,11 +994,16 @@ SSLNetVConnection::sslStartHandShake(int event, int &err)
         clientCTX = params->client_ctx;
       }
       this->ssl = make_ssl_connection(clientCTX, this);
-
       if (this->ssl == nullptr) {
         SSLErrorVC(this, "failed to create SSL client session");
         return EVENT_ERROR;
       }
+
+      // Making the check here instead of later, so we only
+      // do this setting immediately after we create the SSL object
+      int clientVerify = this->getClientVerifyEnable();
+      int verifyValue  = clientVerify ? SSL_VERIFY_PEER : SSL_VERIFY_NONE;
+      SSL_set_verify(this->ssl, verifyValue, NULL);
 
 #if TS_USE_TLS_SNI
       if (this->options.sni_servername) {
