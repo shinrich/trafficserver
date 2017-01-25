@@ -5422,13 +5422,19 @@ HttpSM::handle_http_server_open()
   //          server session's first transaction.
   if (nullptr != server_session) {
     NetVConnection *vc = server_session->get_netvc();
-    if (vc != nullptr && (vc->options.sockopt_flags != t_state.txn_conf->sock_option_flag_out ||
-                          vc->options.packet_mark != t_state.txn_conf->sock_packet_mark_out ||
-                          vc->options.packet_tos != t_state.txn_conf->sock_packet_tos_out)) {
-      vc->options.sockopt_flags = t_state.txn_conf->sock_option_flag_out;
-      vc->options.packet_mark   = t_state.txn_conf->sock_packet_mark_out;
-      vc->options.packet_tos    = t_state.txn_conf->sock_packet_tos_out;
-      vc->apply_options();
+    if (vc != nullptr) {
+      SSLNetVConnection *ssl_vc = dynamic_cast<SSLNetVConnection *>(vc);
+      if (ssl_vc) {
+        ssl_vc->setClientVerifyEnable(t_state.txn_conf->ssl_client_verify_server);
+      }
+      if (vc->options.sockopt_flags != t_state.txn_conf->sock_option_flag_out ||
+          vc->options.packet_mark != t_state.txn_conf->sock_packet_mark_out ||
+          vc->options.packet_tos != t_state.txn_conf->sock_packet_tos_out) {
+        vc->options.sockopt_flags = t_state.txn_conf->sock_option_flag_out;
+        vc->options.packet_mark   = t_state.txn_conf->sock_packet_mark_out;
+        vc->options.packet_tos    = t_state.txn_conf->sock_packet_tos_out;
+        vc->apply_options();
+      }
     }
   }
 
