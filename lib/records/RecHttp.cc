@@ -632,6 +632,15 @@ ts_session_protocol_well_known_name_indices_init()
 
   DEFAULT_TLS_SESSION_PROTOCOL_SET.markAllIn();
 
+  // Don't enable HTTP/2 by default until it is stable.
+  int http2_enabled = 0;
+  REC_ReadConfigInteger(http2_enabled, "proxy.config.http2.enabled");
+  if (!http2_enabled) {
+    DEFAULT_TLS_SESSION_PROTOCOL_SET.markOut(HTTP2_PROTOCOL_SET);
+  } else {
+    Warning("Be aware that access control checks for HTTP/2 connections are not active!");
+  }
+
   DEFAULT_NON_TLS_SESSION_PROTOCOL_SET = HTTP_PROTOCOL_SET;
 
   TSProtoTags = ink_hash_table_create(InkHashTableKeyType_String);
