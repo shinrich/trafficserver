@@ -891,6 +891,44 @@ SSLInitializeLibrary()
   open_ssl_initialized = true;
 }
 
+
+// SSL_CheckThreadLockCallBack() - there is only one CRYPTO locking_callback() per
+// 	execution space and unfortunately, plugins and /or their dependencies
+// 	can mess with our setting and cause threading issues (crashing) down the line.  
+// 	This lightweight mitigation routine, checks and resets if it's wrong.
+// 	It will flag warning, which should help us diagnose the evil deviant plugin.
+
+void SSL_CheckThreadLockCallBack()
+{
+static int numTimesCalledBefore = 0;
+void *tmp;
+
+  if (numTimesCalledBefore > 100000)  {
+      // Though this mitigation check is cheap,  We can probably stop checking 
+      // after we've been running for a little bit and execution paths have been 
+      // exercised.  As the whole point of this is mitigating for something that shouldn't
+      // happen from plugins or their dependencies, we really don't know how long and
+      // when to end, so we ball park this after a conservative 100,000 calls.
+      // if number is too low, we risk a false negative and no correction or warning.
+        return;
+    }
+  else numTimesCalledBefore++;
+	
+  if (((void *)SSL_locking_callback) !=  (tmp = (void *) CRYPTO_get_locking_callback())) {
+    Warning("CRYPTO locking_callback() changed. FIXING! bad callback address=0x%08x, suppose to be 0x%08x. May have misbehaving plugin\n",
+        tmp, SSL_locking_callback);
+    CRYPTO_set_locking_callback(SSL_locking_callback);
+    }
+
+  if (((void *)SSL_pthreads_thread_id) !=  (tmp = (void *) CRYPTO_get_id_callback())) {
+    Warning("CRYPTO id_callback() changed. FIXING! bad callback address=0x%08x, suppose to be 0x%08x. May have misbehaving plugin\n",
+        tmp, SSL_pthreads_thread_id);
+    CRYPTO_set_id_callback(SSL_pthreads_thread_id);
+  }
+}
+
+
+
 void
 SSLInitializeStatistics()
 {
@@ -2199,6 +2237,7 @@ SSLReadBuffer(SSL *ssl, void *buf, int64_t nbytes, int64_t &nread)
 ssl_error_t
 SSLAccept(SSL *ssl)
 {
+  SSL_CheckThreadLockCallBack();
   ERR_clear_error();
   int ret = SSL_accept(ssl);
   if (ret > 0) {
@@ -2218,6 +2257,7 @@ SSLAccept(SSL *ssl)
 ssl_error_t
 SSLConnect(SSL *ssl)
 {
+  SSL_CheckThreadLockCallBack();
   ERR_clear_error();
   int ret = SSL_connect(ssl);
   if (ret > 0) {
