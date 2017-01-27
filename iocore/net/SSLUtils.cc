@@ -340,10 +340,6 @@ set_context_cert(SSL *ssl)
 
   if (ctx != nullptr) {
     SSL_set_SSL_CTX(ssl, ctx);
-#if HAVE_OPENSSL_SESSION_TICKETS
-    // Reset the ticket callback if needed
-    SSL_CTX_set_tlsext_ticket_key_cb(ctx, ssl_callback_session_ticket);
-#endif
   } else {
     found = false;
   }
@@ -564,14 +560,10 @@ ssl_context_enable_tickets(SSL_CTX *ctx, const char *ticket_key_path)
     SSL_INCREMENT_DYN_STAT(ssl_total_ticket_keys_renewed_stat);
   }
 
-  // Setting the callback can only fail if OpenSSL does not recognize the
-  // SSL_CTRL_SET_TLSEXT_TICKET_KEY_CB constant. we set the callback first
-  // so that we don't leave a ticket_key pointer attached if it fails.
-  if (SSL_CTX_set_tlsext_ticket_key_cb(ctx, ssl_callback_session_ticket) == 0) {
-    Error("failed to set session ticket callback");
-    ticket_block_free(keyblock);
-    return nullptr;
-  }
+  //
+  // We have already set the default session_ticket callback in the ctx init routine (SSLInitServerContext).
+  //  We don't want to change it now , else it might interfere with a plugin's override.
+  //
 
   SSL_CTX_clear_options(ctx, SSL_OP_NO_TICKET);
   return keyblock;
@@ -906,15 +898,15 @@ void *tmp;
   else numTimesCalledBefore++;
 	
   if (((void *)SSL_locking_callback) !=  (tmp = (void *) CRYPTO_get_locking_callback())) {
-    Warning("CRYPTO locking_callback() changed. FIXING! bad callback address=0x%08x, suppose to be 0x%08x. May have misbehaving plugin\n",
+    Warning("CRYPTO locking_callback() changed. FIXING! bad callback address=%p, suppose to be %p. May have misbehaving plugin\n",
         tmp, SSL_locking_callback);
     CRYPTO_set_locking_callback(SSL_locking_callback);
     }
 
-  if (((void *)SSL_pthreads_thread_id) !=  (tmp = (void *) CRYPTO_get_id_callback())) {
-    Warning("CRYPTO id_callback() changed. FIXING! bad callback address=0x%08x, suppose to be 0x%08x. May have misbehaving plugin\n",
+  if (((void *)SSL_pthreads_thread_id) !=  (tmp = (void *) CRYPTO_THREADID_get_callback())) {
+    Warning("CRYPTO id_callback() changed. FIXING! bad callback address=%p, suppose to be %p. May have misbehaving plugin\n",
         tmp, SSL_pthreads_thread_id);
-    CRYPTO_set_id_callback(SSL_pthreads_thread_id);
+    CRYPTO_THREADID_set_callback(SSL_pthreads_thread_id);
   }
 }
 
@@ -1753,6 +1745,19 @@ SSLInitServerContext(const SSLConfigParams *params, const ssl_user_config *sslMu
     SSLError("SSL_CTX_set_session_id_context failed");
     goto fail;
   }
+
+#if HAVE_OPENSSL_SESSION_TICKETS
+  // We set ATS default ticket callback here and only here after ctx creation, so that if, for example, a plugin
+  // wants to overide our default ATS setting, we won't stomp on it later.
+
+  // Setting the callback can only fail if OpenSSL does not recognize the
+  // SSL_CTRL_SET_TLSEXT_TICKET_KEY_CB constant. we set the callback first
+  // so that we don't leave a ticket_key pointer attached if it fails.
+  if (SSL_CTX_set_tlsext_ticket_key_cb(ctx, ssl_callback_session_ticket) == 0) {
+    Error("failed to set session ticket callback");
+    goto fail;
+  }
+#endif
 
   if (params->cipherSuite != nullptr) {
     if (!SSL_CTX_set_cipher_list(ctx, params->cipherSuite)) {
