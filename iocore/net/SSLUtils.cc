@@ -346,10 +346,6 @@ set_context_cert(SSL *ssl)
 
   if (ctx != nullptr) {
     SSL_set_SSL_CTX(ssl, ctx);
-#if HAVE_OPENSSL_SESSION_TICKETS
-    // Reset the ticket callback if needed
-    SSL_CTX_set_tlsext_ticket_key_cb(ctx, ssl_callback_session_ticket);
-#endif
   } else {
     found = false;
   }
@@ -558,13 +554,10 @@ ssl_context_enable_tickets(SSL_CTX *ctx, const char *ticket_key_path)
     SSL_INCREMENT_DYN_STAT(ssl_total_ticket_keys_renewed_stat);
   }
 
-  // Setting the callback can only fail if OpenSSL does not recognize the
-  // SSL_CTRL_SET_TLSEXT_TICKET_KEY_CB constant. we set the callback first
-  // so that we don't leave a ticket_key pointer attached if it fails.
-  if (SSL_CTX_set_tlsext_ticket_key_cb(ctx, ssl_callback_session_ticket) == 0) {
-    Error("failed to set session ticket callback");
-    goto fail;
-  }
+  //
+  // We have already set the default session_ticket callback in the ctx init routine (SSLInitServerContext).
+  //  We don't want to change it now , else it might interfere with a plugin's override.
+  //
 
   SSL_CTX_clear_options(ctx, SSL_OP_NO_TICKET);
   return keyblock;
@@ -1748,6 +1741,19 @@ SSLInitServerContext(const SSLConfigParams *params, const ssl_user_config *sslMu
     SSLError("SSL_CTX_set_session_id_context failed");
     goto fail;
   }
+
+#if HAVE_OPENSSL_SESSION_TICKETS
+  // We set ATS default ticket callback here and only here after ctx creation, so that if, for example, a plugin
+  // wants to overide our default ATS setting, we won't stomp on it later.
+
+  // Setting the callback can only fail if OpenSSL does not recognize the
+  // SSL_CTRL_SET_TLSEXT_TICKET_KEY_CB constant. we set the callback first
+  // so that we don't leave a ticket_key pointer attached if it fails.
+  if (SSL_CTX_set_tlsext_ticket_key_cb(ctx, ssl_callback_session_ticket) == 0) {
+    Error("failed to set session ticket callback");
+    goto fail;
+  }
+#endif
 
   if (params->cipherSuite != nullptr) {
     if (!SSL_CTX_set_cipher_list(ctx, params->cipherSuite)) {
