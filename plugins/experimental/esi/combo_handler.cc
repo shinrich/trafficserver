@@ -44,8 +44,8 @@ using namespace EsiLib;
 
 #define DEBUG_TAG "combo_handler"
 
-#define MAX_FILE_COUNT 30
-#define MAX_QUERY_LENGTH 3000
+#define MAX_FILE_COUNT 100
+#define MAX_QUERY_LENGTH 4096
 
 int arg_idx;
 static string SIG_KEY_NAME;
