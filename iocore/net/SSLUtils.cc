@@ -393,9 +393,21 @@ ssl_cert_callback(SSL *ssl, void * /*arg*/)
   // Return 1 for success, 0 for error, or -1 to pause
   return retval;
 }
+
+/* 
+ * Cannot stop this callback. Always reeneabled
+ */
+static int
+ssl_servername_only_callback(SSL *ssl, int * /* ad */, void * /*arg*/)
+{
+  SSLNetVConnection *netvc = (SSLNetVConnection *)SSL_get_app_data(ssl);
+  netvc->callHooks(TS_EVENT_SSL_SERVERNAME);
+  return SSL_TLSEXT_ERR_OK;
+}
+
 #else
 static int
-ssl_servername_callback(SSL *ssl, int * /* ad */, void * /*arg*/)
+ssl_servername_and_cert_callback(SSL *ssl, int * /* ad */, void * /*arg*/)
 {
   SSLNetVConnection *netvc = SSLNetVCAccess(ssl);
   bool reenabled;
@@ -559,10 +571,6 @@ ssl_context_enable_tickets(SSL_CTX *ctx, const char *ticket_key_path)
 
   SSL_CTX_clear_options(ctx, SSL_OP_NO_TICKET);
   return keyblock;
-
-fail:
-  ticket_block_free(keyblock);
-  return nullptr;
 
 #else  /* !HAVE_OPENSSL_SESSION_TICKETS */
   (void)ticket_key_path;
@@ -1479,8 +1487,9 @@ ssl_set_handshake_callbacks(SSL_CTX *ctx)
 // Make sure the callbacks are set
 #if TS_USE_CERT_CB
   SSL_CTX_set_cert_cb(ctx, ssl_cert_callback, nullptr);
+  SSL_CTX_set_tlsext_servername_callback(ctx, ssl_servername_only_callback);
 #else
-  SSL_CTX_set_tlsext_servername_callback(ctx, ssl_servername_callback);
+  SSL_CTX_set_tlsext_servername_callback(ctx, ssl_servername_and_cert_callback);
 #endif
 #endif
 }
