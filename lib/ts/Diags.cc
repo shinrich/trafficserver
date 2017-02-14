@@ -652,7 +652,7 @@ Diags::should_roll_diagslog()
 
   // Roll diags_log if necessary
   if (diags_log && diags_log->is_init()) {
-    if (diagslog_rolling_enabled == ROLL_ON_SIZE) {
+    if (diagslog_rolling_enabled == ROLL_ON_SIZE || diagslog_rolling_enabled == ROLL_ON_TIME_OR_SIZE) {
       // if we can't even check the file, we can forget about rotating
       struct stat buf;
       if (fstat(fileno(diags_log->m_fp), &buf) != 0)
@@ -670,7 +670,9 @@ Diags::should_roll_diagslog()
           ret_val = true;
         }
       }
-    } else if (diagslog_rolling_enabled == ROLL_ON_TIME) {
+    }
+
+    if (diagslog_rolling_enabled == ROLL_ON_TIME || diagslog_rolling_enabled == ROLL_ON_TIME_OR_SIZE) {
       time_t now = time(0);
       if (diagslog_rolling_interval != -1 && (now - diagslog_time_last_roll) >= diagslog_rolling_interval) {
         fflush(diags_log->m_fp);
@@ -724,7 +726,7 @@ Diags::should_roll_outputlog()
 
   // Roll stdout_log if necessary
   if (stdout_log->is_init()) {
-    if (outputlog_rolling_enabled == ROLL_ON_SIZE) {
+    if (outputlog_rolling_enabled == ROLL_ON_SIZE || outputlog_rolling_enabled == ROLL_ON_TIME_OR_SIZE) {
       // if we can't even check the file, we can forget about rotating
       struct stat buf;
       if (fstat(fileno(stdout_log->m_fp), &buf) != 0)
@@ -754,7 +756,9 @@ Diags::should_roll_outputlog()
           ret_val = true;
         }
       }
-    } else if (outputlog_rolling_enabled == ROLL_ON_TIME) {
+    }
+
+    if (outputlog_rolling_enabled == ROLL_ON_TIME || outputlog_rolling_enabled == ROLL_ON_TIME_OR_SIZE) {
       time_t now = time(0);
       if (outputlog_rolling_interval != -1 && (now - outputlog_time_last_roll) >= outputlog_rolling_interval) {
         // since usually stdout and stderr are the same file on disk, we should just
