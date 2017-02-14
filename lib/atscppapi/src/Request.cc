@@ -42,7 +42,11 @@ struct atscppapi::RequestState : noncopyable {
   HttpVersion version_;
   bool destroy_buf_;
   RequestState()
-    : hdr_buf_(NULL), hdr_loc_(NULL), url_loc_(NULL), method_(HTTP_METHOD_UNKNOWN), version_(HTTP_VERSION_UNKNOWN),
+    : hdr_buf_(nullptr),
+      hdr_loc_(nullptr),
+      url_loc_(nullptr),
+      method_(HTTP_METHOD_UNKNOWN),
+      version_(HTTP_VERSION_UNKNOWN),
       destroy_buf_(false)
   {
   }
@@ -62,21 +66,21 @@ Request::Request(void *hdr_buf, void *hdr_loc)
 
 Request::Request(const string &url_str, HttpMethod method, HttpVersion version)
 {
-  state_ = new RequestState();
-  state_->method_ = method;
-  state_->version_ = version;
+  state_               = new RequestState();
+  state_->method_      = method;
+  state_->version_     = version;
   state_->destroy_buf_ = true;
-  state_->hdr_buf_ = TSMBufferCreate();
+  state_->hdr_buf_     = TSMBufferCreate();
   if (TSUrlCreate(state_->hdr_buf_, &state_->url_loc_) == TS_SUCCESS) {
     const char *url_str_start = url_str.c_str();
-    const char *url_str_end = url_str_start + url_str.size();
+    const char *url_str_end   = url_str_start + url_str.size();
     if (TSUrlParse(state_->hdr_buf_, state_->url_loc_, &url_str_start, url_str_end) != TS_PARSE_DONE) {
       LOG_ERROR("[%s] does not represent a valid url", url_str.c_str());
     } else {
       state_->url_.init(state_->hdr_buf_, state_->url_loc_);
     }
   } else {
-    state_->url_loc_ = NULL;
+    state_->url_loc_ = nullptr;
     LOG_ERROR("Could not create URL field; hdr_buf %p", state_->hdr_buf_);
   }
 }
@@ -91,7 +95,7 @@ Request::init(void *hdr_buf, void *hdr_loc)
   state_->hdr_buf_ = static_cast<TSMBuffer>(hdr_buf);
   state_->hdr_loc_ = static_cast<TSMLoc>(hdr_loc);
   state_->headers_.reset(state_->hdr_buf_, state_->hdr_loc_);
-  state_->url_loc_ = NULL;
+  state_->url_loc_ = nullptr;
   TSHttpHdrUrlGet(state_->hdr_buf_, state_->hdr_loc_, &state_->url_loc_);
   if (!state_->url_loc_) {
     LOG_ERROR("TSHttpHdrUrlGet returned a null url loc, hdr_buf=%p, hdr_loc=%p", state_->hdr_buf_, state_->hdr_loc_);
@@ -104,10 +108,10 @@ Request::init(void *hdr_buf, void *hdr_loc)
 void
 Request::reset()
 {
-  state_->hdr_buf_ = NULL;
-  state_->hdr_loc_ = NULL;
-  state_->headers_.reset(NULL, NULL);
-  state_->url_loc_ = NULL;
+  state_->hdr_buf_ = nullptr;
+  state_->hdr_loc_ = nullptr;
+  state_->headers_.reset(nullptr, nullptr);
+  state_->url_loc_ = nullptr;
   LOG_DEBUG("Reset request %p", this);
 }
 
@@ -128,8 +132,6 @@ Request::getMethod() const
         state_->method_ = HTTP_METHOD_CONNECT;
       } else if (method_str == TS_HTTP_METHOD_DELETE) {
         state_->method_ = HTTP_METHOD_DELETE;
-      } else if (method_str == TS_HTTP_METHOD_ICP_QUERY) {
-        state_->method_ = HTTP_METHOD_ICP_QUERY;
       } else if (method_str == TS_HTTP_METHOD_OPTIONS) {
         state_->method_ = HTTP_METHOD_OPTIONS;
       } else if (method_str == TS_HTTP_METHOD_PURGE) {
@@ -138,6 +140,8 @@ Request::getMethod() const
         state_->method_ = HTTP_METHOD_PUT;
       } else if (method_str == TS_HTTP_METHOD_TRACE) {
         state_->method_ = HTTP_METHOD_TRACE;
+      } else if (method_str == TS_HTTP_METHOD_PUSH) {
+        state_->method_ = HTTP_METHOD_PUSH;
       }
       LOG_DEBUG("Request method=%d [%s] on hdr_buf=%p, hdr_loc=%p", state_->method_, HTTP_METHOD_STRINGS[state_->method_].c_str(),
                 state_->hdr_buf_, state_->hdr_loc_);
@@ -173,13 +177,30 @@ Request::getHeaders() const
   return state_->headers_;
 }
 
+void
+Request::setHost(std::string const &host)
+{
+  static const std::string HOST_FIELD_NAME(TS_MIME_FIELD_HOST, TS_MIME_LEN_HOST);
+
+  if (state_->hdr_buf_ && state_->hdr_loc_) {
+    Url &url = this->getUrl();
+
+    // Update the URL if it has a host currently.
+    if (!url.getHost().empty())
+      url.setHost(host);
+
+    // Force a HOST field.
+    this->getHeaders().set(HOST_FIELD_NAME, host);
+  }
+}
+
 Request::~Request()
 {
   if (state_->url_loc_) {
     if (state_->destroy_buf_) {
       // usually, hdr_loc is the parent of url_loc, but we created this url_loc "directly" in hdr_buf,
       // so we use null as parent loc in this case
-      TSMLoc null_parent_loc = NULL;
+      TSMLoc null_parent_loc = nullptr;
       TSHandleMLocRelease(state_->hdr_buf_, null_parent_loc, state_->url_loc_);
       TSMBufferDestroy(state_->hdr_buf_);
     } else {
