@@ -47,6 +47,7 @@
 #include "HttpProxyAPIEnums.h"
 #include "ProxyConfig.h"
 #include "P_RecProcess.h"
+#include "ts/Vec.h"
 
 /* Instead of enumerating the stats in DynamicStats.h, each module needs
    to enumerate its stats separately and register them with librecords
@@ -820,6 +821,9 @@ public:
 
   MgmtByte server_session_sharing_pool;
 
+  // Vector to hold the status codes that will BE cached with negative caching enabled
+  Vec<int> codeNegCache;
+
   // All the overridable configurations goes into this class member, but they
   // are not copied over until needed ("lazy").
   OverridableHttpConfigParams oride;
@@ -943,6 +947,12 @@ inline HttpConfigParams::~HttpConfigParams()
   ats_free(cache_vary_default_other);
   ats_free(connect_ports_string);
   ats_free(reverse_proxy_no_host_redirect);
+
+  int len = codeNegCache.n-1;
+  for(int i=len;i>=0;i--){
+    codeNegCache.remove_index(i);
+  }
+  codeNegCache.clear();
 
   if (connect_ports) {
     delete connect_ports;

@@ -865,6 +865,11 @@ register_stat_callbacks()
                      (int)http_sm_finish_time_stat, RecRawStatSyncSum);
 }
 
+bool
+lt_sort(int x, int y)
+{
+  return x < y;
+}
 ////////////////////////////////////////////////////////////////
 //
 //  HttpConfig::startup()
@@ -1133,6 +1138,21 @@ HttpConfig::startup()
   //  to use ink_atomic_swap
   c.cluster_time_delta = 0;
   RegisterMgmtCallback(MGMT_EVENT_HTTP_CLUSTER_DELTA, cluster_delta_cb, nullptr);
+
+
+  // The responses with following status code WILL BE cached with negative caching enabled.
+  c.codeNegCache.add(HTTP_STATUS_NO_CONTENT);
+  c.codeNegCache.add(HTTP_STATUS_USE_PROXY);
+  c.codeNegCache.add(HTTP_STATUS_FORBIDDEN);
+  c.codeNegCache.add(HTTP_STATUS_NOT_FOUND);
+  c.codeNegCache.add(HTTP_STATUS_METHOD_NOT_ALLOWED);
+  c.codeNegCache.add(HTTP_STATUS_REQUEST_URI_TOO_LONG);
+  c.codeNegCache.add(HTTP_STATUS_INTERNAL_SERVER_ERROR);
+  c.codeNegCache.add(HTTP_STATUS_NOT_IMPLEMENTED);
+  c.codeNegCache.add(HTTP_STATUS_BAD_GATEWAY);
+  c.codeNegCache.add(HTTP_STATUS_SERVICE_UNAVAILABLE);
+  c.codeNegCache.add(HTTP_STATUS_GATEWAY_TIMEOUT);
+  c.codeNegCache.qsort(lt_sort);
 
   http_config_cont->handleEvent(EVENT_NONE, nullptr);
 
@@ -1415,8 +1435,8 @@ HttpConfig::reconfigure()
 
   // Local Manager
   params->synthetic_port = m_master.synthetic_port;
-
-  m_id = configProcessor.set(m_id, params);
+  params->codeNegCache   = m_master.codeNegCache;
+  m_id                   = configProcessor.set(m_id, params);
 
 #undef INT_TO_BOOL
 }
