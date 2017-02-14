@@ -50,7 +50,6 @@ static INKStat method_count_redirected_connect;
 static INKStat method_count_redirected_delete;
 static INKStat method_count_redirected_get;
 static INKStat method_count_redirected_head;
-static INKStat method_count_redirected_icp_query;
 static INKStat method_count_redirected_options;
 static INKStat method_count_redirected_post;
 static INKStat method_count_redirected_purge;
@@ -262,7 +261,6 @@ init_stats(void)
   method_count_redirected_delete    = INKStatCreate("method.count.redirected.delete", INKSTAT_TYPE_INT64);
   method_count_redirected_get       = INKStatCreate("method.count.redirected.get", INKSTAT_TYPE_INT64);
   method_count_redirected_head      = INKStatCreate("method.count.redirected.head", INKSTAT_TYPE_FLOAT);
-  method_count_redirected_icp_query = INKStatCreate("method.count.redirected.icp_query", INKSTAT_TYPE_FLOAT);
   method_count_redirected_options   = INKStatCreate("method.count.redirected.options", INKSTAT_TYPE_INT64);
   method_count_redirected_post      = INKStatCreate("method.count.redirected.post", INKSTAT_TYPE_INT64);
   method_count_redirected_purge     = INKStatCreate("method.count.redirected.purge", INKSTAT_TYPE_INT64);
@@ -301,8 +299,6 @@ update_redirected_method_stats(TSMBuffer bufp, TSMLoc hdr_loc)
 
     else if (0 == strncmp(txn_method, TS_HTTP_METHOD_HEAD, length))
       INKStatFloatAddTo(method_count_redirected_head, 1);
-    else if (0 == strncmp(txn_method, TS_HTTP_METHOD_ICP_QUERY, length))
-      INKStatFloatAddTo(method_count_redirected_icp_query, 1);
 
     else if (0 == strncmp(txn_method, TS_HTTP_METHOD_OPTIONS, length)) {
       tempint = INKStatIntGet(method_count_redirected_options);
