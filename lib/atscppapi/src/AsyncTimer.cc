@@ -19,11 +19,13 @@
 /**
  * @file AsyncTimer.cc
  */
+#include <memory>
 #include "atscppapi/AsyncTimer.h"
 #include <ts/ts.h>
 #include "logging_internal.h"
 
 using namespace atscppapi;
+using std::shared_ptr;
 
 struct atscppapi::AsyncTimerState {
   TSCont cont_;

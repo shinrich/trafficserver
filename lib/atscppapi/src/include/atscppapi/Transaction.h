@@ -26,14 +26,15 @@
 #include <sys/socket.h>
 #include <stdint.h>
 #include <list>
+#include <memory>
 #include "atscppapi/Request.h"
-#include "atscppapi/shared_ptr.h"
 #include "atscppapi/ClientRequest.h"
 #include "atscppapi/Response.h"
 #include "ts/apidefs.h"
 
 namespace atscppapi
 {
+using std::shared_ptr;
 // forward declarations
 class TransactionPlugin;
 struct TransactionState;

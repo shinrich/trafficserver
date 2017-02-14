@@ -20,8 +20,8 @@
  * @file Headers.cc
  */
 #include "atscppapi/Headers.h"
-#include "atscppapi/shared_ptr.h"
 #include "logging_internal.h"
+#include <memory>
 #include <string>
 #include <cstring>
 #include <sstream>
@@ -36,6 +36,7 @@ using atscppapi::header_field_iterator;
 using atscppapi::header_field_value_iterator;
 
 using std::string;
+using std::shared_ptr;
 
 namespace atscppapi
 {

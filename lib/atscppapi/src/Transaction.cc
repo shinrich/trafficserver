@@ -27,7 +27,6 @@
 #include <string>
 #include <ts/ts.h>
 #include <ink_memory.h>
-#include "atscppapi/shared_ptr.h"
 #include "logging_internal.h"
 #include "utils_internal.h"
 #include "atscppapi/noncopyable.h"

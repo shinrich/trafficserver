@@ -25,7 +25,6 @@
 #include <cstddef>
 #include <cassert>
 #include "atscppapi/Mutex.h"
-#include "atscppapi/shared_ptr.h"
 #include "utils_internal.h"
 #include "atscppapi/noncopyable.h"
 #include "logging_internal.h"

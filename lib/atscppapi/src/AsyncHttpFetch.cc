@@ -21,7 +21,6 @@
  */
 
 #include "atscppapi/AsyncHttpFetch.h"
-#include "atscppapi/shared_ptr.h"
 #include <ts/ts.h>
 #include <ts/experimental.h>
 #include <arpa/inet.h>
@@ -33,6 +32,7 @@
 
 using namespace atscppapi;
 using std::string;
+using std::shared_ptr;
 
 /**
  * @private

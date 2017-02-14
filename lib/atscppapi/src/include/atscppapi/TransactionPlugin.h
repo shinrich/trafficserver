@@ -24,9 +24,9 @@
 #ifndef ATSCPPAPI_TRANSACTIONPLUGIN_H_
 #define ATSCPPAPI_TRANSACTIONPLUGIN_H_
 
+#include <memory>
 #include <atscppapi/Plugin.h>
 #include <atscppapi/Transaction.h>
-#include <atscppapi/shared_ptr.h>
 #include <atscppapi/Mutex.h>
 
 namespace atscppapi
