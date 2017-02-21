@@ -107,6 +107,54 @@ Transaction::setEvent(TSEvent event)
   state_->event_ = event;
 }
 
+bool
+Transaction::configIntSet(TSOverridableConfigKey conf, int value)
+{
+  return TS_SUCCESS == TSHttpTxnConfigIntSet(state_->txn_, conf, static_cast<TSMgmtInt>(value));
+}
+bool
+Transaction::configIntGet(TSOverridableConfigKey conf, int *value)
+{
+  return TS_SUCCESS == TSHttpTxnConfigIntGet(state_->txn_, conf, reinterpret_cast<TSMgmtInt *>(value));
+}
+
+bool
+Transaction::configFloatSet(TSOverridableConfigKey conf, float value)
+{
+  return TS_SUCCESS == TSHttpTxnConfigFloatSet(state_->txn_, conf, static_cast<TSMgmtFloat>(value));
+}
+
+bool
+Transaction::configFloatGet(TSOverridableConfigKey conf, float *value)
+{
+  return TS_SUCCESS == TSHttpTxnConfigFloatGet(state_->txn_, conf, value);
+}
+
+bool
+Transaction::configStringSet(TSOverridableConfigKey conf, std::string const &value)
+{
+  return TS_SUCCESS == TSHttpTxnConfigStringSet(state_->txn_, conf, const_cast<TSMgmtString>(value.data()), value.length());
+}
+
+bool
+Transaction::configStringGet(TSOverridableConfigKey conf, std::string &value)
+{
+  const char *svalue;
+  int length;
+  bool zret = TS_SUCCESS == TSHttpTxnConfigStringGet(state_->txn_, conf, &svalue, &length);
+  if (zret)
+    value.assign(svalue, length);
+  else
+    value.clear();
+  return zret;
+}
+
+bool
+Transaction::configFind(std::string const &name, TSOverridableConfigKey *conf, TSRecordDataType *type)
+{
+  return TS_SUCCESS == TSHttpTxnConfigFind(name.data(), name.length(), conf, type);
+}
+
 void
 Transaction::resume()
 {
