@@ -336,6 +336,14 @@ public:
    */
   void redirectTo(std::string const &url);
 
+  bool configIntSet(TSOverridableConfigKey conf, int value);
+  bool configIntGet(TSOverridableConfigKey conf, int *value);
+  bool configFloatSet(TSOverridableConfigKey conf, float value);
+  bool configFloatGet(TSOverridableConfigKey conf, float *value);
+  bool configStringSet(TSOverridableConfigKey conf, std::string const &value);
+  bool configStringGet(TSOverridableConfigKey conf, std::string &value);
+  bool configFind(std::string const &name, TSOverridableConfigKey *conf, TSRecordDataType *type);
+
 private:
   TransactionState *state_;          //!< The internal TransactionState object tied to the current Transaction
   friend class TransactionPlugin;    //!< TransactionPlugin is a friend so it can call addPlugin()
