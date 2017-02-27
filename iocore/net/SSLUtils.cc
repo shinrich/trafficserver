@@ -29,6 +29,7 @@
 #include "SSLSessionCache.h"
 
 #include <string>
+#include <unordered_map>
 #include <openssl/err.h>
 #include <openssl/bio.h>
 #include <openssl/pem.h>
@@ -54,6 +55,7 @@
 
 #if HAVE_OPENSSL_EC_H
 #include <openssl/ec.h>
+#include <bits/unordered_map.h>
 #endif
 
 // ssl_multicert.config field names:
@@ -67,6 +69,8 @@
 #define SSL_SESSION_TICKET_KEY_FILE_TAG "ticket_key_name"
 #define SSL_KEY_DIALOG "ssl_key_dialog"
 #define SSL_CERT_SEPARATE_DELIM ','
+#define SSL_SERVERNAME "dest_fqdn"
+#define SSL_CERTIFICATION_LEVEL "certification_level"
 
 // openssl version must be 0.9.4 or greater
 #if (OPENSSL_VERSION_NUMBER < 0x00090400L)
@@ -82,12 +86,15 @@
 #endif
 
 void (*ssl_alpn_selected_fp)(const SSL*, const unsigned char**, unsigned int*) = NULL;
+void setClientCertLevel(SSL* ssl, int certLevel);
 
 #if (OPENSSL_VERSION_NUMBER >= 0x10000000L) // openssl returns a const SSL_METHOD
 typedef const SSL_METHOD *ink_ssl_method_t;
 #else
 typedef SSL_METHOD *ink_ssl_method_t;
 #endif
+
+std::unordered_map<std::string, int > serverMap; // maps servername to the required client_verification_level
 
 // gather user provided settings from ssl_multicert.config in to a single struct
 struct ssl_user_config {
@@ -102,6 +109,8 @@ struct ssl_user_config {
   ats_scoped_str
     ticket_key_filename; // ticket_key_name - session key file. [key_name (16Byte) + HMAC_secret (16Byte) + AES_key (16Byte)]
   ats_scoped_str dialog; // ssl_key_dialog - Private key dialog
+  ats_scoped_str servername; // servername - Name of the server the client is attempting to connect to
+  int client_certification_level = -1; // client certification level, default is 0
   SSLCertContext::Option opt;
 };
 
@@ -286,6 +295,7 @@ set_context_cert(SSL *ssl)
   bool found = true;
   int retval = 1;
 
+
   Debug("ssl", "set_context_cert ssl=%p server=%s handshake_complete=%d", ssl, servername,
     netvc->getSSLHandShakeComplete());
   // set SSL trace (we do this a little later in the USE_TLS_SNI case so we can get the servername
@@ -330,12 +340,13 @@ set_context_cert(SSL *ssl)
 
   if (ctx != NULL) {
     SSL_set_SSL_CTX(ssl, ctx);
+    Debug("ssl","=========================================>>>>>>>>>>>>>>> ctx %p",ctx);
   } else {
     found = false;
   }
 
   ctx = SSL_get_SSL_CTX(ssl);
-  Debug("ssl", "ssl_cert_callback %s SSL context %p for requested name '%s'", found ? "found" : "using", ctx, servername);
+  Debug("ssl", "ssl_cert_callback %s SSL context %p for requested name '%s' ", found ? "found" : "using", ctx, servername);
 
   if (ctx == NULL) {
     retval = 0;
@@ -388,8 +399,16 @@ static int
 ssl_servername_only_callback(SSL *ssl, int * /* ad */, void * /*arg*/)
 {
   SSLNetVConnection *netvc = (SSLNetVConnection *)SSL_get_app_data(ssl);
-  int retval = 1;
-
+  int clientVerificationLevel = - 1;
+  SSLConfig::scoped_config params;
+  const char *servername = SSL_get_servername(ssl, TLSEXT_NAMETYPE_host_name);
+  if(servername){
+    auto it = serverMap.find(servername);
+    // indicate the client certification level
+    clientVerificationLevel = (it!=serverMap.end())?it->second:params->clientCertLevel;
+  }
+  setClientCertLevel(ssl,clientVerificationLevel);
+  Debug("ssl","=======>>>>>calling ssl_servername_only_callback ssl %p client verifu %d %d",ssl,SSL_get_verify_mode(ssl),clientVerificationLevel);
   netvc->callHooks(TS_SSL_SERVERNAME_HOOK);
   return SSL_TLSEXT_ERR_OK;
 }
@@ -1690,6 +1709,24 @@ ssl_set_handshake_callbacks(SSL_CTX *ctx)
 #endif
 }
 
+void setClientCertLevel(SSL* ssl, int certLevel)
+{
+    SSLConfig::scoped_config params;
+    int server_verify_client = SSL_VERIFY_NONE;
+    if(certLevel< 0 || certLevel > 2)
+        return;
+    else if(certLevel == 2)
+    {
+        server_verify_client = SSL_VERIFY_PEER | SSL_VERIFY_FAIL_IF_NO_PEER_CERT | SSL_VERIFY_CLIENT_ONCE;
+    }
+    else if(certLevel == 1)
+    {
+        server_verify_client = SSL_VERIFY_PEER | SSL_VERIFY_CLIENT_ONCE;
+    }
+    SSL_set_verify(ssl, server_verify_client, NULL);
+    SSL_set_verify_depth(ssl, params->verify_depth); // might want to make configurable at some point.
+}
+
 static SSL_CTX *
 ssl_store_ssl_context(const SSLConfigParams *params, SSLCertLookup *lookup, const ssl_user_config &sslMultCertSettings)
 {
@@ -1727,6 +1764,11 @@ ssl_store_ssl_context(const SSLConfigParams *params, SSLCertLookup *lookup, cons
     certpath = Layout::relative_to(params->serverCertPathOnly, sslMultCertSettings.first_cert);
   } else {
     certpath = NULL;
+  }
+
+  if(sslMultCertSettings.servername && sslMultCertSettings.client_certification_level!=-1) {
+    serverMap[std::string(sslMultCertSettings.servername)]=sslMultCertSettings.client_certification_level;
+    Debug("ssl","added server name to map %s verificationlevel %d len %d",(char*)sslMultCertSettings.servername,sslMultCertSettings.client_certification_level,serverMap.size());
   }
 
   if (0 > SSLCheckServerCertNow((const char *) certpath)) {
@@ -1869,6 +1911,12 @@ ssl_extract_certificate(const matcher_line *line_info, ssl_user_config &sslMultC
         return false;
       }
     }
+    if (strcasecmp(label, SSL_SERVERNAME) == 0) {
+      sslMultCertSettings.servername = ats_strdup(value);
+    }
+    if (strcasecmp(label,SSL_CERTIFICATION_LEVEL) == 0) {
+        sslMultCertSettings.client_certification_level = atoi(value);
+    }
   }
   if (!sslMultCertSettings.cert) {
     Warning("missing %s tag", SSL_CERT_TAG);
@@ -1932,6 +1980,10 @@ SSLParseCertificateConfiguration(const SSLConfigParams *params, SSLCertLookup *l
       } else {
         if (ssl_extract_certificate(&line_info, sslMultiCertSettings)) {
           ssl_store_ssl_context(params, lookup, sslMultiCertSettings);
+        } else if(sslMultiCertSettings.servername && sslMultiCertSettings.client_certification_level!=-1) {
+
+            Debug("ssl","added server name to map %s verificationlevel %d len %d",(char*)sslMultiCertSettings.servername,sslMultiCertSettings.client_certification_level,serverMap.size());
+            serverMap[std::string(sslMultiCertSettings.servername)]=sslMultiCertSettings.client_certification_level;
         }
       }
     }
