@@ -18,10 +18,15 @@
 #ifndef REGEX_HELPER_H
 #define REGEX_HELPER_H
 
+#include "ts/ink_defs.h"
+
+#ifdef HAVE_PCRE_PCRE_H
+#include <pcre/pcre.h>
+#else
 #include <pcre.h>
+#endif
 
 #include <string>
-
 
 const int OVECCOUNT = 30; // We support $1 - $9 only, and this needs to be 3x that
 
@@ -29,16 +34,11 @@ class regexHelper
 {
 public:
   regexHelper() : regex(NULL), regexExtra(NULL), regexCcount(0) {}
-
   ~regexHelper()
   {
-    if (regex)
-      pcre_free(regex);
-
-    if (regexExtra)
-      pcre_free(regexExtra);
+    pcre_free(regex);
+    pcre_free(regexExtra);
   }
-
 
   bool setRegexMatch(const std::string &s);
   const std::string &getRegexString() const;
@@ -51,6 +51,5 @@ private:
   std::string regexString;
   int regexCcount;
 };
-
 
 #endif

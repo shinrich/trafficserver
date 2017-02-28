@@ -28,8 +28,36 @@
 #include "resources.h"
 
 // Debugs
-const char PLUGIN_NAME[] = "header_rewrite";
+const char PLUGIN_NAME[]     = "header_rewrite";
 const char PLUGIN_NAME_DBG[] = "dbg_header_rewrite";
+
+// Geo information, currently only Maxmind. These have to be initialized when the plugin loads.
+#if HAVE_GEOIP_H
+#include <GeoIP.h>
+
+GeoIP *gGeoIP[NUM_DB_TYPES];
+
+static void
+initGeoIP()
+{
+  GeoIPDBTypes dbs[] = {GEOIP_COUNTRY_EDITION, GEOIP_COUNTRY_EDITION_V6, GEOIP_ASNUM_EDITION, GEOIP_ASNUM_EDITION_V6};
+
+  for (unsigned i = 0; i < sizeof(dbs) / sizeof(dbs[0]); ++i) {
+    if (!gGeoIP[dbs[i]] && GeoIP_db_avail(dbs[i])) {
+      // GEOIP_STANDARD seems to break threaded apps...
+      gGeoIP[dbs[i]] = GeoIP_open_type(dbs[i], GEOIP_MMAP_CACHE);
+      TSDebug(PLUGIN_NAME, "initialized GeoIP-DB[%d] %s", dbs[i], GeoIP_database_info(gGeoIP[dbs[i]]));
+    }
+  }
+}
+
+#else
+
+static void
+initGeoIP()
+{
+}
+#endif
 
 // Forward declaration for the main continuation.
 static int cont_rewrite_headers(TSCont, TSEvent, void *);
@@ -44,7 +72,7 @@ public:
     memset(_rules, 0, sizeof(_rules));
     memset(_resids, 0, sizeof(_resids));
 
-    _cont = TSContCreate(cont_rewrite_headers, NULL);
+    _cont = TSContCreate(cont_rewrite_headers, nullptr);
     TSContDataSet(_cont, static_cast<void *>(this));
   }
 
@@ -75,8 +103,9 @@ public:
   void
   release()
   {
-    if (1 >= ink_atomic_decrement(&_ref_count, 1))
+    if (1 >= ink_atomic_decrement(&_ref_count, 1)) {
       delete this;
+    }
   }
 
 private:
@@ -101,8 +130,8 @@ bool
 RulesConfig::add_rule(RuleSet *rule)
 {
   if (rule && rule->has_operator()) {
-    TSDebug(PLUGIN_NAME_DBG, "   Adding rule to hook=%s\n", TSHttpHookNameLookup(rule->get_hook()));
-    if (NULL == _rules[rule->get_hook()]) {
+    TSDebug(PLUGIN_NAME_DBG, "   Adding rule to hook=%s", TSHttpHookNameLookup(rule->get_hook()));
+    if (nullptr == _rules[rule->get_hook()]) {
       _rules[rule->get_hook()] = rule;
     } else {
       _rules[rule->get_hook()]->append(rule);
@@ -113,7 +142,6 @@ RulesConfig::add_rule(RuleSet *rule)
   return false;
 }
 
-
 ///////////////////////////////////////////////////////////////////////////////
 // Config parser, use to parse both the global, and per-remap, configurations.
 //
@@ -123,13 +151,13 @@ RulesConfig::add_rule(RuleSet *rule)
 bool
 RulesConfig::parse_config(const std::string fname, TSHttpHookID default_hook)
 {
-  RuleSet *rule = NULL;
+  RuleSet *rule = nullptr;
   std::string filename;
   std::ifstream f;
   int lineno = 0;
 
   if (0 == fname.size()) {
-    TSError("%s: no config filename provided", PLUGIN_NAME);
+    TSError("[%s] no config filename provided", PLUGIN_NAME);
     return false;
   }
 
@@ -142,7 +170,7 @@ RulesConfig::parse_config(const std::string fname, TSHttpHookID default_hook)
 
   f.open(filename.c_str(), std::ios::in);
   if (!f.is_open()) {
-    TSError("%s: unable to open %s", PLUGIN_NAME, filename.c_str());
+    TSError("[%s] unable to open %s", PLUGIN_NAME, filename.c_str());
     return false;
   }
 
@@ -172,40 +200,45 @@ RulesConfig::parse_config(const std::string fname, TSHttpHookID default_hook)
 
     // If we are at the beginning of a new condition, save away the previous rule (but only if it has operators).
     if (p.is_cond() && add_rule(rule)) {
-      rule = NULL;
+      rule = nullptr;
     }
 
-    if (NULL == rule) {
-      rule = new RuleSet();
-      rule->set_hook(default_hook);
+    TSHttpHookID hook = default_hook;
+    bool is_hook      = p.cond_is_hook(hook); // This updates the hook if explicitly set, if not leaves at default
 
-      // Special case for specifying the HOOK this rule applies to.
-      // These can only be at the beginning of a rule, and have an implicit [AND].
-      if (p.cond_op_is("READ_RESPONSE_HDR_HOOK")) {
-        rule->set_hook(TS_HTTP_READ_RESPONSE_HDR_HOOK);
+    if (nullptr == rule) {
+      rule = new RuleSet();
+      rule->set_hook(hook);
+
+      if (is_hook) {
+        // Check if the hooks are not available for the remap mode
+        if ((default_hook == TS_REMAP_PSEUDO_HOOK) &&
+            ((TS_HTTP_READ_REQUEST_HDR_HOOK == hook) || (TS_HTTP_PRE_REMAP_HOOK == hook))) {
+          TSError("[%s] you can not use cond %%{%s} in a remap rule", PLUGIN_NAME, p.get_op().c_str());
+          delete rule;
+          return false;
+        }
         continue;
-      } else if (p.cond_op_is("READ_REQUEST_HDR_HOOK")) {
-        rule->set_hook(TS_HTTP_READ_REQUEST_HDR_HOOK);
-        continue;
-      } else if (p.cond_op_is("READ_REQUEST_PRE_REMAP_HOOK")) {
-        rule->set_hook(TS_HTTP_READ_REQUEST_PRE_REMAP_HOOK);
-        continue;
-      } else if (p.cond_op_is("SEND_REQUEST_HDR_HOOK")) {
-        rule->set_hook(TS_HTTP_SEND_REQUEST_HDR_HOOK);
-        continue;
-      } else if (p.cond_op_is("SEND_RESPONSE_HDR_HOOK")) {
-        rule->set_hook(TS_HTTP_SEND_RESPONSE_HDR_HOOK);
-        continue;
-      } else if (p.cond_op_is("REMAP_PSEUDO_HOOK")) {
-        rule->set_hook(TS_REMAP_PSEUDO_HOOK);
-        continue;
+      }
+    } else {
+      if (is_hook) {
+        TSError("[%s] cond %%{%s} at %s:%d should be the first hook condition in the rule set and each rule set should contain "
+                "only one hook condition",
+                PLUGIN_NAME, p.get_op().c_str(), fname.c_str(), lineno);
+        return false;
       }
     }
 
     if (p.is_cond()) {
-      rule->add_condition(p);
+      if (!rule->add_condition(p, filename.c_str(), lineno)) {
+        delete rule;
+        return false;
+      }
     } else {
-      rule->add_operator(p);
+      if (!rule->add_operator(p, filename.c_str(), lineno)) {
+        delete rule;
+        return false;
+      }
     }
   }
 
@@ -222,14 +255,13 @@ RulesConfig::parse_config(const std::string fname, TSHttpHookID default_hook)
   return true;
 }
 
-
 ///////////////////////////////////////////////////////////////////////////////
 // Continuation
 //
 static int
 cont_rewrite_headers(TSCont contp, TSEvent event, void *edata)
 {
-  TSHttpTxn txnp = static_cast<TSHttpTxn>(edata);
+  TSHttpTxn txnp    = static_cast<TSHttpTxn>(edata);
   TSHttpHookID hook = TS_HTTP_LAST_HOOK;
   RulesConfig *conf = static_cast<RulesConfig *>(TSContDataGet(contp));
 
@@ -241,7 +273,7 @@ cont_rewrite_headers(TSCont contp, TSEvent event, void *edata)
     hook = TS_HTTP_READ_REQUEST_HDR_HOOK;
     break;
   case TS_EVENT_HTTP_READ_REQUEST_PRE_REMAP:
-    hook = TS_HTTP_READ_REQUEST_PRE_REMAP_HOOK;
+    hook = TS_HTTP_PRE_REMAP_HOOK;
     break;
   case TS_EVENT_HTTP_SEND_REQUEST_HDR:
     hook = TS_HTTP_SEND_REQUEST_HDR_HOOK;
@@ -253,7 +285,7 @@ cont_rewrite_headers(TSCont contp, TSEvent event, void *edata)
     conf->release();
     break;
   default:
-    TSError("%s: unknown event for this plugin", PLUGIN_NAME);
+    TSError("[%s] unknown event for this plugin", PLUGIN_NAME);
     TSDebug(PLUGIN_NAME, "unknown event for this plugin");
     break;
   }
@@ -276,18 +308,11 @@ cont_rewrite_headers(TSCont contp, TSEvent event, void *edata)
       }
       rule = rule->next;
     }
-
-    // Debugging support - control how the transaction is reenabled.
-    if (res.changed_txn_return_code) {
-      if (res.txn_return_code >= 0) TSHttpTxnReenable(txnp, res.txn_return_code);
-      return 0;
-    }
   }
 
   TSHttpTxnReenable(txnp, TS_EVENT_HTTP_CONTINUE);
   return 0;
 }
-
 
 ///////////////////////////////////////////////////////////////////////////////
 // Initialize the InkAPI plugin for the global hooks we support.
@@ -297,19 +322,20 @@ TSPluginInit(int argc, const char *argv[])
 {
   TSPluginRegistrationInfo info;
 
-  info.plugin_name = (char *)PLUGIN_NAME;
-  info.vendor_name = (char *)"Apache Software Foundation";
+  info.plugin_name   = (char *)PLUGIN_NAME;
+  info.vendor_name   = (char *)"Apache Software Foundation";
   info.support_email = (char *)"dev@trafficserver.apache.org";
 
   if (TS_SUCCESS != TSPluginRegister(TS_SDK_VERSION_3_0, &info)) {
-    TSError("%s: plugin registration failed.\n", PLUGIN_NAME);
+    TSError("[%s] plugin registration failed.", PLUGIN_NAME);
   }
 
   // Parse the global config file(s). All rules are just appended
   // to the "global" Rules configuration.
   RulesConfig *conf = new RulesConfig;
-  bool got_config = false;
+  bool got_config   = false;
 
+  initGeoIP();
   conf->hold();
 
   for (int i = 1; i < argc; ++i) {
@@ -320,12 +346,12 @@ TSPluginInit(int argc, const char *argv[])
       TSDebug(PLUGIN_NAME, "Succesfully loaded global config file %s", argv[i]);
       got_config = true;
     } else {
-      TSError("header_rewrite: failed to parse configuration file %s", argv[i]);
+      TSError("[header_rewrite] failed to parse configuration file %s", argv[i]);
     }
   }
 
   if (got_config) {
-    TSCont contp = TSContCreate(cont_rewrite_headers, NULL);
+    TSCont contp = TSContCreate(cont_rewrite_headers, nullptr);
     TSContDataSet(contp, conf);
 
     for (int i = TS_HTTP_READ_REQUEST_HDR_HOOK; i < TS_HTTP_LAST_HOOK; ++i) {
@@ -336,11 +362,10 @@ TSPluginInit(int argc, const char *argv[])
     }
   } else {
     // Didn't get anything, nuke it.
-    TSError("%s: failed to parse configuration file", PLUGIN_NAME);
+    TSError("[%s] failed to parse any configuration file", PLUGIN_NAME);
     conf->release();
   }
 }
-
 
 ///////////////////////////////////////////////////////////////////////////////
 // Initialize the plugin as a remap plugin.
@@ -364,10 +389,11 @@ TSRemapInit(TSRemapInterface *api_info, char *errbuf, int errbuf_size)
     return TS_ERROR;
   }
 
+  initGeoIP();
   TSDebug(PLUGIN_NAME, "Remap plugin is successfully initialized");
+
   return TS_SUCCESS;
 }
-
 
 TSReturnCode
 TSRemapNewInstance(int argc, char *argv[], void **ih, char * /* errbuf ATS_UNUSED */, int /* errbuf_size ATS_UNUSED */)
@@ -375,7 +401,7 @@ TSRemapNewInstance(int argc, char *argv[], void **ih, char * /* errbuf ATS_UNUSE
   TSDebug(PLUGIN_NAME, "Instantiating a new remap.config plugin rule");
 
   if (argc < 3) {
-    TSError("%s: Unable to create remap instance, need config file", PLUGIN_NAME);
+    TSError("[%s] Unable to create remap instance, need config file", PLUGIN_NAME);
     return TS_ERROR;
   }
 
@@ -386,7 +412,7 @@ TSRemapNewInstance(int argc, char *argv[], void **ih, char * /* errbuf ATS_UNUSE
   for (int i = 2; i < argc; ++i) {
     TSDebug(PLUGIN_NAME, "Loading remap configuration file %s", argv[i]);
     if (!conf->parse_config(argv[i], TS_REMAP_PSEUDO_HOOK)) {
-      TSError("%s: Unable to create remap instance", PLUGIN_NAME);
+      TSError("[%s] Unable to create remap instance", PLUGIN_NAME);
       return TS_ERROR;
     } else {
       TSDebug(PLUGIN_NAME, "Succesfully loaded remap config file %s", argv[i]);
@@ -413,7 +439,6 @@ TSRemapDeleteInstance(void *ih)
   static_cast<RulesConfig *>(ih)->release();
 }
 
-
 ///////////////////////////////////////////////////////////////////////////////
 // This is the main "entry" point for the plugin, called for every request.
 //
@@ -423,13 +448,13 @@ TSRemapDoRemap(void *ih, TSHttpTxn rh, TSRemapRequestInfo *rri)
   bool hooked_p = false;
 
   // Make sure things are properly setup (this should never happen)
-  if (NULL == ih) {
+  if (nullptr == ih) {
     TSDebug(PLUGIN_NAME, "No Rules configured, falling back to default");
     return TSREMAP_NO_REMAP;
   }
 
   TSRemapStatus rval = TSREMAP_NO_REMAP;
-  RulesConfig *conf = static_cast<RulesConfig *>(ih);
+  RulesConfig *conf  = static_cast<RulesConfig *>(ih);
 
   // Go through all hooks we support, and setup the txn hook(s) as necessary
   for (int i = TS_HTTP_READ_REQUEST_HDR_HOOK; i < TS_HTTP_LAST_HOOK; ++i) {
