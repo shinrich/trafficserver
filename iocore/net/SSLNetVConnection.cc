@@ -27,6 +27,7 @@
 #include "P_SSLNextProtocolSet.h"
 #include "P_SSLUtils.h"
 #include "InkAPIInternal.h" // Added to include the ssl_hook definitions
+#include "P_SSLClientUtils.h"
 #include "P_SSLConfig.h"
 #include "BIO_fastopen.h"
 #include "Log.h"
@@ -1003,7 +1004,7 @@ SSLNetVConnection::sslStartHandShake(int event, int &err)
       // do this setting immediately after we create the SSL object
       int clientVerify = this->getClientVerifyEnable();
       int verifyValue  = clientVerify ? SSL_VERIFY_PEER : SSL_VERIFY_NONE;
-      SSL_set_verify(this->ssl, verifyValue, NULL);
+      SSL_set_verify(this->ssl, verifyValue, verify_callback);
 
 #if TS_USE_TLS_SNI
       if (this->options.sni_servername) {
