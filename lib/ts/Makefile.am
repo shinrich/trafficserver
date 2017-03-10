@@ -77,6 +77,7 @@ libtsutil_la_SOURCES = \
   IpMapConf.h \
   Layout.cc \
   List.h \
+  MemView.h MemView.cc \
   MMH.cc \
   MMH.h \
   Map.h \
