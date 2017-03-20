@@ -223,6 +223,19 @@ TS_ARG_ENABLE_VAR([has], [tests])
 AC_SUBST(has_tests)
 AM_CONDITIONAL([BUILD_TESTS], [test 0 -ne $has_tests])
 
+# Curl support for traffic_top
+AC_MSG_CHECKING([whether to enable CURL])
+AC_ARG_ENABLE([curl],
+  [AS_HELP_STRING([--disable-curl],[turn off CURL support for traffic_top])],
+  [],
+  [enable_curl=yes]
+)
+AC_MSG_RESULT([$enable_curl])
+
+if test "x${enable_curl}" = "xyes"; then
+AX_LIB_CURL([7.19], [AC_DEFINE([HAS_CURL], [1], [Define if libcurl >= 7.19.])])
+fi
+
 #
 # Force some static linkage (for testing / development only)
 #
@@ -1127,13 +1140,6 @@ TS_ADDTO(CFLAGS, [-Wl,--add-needed])
 AX_WITH_CURSES
 CFLAGS="$__saved_CFLAGS"
 
-AX_LIB_CURL([7.19], [
-    AM_CONDITIONAL([BUILD_TSTOP], [test "x$ax_cv_curses" = "xyes"])
-  ], [
-    AM_CONDITIONAL([BUILD_TSTOP], [false])
-  ]
-)
-
 #
 # Check for SSL presence and usability
 TS_CHECK_CRYPTO
@@ -1936,6 +1942,9 @@ AC_CONFIG_FILES([
   tools/trafficserver.pc
   tools/tsxs
 ])
+
+# We should only build traffic_top if we have curses
+AM_CONDITIONAL([BUILD_TSTOP], [test "x$ax_cv_curses" = "xyes"])
 
 AC_CHECK_HEADERS([mysql/mysql.h], [has_mysql=1],[has_mysql=0])
 AC_CHECK_LIB([mysqlclient],[mysql_info],[AC_SUBST([LIB_MYSQLCLIENT],["-lmysqlclient"])],[has_mysql=0])
