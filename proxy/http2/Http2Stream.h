@@ -51,6 +51,7 @@ public:
       response_header_done(false),
       request_sent(false),
       is_first_transaction_flag(false),
+      h2_trace(false),
       response_reader(NULL),
       request_reader(NULL),
       request_buffer(CLIENT_CONNECTION_FIRST_READ_BUFFER_SIZE_INDEX),
@@ -191,6 +192,7 @@ public:
   bool response_header_done;
   bool request_sent;
   bool is_first_transaction_flag;
+  bool h2_trace;
 
   HTTPHdr response_header;
   IOBufferReader *response_reader;
