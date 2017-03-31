@@ -444,6 +444,7 @@ Http1ClientSession::release(ProxyClientTransaction *trans)
   //  IO to wait for new data
   bool more_to_read = this->sm_reader->is_read_avail_more_than(0);
   if (more_to_read) {
+    trans->destroy();
     trans->set_restart_immediate(true);
     DebugHttpSsn("[%" PRId64 "] data already in buffer, starting new transaction", con_id);
     new_transaction();
@@ -455,8 +456,11 @@ Http1ClientSession::release(ProxyClientTransaction *trans)
     ka_vio = this->do_io_read(this, INT64_MAX, read_buffer);
     ink_assert(slave_ka_vio != ka_vio);
 
-    client_vc->add_to_keep_alive_lru();
-    client_vc->cancel_active_timeout();
+    if(client_vc){
+        client_vc->add_to_keep_alive_lru();
+        client_vc->cancel_active_timeout();
+    }
+    trans->destroy();
   }
 }
 
