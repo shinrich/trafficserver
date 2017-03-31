@@ -79,7 +79,8 @@ verify_callback(int preverify_ok, X509_STORE_CTX *ctx)
     return preverify_ok;
   }
 
-  if (netvc) {
+  if (netvc != nullptr) {
+    netvc->callHooks(TS_EVENT_SSL_SERVER_VERIFY_HOOK);
     // Match SNI if present
     char *matched_name = nullptr;
     unsigned char *sni_name;

@@ -70,3 +70,6 @@ tr.Processes.Default.StartBefore(redirect_serv2)
 tr.Processes.Default.StartBefore(dest_serv)
 tr.Processes.Default.Streams.stdout = "gold/redirect_post.gold"
 tr.Processes.Default.ReturnCode = 0
+tr.StillRunningAfter = redirect_serv1
+tr.StillRunningAfter = redirect_serv2
+tr.StillRunningAfter = dest_serv
