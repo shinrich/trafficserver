@@ -269,9 +269,10 @@ public:
   inkcoreapi virtual int marshal_file_size(char *);              // INT
   inkcoreapi virtual int marshal_plugin_identity_id(char *);     // INT
   inkcoreapi virtual int marshal_plugin_identity_tag(char *);    // STR
+  
+  // These two are special, in that they are shared for all log types / implementations
+  inkcoreapi int marshal_entry_type(char *);                     // INT
   inkcoreapi virtual int marshal_cache_lookup_url_canon(char *); // STR
-  int marshal_entry_type(char *);                                // INT
-
 
   // named fields from within a http header
   //
