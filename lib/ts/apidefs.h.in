@@ -107,9 +107,9 @@ extern "C"
    */
   typedef struct
   {
-    char* plugin_name;
-    char* vendor_name;
-    char* support_email;
+    char const* plugin_name;
+    char const* vendor_name;
+    char const* support_email;
   } TSPluginRegistrationInfo;
 
   /**
@@ -263,7 +263,7 @@ extern "C"
       The two transform hooks can ONLY be added as transaction hooks.
 
       TS_VCONN_PRE_ACCEPT_HOOK - Called before the SSL hand
-      shake starts.  No handshake data has been read or sent (from the 
+      shake starts.  No handshake data has been read or sent (from the
       proxy) at this point
 
       TS_HTTP_LAST_HOOK _must_ be the last element. Only right place
@@ -354,7 +354,7 @@ extern "C"
       - TS_LIFECYCLE_PORTS_INITIALIZED_HOOK before TS_LIFECYCLE_PORTS_READY_HOOK.
 
       NOTE! ONLY the orderings EXPLICITLY mentioned above are guaranteed.
-      
+
    */
   typedef enum
   {

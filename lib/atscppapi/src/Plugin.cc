@@ -20,9 +20,21 @@
  * @file Plugin.cc
  */
 #include "atscppapi/Plugin.h"
+#include <ts/ts.h>
 
 const std::string atscppapi::HOOK_TYPE_STRINGS[] = {
   std::string("HOOK_READ_REQUEST_HEADERS_PRE_REMAP"), std::string("HOOK_READ_REQUEST_HEADERS_POST_REMAP"),
   std::string("HOOK_SEND_REQUEST_HEADERS"), std::string("HOOK_READ_RESPONSE_HEADERS"), std::string("HOOK_SEND_RESPONSE_HEADERS"),
   std::string("HOOK_OS_DNS"), std::string("HOOK_READ_REQUEST_HEADERS"), std::string("HOOK_READ_CACHE_HEADERS"),
   std::string("HOOK_CACHE_LOOKUP_COMPLETE"), std::string("HOOK_SELECT_ALT")};
+
+void
+atscppapi::RegisterGlobalPlugin(const char *name, const char *vendor, const char *email)
+{
+  TSPluginRegistrationInfo info;
+  info.plugin_name   = name;
+  info.vendor_name   = vendor;
+  info.support_email = email;
+  if (TSPluginRegister(TS_SDK_VERSION_3_0, &info) != TS_SUCCESS)
+    TSError("[Plugin.cc] Plugin registration failed.");
+}
