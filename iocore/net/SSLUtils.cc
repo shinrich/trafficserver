@@ -300,7 +300,7 @@ set_context_cert(SSL *ssl)
     netvc->getSSLHandShakeComplete());
   // set SSL trace (we do this a little later in the USE_TLS_SNI case so we can get the servername
   if(SSLConfigParams::ssl_wire_trace_enabled){
-    bool trace = netvc->computeSSLTrace();      
+    bool trace = netvc->computeSSLTrace();
     Debug("ssl", "sslnetvc. setting trace to=%s", trace ? "true" : "false");
     netvc->setSSLTrace(trace);
   }
@@ -392,7 +392,7 @@ ssl_cert_callback(SSL *ssl, void * /*arg*/)
   return retval;
 }
 
-/* 
+/*
  * Cannot stop this callback. Always reeneabled
  */
 static int
@@ -868,7 +868,7 @@ SSLInitializeLibrary()
 
 /* SSL_CheckThreadLockCallBack() - there is only one CRYPTO locking_callback() per
  * 	execution space and unfortunately, plugins and /or their dependencies
- * 	can mess with our setting and cause threading issues (crashing) down the line.  
+ * 	can mess with our setting and cause threading issues (crashing) down the line.
  * 	This lightweight mitigation routine, checks and resets if it's wrong.
  * 	It will flag warning, which should help us diagnose the evil deviant plugin.
  */
@@ -878,8 +878,8 @@ static int numTimesCalledBefore = 0;
 void *tmp;
 
 	if (numTimesCalledBefore > 100000)  {
-		/* Though this mitigation check is cheap,  We can probably stop checking 
- 		 * after we've been running for a little bit and execution paths have been 
+		/* Though this mitigation check is cheap,  We can probably stop checking
+ 		 * after we've been running for a little bit and execution paths have been
  		 * exercised.  As the whole point of this is mitigating for something that shouldn't
  		 * happen from plugins or their dependencies, we really don't know how long and
  		 * when to end, so we ball park this after a conservative 100,000 calls.
@@ -888,7 +888,7 @@ void *tmp;
 		return;
 	}
 	else numTimesCalledBefore++;
-	
+
 	if (((void *)SSL_locking_callback) !=  (tmp = (void *) CRYPTO_get_locking_callback())) {
     		Warning("CRYPTO locking_callback() changed. FIXING! bad callback address=0x%p, suppose to be 0x%p. May have misbehaving plugin\n",
 			tmp, SSL_locking_callback);
@@ -1281,12 +1281,12 @@ time_t currentTime;
 // SSLCheckServerCertNow() -  returns 0 on OK or negative value on failure
 // and update log as appropriate.
 // Will check:
-// - if file exists, and has read permissions 
-// - for truncation or other PEM read fail 
+// - if file exists, and has read permissions
+// - for truncation or other PEM read fail
 // - current time is between notBefore and notAfter dates of certificate
 // if anything is not kosher, a negative value is returned and appropriate error logged.
 
-    if ((!certFilename) || (!(*certFilename))) { 
+    if ((!certFilename) || (!(*certFilename))) {
         return -2;
     }
 
@@ -1305,14 +1305,14 @@ time_t currentTime;
     myCert = PEM_read_bio_X509(bioFP, NULL, 0, NULL);
     BIO_free(bioFP);
     if (! myCert) {
-        // a truncated certificate would fall into here 
+        // a truncated certificate would fall into here
         Error("Error during server certificate PEM read. Is this a PEM format certificate?: \"%s\"\n",certFilename);
         return -3;
     }
 
     time(&currentTime);
     if (!(timeCmpValue = X509_cmp_time(X509_get_notBefore(myCert), &currentTime))) {
-        // an error occured parsing the time, which we'll call a bogosity 
+        // an error occured parsing the time, which we'll call a bogosity
         Error("Error occured while parsing server certificate notBefore time.");
         return -3;
     } else if ( 0 < timeCmpValue) {
@@ -1322,7 +1322,7 @@ time_t currentTime;
     }
 
     if (!(timeCmpValue = X509_cmp_time(X509_get_notAfter(myCert), &currentTime))) {
-        // an error occured parsing the time, which we'll call a bogosity 
+        // an error occured parsing the time, which we'll call a bogosity
         Error("Error occured while parsing server certificate notAfter time.");
         return -3;
     } else if ( 0 > timeCmpValue) {
@@ -1332,7 +1332,7 @@ time_t currentTime;
     }
 
     Debug("ssl","Server certificate passed accessibility and date checks: \"%s\"",certFilename);
-    return 0; // all good 
+    return 0; // all good
 
 } /* CheckServerCertNow() */
 
@@ -1768,15 +1768,15 @@ ssl_store_ssl_context(const SSLConfigParams *params, SSLCertLookup *lookup, cons
 
   if(sslMultCertSettings.servername && sslMultCertSettings.client_certification_level!=-1) {
     serverMap[std::string(sslMultCertSettings.servername)]=sslMultCertSettings.client_certification_level;
-    Debug("ssl","added server name to map %s verificationlevel %d len %d",(char*)sslMultCertSettings.servername,sslMultCertSettings.client_certification_level,serverMap.size());
+    Debug("ssl","added server name to map %s verificationlevel %d len %" PRIu64,(char*)sslMultCertSettings.servername,sslMultCertSettings.client_certification_level,serverMap.size());
   }
 
   if (0 > SSLCheckServerCertNow((const char *) certpath)) {
-    /* At this point, we know cert is bad, and we've already printed a 
+    /* At this point, we know cert is bad, and we've already printed a
        descriptive reason as to why cert is bad to the log file */
-    Debug("ssl", "Marking certificate as NOT VALID: %s", 
+    Debug("ssl", "Marking certificate as NOT VALID: %s",
 		(certpath) ? (const char *)certpath : "(null)" );
-    lookup->is_valid = false; 
+    lookup->is_valid = false;
   }
 
   // Load the session ticket key if session tickets are not disabled and we have key name.
@@ -1982,7 +1982,7 @@ SSLParseCertificateConfiguration(const SSLConfigParams *params, SSLCertLookup *l
           ssl_store_ssl_context(params, lookup, sslMultiCertSettings);
         } else if(sslMultiCertSettings.servername && sslMultiCertSettings.client_certification_level!=-1) {
 
-            Debug("ssl","added server name to map %s verificationlevel %d len %d",(char*)sslMultiCertSettings.servername,sslMultiCertSettings.client_certification_level,serverMap.size());
+            Debug("ssl","added server name to map %s verificationlevel %d len %" PRIu64,(char*)sslMultiCertSettings.servername,sslMultiCertSettings.client_certification_level,serverMap.size());
             serverMap[std::string(sslMultiCertSettings.servername)]=sslMultiCertSettings.client_certification_level;
         }
       }

@@ -204,7 +204,7 @@ load_config_file(const char *config_file)
   char buffer[1024];
   std::string path;
   TSFile fh;
-  std::auto_ptr<pr_list> prl(new pr_list());
+  std::unique_ptr<pr_list> prl(new pr_list());
 
   /* locations in a config file line, end of line, split start, split end */
   char *eol, *spstart, *spend;

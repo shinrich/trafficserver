@@ -17,6 +17,7 @@
  */
 
 #include "sslheaders.h"
+#include "ts/ink_memory.h"
 #include <getopt.h>
 #include <openssl/ssl.h>
 #include <openssl/x509.h>
@@ -168,7 +169,7 @@ SslHdrParseOptions(int argc, const char **argv)
 {
   static const struct option longopt[] = {{const_cast<char *>("attach"), required_argument, 0, 'a'}, {0, 0, 0, 0}};
 
-  std::auto_ptr<SslHdrInstance> hdr(new SslHdrInstance());
+  ats_scoped_obj<SslHdrInstance> hdr(new SslHdrInstance());
 
   // We might parse arguments multiple times if we are loaded as a global
   // plugin and a remap plugin. Reset optind so that getopt_long() does the
