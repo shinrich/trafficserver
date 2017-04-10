@@ -56,21 +56,30 @@ verify_callback(int preverify_ok, X509_STORE_CTX *ctx)
   cert = X509_STORE_CTX_get_current_cert(ctx);
   err = X509_STORE_CTX_get_error(ctx);
 
-  if (!preverify_ok) {
-    // Don't bother to check the hostname if we failed openssl's verification
-    SSLDebug("verify error:num=%d:%s:depth=%d", err, X509_verify_cert_error_string(err), depth);
-    return preverify_ok;
-  }
-  if (depth != 0) {
-    // Not server cert....
-    return preverify_ok;
-  }
   /*
    * Retrieve the pointer to the SSL of the connection currently treated
    * and the application specific data stored into the SSL object.
    */
   ssl = static_cast<SSL *>(X509_STORE_CTX_get_ex_data(ctx, SSL_get_ex_data_X509_STORE_CTX_idx()));
   SSLNetVConnection *netvc = static_cast<SSLNetVConnection *>(SSL_get_ex_data(ssl, ssl_client_data_index));
+  if (!preverify_ok) {
+    // Don't bother to check the hostname if we failed openssl's verification
+    SSLDebug("verify error:num=%d:%s:depth=%d", err, X509_verify_cert_error_string(err), depth);
+    if(netvc && netvc->getClientVerifyEnable() == 2)
+    {
+        if(netvc->options.sni_servername)
+            SSLDebug("Hostname verification failed for (%s) but still continuing with the connection establishment", netvc->options.sni_servername.get());
+        else
+            SSLDebug("Server certificate verification failed but still continuing with the connection establishment");
+        return 1;
+    }
+    return preverify_ok;
+  }
+  if (depth != 0) {
+    // Not server cert....
+    return preverify_ok;
+  }
+
   if (netvc) {
     // Match SNI if present
     if (netvc->options.sni_servername) {
@@ -91,6 +100,11 @@ verify_callback(int preverify_ok, X509_STORE_CTX *ctx)
         return preverify_ok;
       }
       SSLDebug("IP verification failed for (%s)", buff);
+    }
+    if(netvc->getClientVerifyEnable() == 2)
+    {
+        SSLDebug("Server certificate verification failed but continuing with the connection establishment");
+        return preverify_ok;
     }
     return 0;
   }

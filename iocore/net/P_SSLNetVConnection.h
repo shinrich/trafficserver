@@ -232,13 +232,13 @@ public:
 
   bool computeSSLTrace();
 
-  bool
+  int
   getClientVerifyEnable() const
   {
     return clientVerifyEnable;
   }
   void
-  setClientVerifyEnable(bool enable)
+  setClientVerifyEnable(int enable)
   {
     clientVerifyEnable = enable;
   }
@@ -280,7 +280,7 @@ private:
   int handShakeBioStored;
 
   bool transparentPassThrough;
-  bool clientVerifyEnable;
+  int clientVerifyEnable;
   /// The current hook.
   /// @note For @C SSL_HOOKS_INVOKE, this is the hook to invoke.
   class APIHook *curHook;
