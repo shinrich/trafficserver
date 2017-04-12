@@ -118,6 +118,20 @@ public:
   // Indicate we are done with a transaction
   virtual void release(ProxyClientTransaction *trans) = 0;
 
+  virtual int
+  populate_protocol(ts::StringView *result, int size) const
+  {
+    auto vc = this->get_netvc();
+    return vc ? vc->populate_protocol(result, size) : 0;
+  }
+
+  virtual const char *
+  protocol_contains(ts::StringView tag_prefix) const
+  {
+    auto vc = this->get_netvc();
+    return vc ? vc->protocol_contains(tag_prefix) : nullptr;
+  }
+
   /// acl record - cache IpAllow::match() call
   const AclRecord *acl_record;
 

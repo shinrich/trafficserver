@@ -63,6 +63,10 @@
 #include "I_RecCore.h"
 #include "HttpProxyServerMain.h"
 #include "P_SSLNextProtocolSet.h"
+#include <ts/MemView.h>
+
+#include "api/ts/ts.h"
+
 /****************************************************************
  *  IMPORTANT - READ ME
  * Any plugin using the IO Core must enter
@@ -8923,4 +8927,65 @@ tsapi uint64_t TSHttpTxnIdGet(TSHttpTxn txnp)
   HttpSM *sm = (HttpSM *)txnp;
 
   return (uint64_t)sm->sm_id;
+}
+
+// Return information about the protocols used by the client
+TSReturnCode
+TSHttpTxnClientProtocolStackGet(TSHttpTxn txnp, int n, const char **result, int *actual)
+{
+  sdk_assert(sdk_sanity_check_txn(txnp) == TS_SUCCESS);
+  sdk_assert(n == 0 || result != nullptr);
+  HttpSM *sm = reinterpret_cast<HttpSM *>(txnp);
+  int count  = 0;
+  if (sm && n > 0) {
+    auto mem = static_cast<ts::StringView *>(alloca(sizeof(ts::StringView) * n));
+    count    = sm->populate_client_protocol(mem, n);
+    for (int i  = 0; i < count; ++i)
+      result[i] = mem[i].ptr();
+  }
+  if (actual) {
+    *actual = count;
+  }
+  return TS_SUCCESS;
+}
+
+TSReturnCode
+TSHttpSsnClientProtocolStackGet(TSHttpSsn ssnp, int n, const char **result, int *actual)
+{
+  sdk_assert(sdk_sanity_check_http_ssn(ssnp) == TS_SUCCESS);
+  sdk_assert(n == 0 || result != nullptr);
+  ProxyClientSession *cs = reinterpret_cast<ProxyClientSession *>(ssnp);
+  int count              = 0;
+  if (cs && n > 0) {
+    auto mem = static_cast<ts::StringView *>(alloca(sizeof(ts::StringView) * n));
+    count    = cs->populate_protocol(mem, n);
+    for (int i  = 0; i < count; ++i)
+      result[i] = mem[i].ptr();
+  }
+  if (actual) {
+    *actual = count;
+  }
+  return TS_SUCCESS;
+}
+
+const char *
+TSHttpTxnClientProtocolStackContains(TSHttpTxn txnp, const char *tag)
+{
+  sdk_assert(sdk_sanity_check_txn(txnp) == TS_SUCCESS);
+  HttpSM *sm = (HttpSM *)txnp;
+  return sm->client_protocol_contains(ts::StringView(tag));
+}
+
+const char *
+TSHttpSsnClientProtocolStackContains(TSHttpSsn ssnp, const char *tag)
+{
+  sdk_assert(sdk_sanity_check_http_ssn(ssnp) == TS_SUCCESS);
+  ProxyClientSession *cs = reinterpret_cast<ProxyClientSession *>(ssnp);
+  return cs->protocol_contains(ts::StringView(tag));
+}
+
+const char *
+TSRegisterProtocolTag(const char *tag)
+{
+  return nullptr;
 }

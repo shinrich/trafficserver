@@ -25,7 +25,9 @@
 #include <records/I_RecHttp.h>
 #include <ts/ink_defs.h>
 #include <ts/Tokenizer.h>
+#include <ts/MemView.h>
 #include <strings.h>
+#include <ts/ink_inet.h>
 
 SessionProtocolNameRegistry globalSessionProtocolNameRegistry;
 
@@ -33,33 +35,23 @@ SessionProtocolNameRegistry globalSessionProtocolNameRegistry;
    These are also used for NPN setup.
 */
 
-const char *const TS_NPN_PROTOCOL_HTTP_0_9 = "http/0.9";
-const char *const TS_NPN_PROTOCOL_HTTP_1_0 = "http/1.0";
-const char *const TS_NPN_PROTOCOL_HTTP_1_1 = "http/1.1";
+const char *const TS_NPN_PROTOCOL_HTTP_0_9 = IP_PROTO_TAG_HTTP_0_9.ptr();
+const char *const TS_NPN_PROTOCOL_HTTP_1_0 = IP_PROTO_TAG_HTTP_1_0.ptr();
+const char *const TS_NPN_PROTOCOL_HTTP_1_1 = IP_PROTO_TAG_HTTP_1_1.ptr();
 const char *const TS_NPN_PROTOCOL_HTTP_2_0_14 = "h2-14"; // Last H2 interrop draft. TODO: Should be removed later
-const char *const TS_NPN_PROTOCOL_HTTP_2_0 = "h2";       // HTTP/2 over TLS
-const char *const TS_NPN_PROTOCOL_SPDY_1 = "spdy/1";     // obsolete
-const char *const TS_NPN_PROTOCOL_SPDY_2 = "spdy/2";
-const char *const TS_NPN_PROTOCOL_SPDY_3 = "spdy/3";
-const char *const TS_NPN_PROTOCOL_SPDY_3_1 = "spdy/3.1";
+const char *const TS_NPN_PROTOCOL_HTTP_2_0 = IP_PROTO_TAG_HTTP_2_0.ptr();
 
 const char *const TS_NPN_PROTOCOL_GROUP_HTTP = "http";
 const char *const TS_NPN_PROTOCOL_GROUP_HTTP2 = "http2";
-const char *const TS_NPN_PROTOCOL_GROUP_SPDY = "spdy";
 
 // Precomputed indices for ease of use.
 int TS_NPN_PROTOCOL_INDEX_HTTP_0_9 = SessionProtocolNameRegistry::INVALID;
 int TS_NPN_PROTOCOL_INDEX_HTTP_1_0 = SessionProtocolNameRegistry::INVALID;
 int TS_NPN_PROTOCOL_INDEX_HTTP_1_1 = SessionProtocolNameRegistry::INVALID;
 int TS_NPN_PROTOCOL_INDEX_HTTP_2_0 = SessionProtocolNameRegistry::INVALID;
-int TS_NPN_PROTOCOL_INDEX_SPDY_1 = SessionProtocolNameRegistry::INVALID;
-int TS_NPN_PROTOCOL_INDEX_SPDY_2 = SessionProtocolNameRegistry::INVALID;
-int TS_NPN_PROTOCOL_INDEX_SPDY_3 = SessionProtocolNameRegistry::INVALID;
-int TS_NPN_PROTOCOL_INDEX_SPDY_3_1 = SessionProtocolNameRegistry::INVALID;
 
 // Predefined protocol sets for ease of use.
 SessionProtocolSet HTTP_PROTOCOL_SET;
-SessionProtocolSet SPDY_PROTOCOL_SET;
 SessionProtocolSet HTTP2_PROTOCOL_SET;
 SessionProtocolSet DEFAULT_NON_TLS_SESSION_PROTOCOL_SET;
 SessionProtocolSet DEFAULT_TLS_SESSION_PROTOCOL_SET;
@@ -360,7 +352,7 @@ HttpProxyPort::processOptions(char const *opts)
       this->processSessionProtocolPreference(value);
       sp_set_p = true;
     } else {
-      Warning("Invalid option '%s' in proxy port configuration '%s'", item, opts);
+      Warning("Invalid option '%s' in proxy port descriptor '%s'", item, opts);
     }
   }
 
@@ -368,9 +360,11 @@ HttpProxyPort::processOptions(char const *opts)
 
   if (af_set_p) {
     if (in_ip_set_p && m_family != m_inbound_ip.family()) {
-      Warning(
-        "Invalid port descriptor '%s' - the inbound adddress family [%s] is not the same type as the explicit family value [%s]",
-        opts, ats_ip_family_name(m_inbound_ip.family()), ats_ip_family_name(m_family));
+      ts::StringView iname{ats_ip_family_name(m_inbound_ip.family())};
+      ts::StringView fname{ats_ip_family_name(m_family)};
+      Warning("Invalid port descriptor '%s' - the inbound adddress family [%.*s] is not the same type as the explicit family value "
+              "[%.*s]",
+              opts, static_cast<int>(iname.size()), iname.ptr(), static_cast<int>(fname.size()), fname.ptr());
       zret = false;
     }
   } else if (in_ip_set_p) {
@@ -429,8 +423,6 @@ SessionProtocolNameRegistry::markIn(char const *value, SessionProtocolSet &sp_se
     /// Check special cases
     if (0 == strcasecmp(elt, TS_NPN_PROTOCOL_GROUP_HTTP)) {
       sp_set.markIn(HTTP_PROTOCOL_SET);
-    } else if (0 == strcasecmp(elt, TS_NPN_PROTOCOL_GROUP_SPDY)) {
-      sp_set.markIn(SPDY_PROTOCOL_SET);
     } else if (0 == strcasecmp(elt, TS_NPN_PROTOCOL_GROUP_HTTP2)) {
       sp_set.markIn(HTTP2_PROTOCOL_SET);
     } else { // user defined - register and mark.
@@ -544,15 +536,6 @@ HttpProxyPort::print(char *out, size_t n)
     sp_set.markOut(HTTP_PROTOCOL_SET);
     need_colon_p = false;
   }
-  if (sp_set.contains(SPDY_PROTOCOL_SET)) {
-    if (need_colon_p)
-      zret += snprintf(out + zret, n - zret, ":%s=", OPT_PROTO_PREFIX);
-    else
-      out[zret++] = ';';
-    zret += snprintf(out + zret, n - zret, TS_NPN_PROTOCOL_GROUP_SPDY);
-    sp_set.markOut(SPDY_PROTOCOL_SET);
-    need_colon_p = false;
-  }
   if (sp_set.contains(HTTP2_PROTOCOL_SET)) {
     if (need_colon_p)
       zret += snprintf(out + zret, n - zret, ":%s=", OPT_PROTO_PREFIX);
@@ -600,18 +583,12 @@ ts_session_protocol_well_known_name_indices_init()
   TS_NPN_PROTOCOL_INDEX_HTTP_1_0 = globalSessionProtocolNameRegistry.toIndexConst(TS_NPN_PROTOCOL_HTTP_1_0);
   TS_NPN_PROTOCOL_INDEX_HTTP_1_1 = globalSessionProtocolNameRegistry.toIndexConst(TS_NPN_PROTOCOL_HTTP_1_1);
   TS_NPN_PROTOCOL_INDEX_HTTP_2_0 = globalSessionProtocolNameRegistry.toIndexConst(TS_NPN_PROTOCOL_HTTP_2_0);
-  TS_NPN_PROTOCOL_INDEX_SPDY_1 = globalSessionProtocolNameRegistry.toIndexConst(TS_NPN_PROTOCOL_SPDY_1);
-  TS_NPN_PROTOCOL_INDEX_SPDY_2 = globalSessionProtocolNameRegistry.toIndexConst(TS_NPN_PROTOCOL_SPDY_2);
-  TS_NPN_PROTOCOL_INDEX_SPDY_3 = globalSessionProtocolNameRegistry.toIndexConst(TS_NPN_PROTOCOL_SPDY_3);
-  TS_NPN_PROTOCOL_INDEX_SPDY_3_1 = globalSessionProtocolNameRegistry.toIndexConst(TS_NPN_PROTOCOL_SPDY_3_1);
 
   // Now do the predefined protocol sets.
   HTTP_PROTOCOL_SET.markIn(TS_NPN_PROTOCOL_INDEX_HTTP_0_9);
   HTTP_PROTOCOL_SET.markIn(TS_NPN_PROTOCOL_INDEX_HTTP_1_0);
   HTTP_PROTOCOL_SET.markIn(TS_NPN_PROTOCOL_INDEX_HTTP_1_1);
   HTTP2_PROTOCOL_SET.markIn(TS_NPN_PROTOCOL_INDEX_HTTP_2_0);
-  SPDY_PROTOCOL_SET.markIn(TS_NPN_PROTOCOL_INDEX_SPDY_3);
-  SPDY_PROTOCOL_SET.markIn(TS_NPN_PROTOCOL_INDEX_SPDY_3_1);
 
   DEFAULT_TLS_SESSION_PROTOCOL_SET.markAllIn();
 

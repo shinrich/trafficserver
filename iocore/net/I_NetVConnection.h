@@ -32,6 +32,7 @@
 #include "I_IOBuffer.h"
 #include "I_Socks.h"
 #include <ts/apidefs.h>
+#include <ts/MemView.h>
 
 #define CONNECT_SUCCESS 1
 #define CONNECT_FAILURE 0
@@ -204,6 +205,10 @@ struct NetVCOptions {
     }
     return *this;
   }
+
+  ts::StringView get_family_string() const;
+
+  ts::StringView get_proto_string() const;
 
   /// @name Debugging
   //@{
@@ -567,6 +572,18 @@ public:
   set_is_transparent(bool state = true)
   {
     is_transparent = state;
+  }
+
+  virtual int
+  populate_protocol(ts::StringView *results, int n) const
+  {
+    return 0;
+  }
+
+  virtual const char *
+  protocol_contains(ts::StringView prefix) const
+  {
+    return nullptr;
   }
 
 private:

@@ -36,7 +36,8 @@
 #include "P_EventSystem.h"
 #include "P_UnixNetVConnection.h"
 #include "P_UnixNet.h"
-#include "apidefs.h"
+#include "ts/apidefs.h"
+#include <ts/MemView.h>
 
 #include <openssl/ssl.h>
 #include <openssl/err.h>
@@ -79,16 +80,18 @@ class SSLNetVConnection : public UnixNetVConnection
 {
   typedef UnixNetVConnection super; ///< Parent type.
 public:
-  virtual int sslStartHandShake(int event, int &err);
-  virtual void free(EThread *t);
+  int sslStartHandShake(int event, int &err) override;
+  void free(EThread *t) override;
+
   virtual void
   enableRead()
   {
     read.enabled = 1;
     write.enabled = 1;
-  };
-  virtual bool
-  getSSLHandShakeComplete()
+  }
+
+  bool
+  getSSLHandShakeComplete() const override
   {
     return sslHandShakeComplete;
   };
@@ -119,8 +122,10 @@ public:
   };
   int sslServerHandShakeEvent(int &err);
   int sslClientHandShakeEvent(int &err);
-  virtual void net_read_io(NetHandler *nh, EThread *lthread);
-  virtual int64_t load_buffer_and_write(int64_t towrite, MIOBufferAccessor &buf, int64_t &total_written, int &needs);
+  void net_read_io(NetHandler *nh, EThread *lthread) override;
+  int64_t load_buffer_and_write(int64_t towrite, MIOBufferAccessor &buf, int64_t &total_written, int &needs) override;
+  void registerNextProtocolSet(const SSLNextProtocolSet *);
+  void do_io_close(int lerrno = -1) override;
   /// Set the next protocol set, which includes the protocol tags and associated accept objects.
   /// @note This must be called only once and before any other access to the NPN set.
   void setNextProtocolSet(const SSLNextProtocolSet *);
@@ -128,7 +133,6 @@ public:
   /// This can be called multiple times.
   void resetNextProtocolSet(const SSLNextProtocolSet *);
 
-  virtual void do_io_close(int lerrno = -1);
 
   ////////////////////////////////////////////////////////////
   // Instances of NetVConnection should be allocated        //
@@ -243,12 +247,15 @@ public:
     clientVerifyEnable = enable;
   }
 
+  int populate_protocol(ts::StringView *results, int n) const override;
+  const char *protocol_contains(ts::StringView tag) const override;
+
   /**
    * Populate the current object based on the socket information in in the
    * con parameter and the ssl object in the arg parameter
    * This is logic is invoked when the NetVC object is created in a new thread context
    */
-  virtual int populate(Connection &con, Continuation *c, void *arg);
+  int populate(Connection &con, Continuation *c, void *arg) override;
 
   const char *
   getSSLProtocol(void) const
@@ -269,6 +276,8 @@ public:
 private:
   SSLNetVConnection(const SSLNetVConnection &);
   SSLNetVConnection &operator=(const SSLNetVConnection &);
+
+  ts::StringView map_tls_protocol_to_tag(const char *proto_string) const;
 
   bool sslHandShakeComplete;
   bool sslClientConnection;

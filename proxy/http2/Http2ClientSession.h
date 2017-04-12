@@ -28,6 +28,8 @@
 #include "Plugin.h"
 #include "ProxyClientSession.h"
 #include "Http2ConnectionState.h"
+#include <ts/MemView.h>
+#include <ts/ink_inet.h>
 
 // Name                       Edata                 Description
 // HTTP2_SESSION_EVENT_INIT   Http2ClientSession *  HTTP/2 session is born
@@ -148,49 +150,51 @@ class Http2ClientSession : public ProxyClientSession, public PluginIdentity
 {
 public:
   typedef ProxyClientSession super; ///< Parent type.
-  Http2ClientSession();
-
   typedef int (Http2ClientSession::*SessionHandler)(int, void *);
 
+  Http2ClientSession();
+
   // Implement ProxyClientSession interface.
-  void start();
-  virtual void destroy();
-  virtual void free();
-  void new_connection(NetVConnection *new_vc, MIOBuffer *iobuf, IOBufferReader *reader, bool backdoor);
+  void start() override;
+  void destroy() override;
+  void free() override;
+  void new_connection(NetVConnection *new_vc, MIOBuffer *iobuf, IOBufferReader *reader, bool backdoor) override;
 
   // Implement VConnection interface.
-  VIO *do_io_read(Continuation *c, int64_t nbytes = INT64_MAX, MIOBuffer *buf = 0);
-  VIO *do_io_write(Continuation *c = NULL, int64_t nbytes = INT64_MAX, IOBufferReader *buf = 0, bool owner = false);
-  void do_io_close(int lerrno = -1);
-  void do_io_shutdown(ShutdownHowTo_t howto);
-  void reenable(VIO *vio);
-  virtual NetVConnection *
-  get_netvc() const
+  VIO *do_io_read(Continuation *c, int64_t nbytes = INT64_MAX, MIOBuffer *buf = 0) override;
+  VIO *do_io_write(Continuation *c = NULL, int64_t nbytes = INT64_MAX, IOBufferReader *buf = 0, bool owner = false) override;
+  void do_io_close(int lerrno = -1) override;
+  void do_io_shutdown(ShutdownHowTo_t howto) override;
+  void reenable(VIO *vio) override;
+
+  NetVConnection *
+  get_netvc() const override
   {
     return client_vc;
-  };
-  virtual void
-  release_netvc()
+  }
+
+  void
+  release_netvc() override
   {
     // Make sure the vio's are also released to avoid
     // later surprises in inactivity timeout
     if (client_vc) {
       client_vc->set_inactivity_timeout(0);
       client_vc->set_active_timeout(0);
-      client_vc->do_io_read(NULL, 0, NULL); 
-      client_vc->do_io_write(NULL, 0, NULL); 
+      client_vc->do_io_read(NULL, 0, NULL);
+      client_vc->do_io_write(NULL, 0, NULL);
       client_vc->set_action(NULL);
    }
   }
 
   sockaddr const *
-  get_client_addr()
+  get_client_addr() override
   {
     return client_vc ? client_vc->get_remote_addr() : &cached_client_addr.sa;
   }
 
   sockaddr const *
-  get_local_addr()
+  get_local_addr() override
   {
     return client_vc ? client_vc->get_local_addr() : &cached_local_addr.sa;
   }
@@ -211,12 +215,15 @@ public:
   virtual char const* getPluginTag() const;
   virtual int64_t getPluginId() const;
 
-  virtual int get_transact_count() const
+  int
+  get_transact_count() const override
   {
     return connection_state.get_stream_requests();
   }
-  virtual void release(ProxyClientTransaction *trans)
-  { 
+
+  void
+  release(ProxyClientTransaction *trans) override
+  {
   }
 
   Http2ConnectionState connection_state;
@@ -224,11 +231,32 @@ public:
   int get_dying_event() const { return dying_event; }
   bool ready_to_free() const { return kill_me; }
   bool is_recursing() const { return recursion > 0; }
+  bool is_client_closed() { return client_vc == nullptr; }
 
-  bool
-  is_client_closed()
+  virtual int
+  populate_protocol(ts::StringView *result, int size) const override
   {
-    return client_vc == NULL;
+    int retval = 0;
+    if (size > retval) {
+      result[retval++] = IP_PROTO_TAG_HTTP_2_0;
+      if (size > retval) {
+        retval += super::populate_protocol(result + retval, size - retval);
+      }
+    }
+    return retval;
+  }
+
+  virtual const char *
+  protocol_contains(ts::StringView prefix) const override
+  {
+    const char *retval = nullptr;
+
+    if (prefix.size() <= IP_PROTO_TAG_HTTP_2_0.size() && strncmp(IP_PROTO_TAG_HTTP_2_0.ptr(), prefix.ptr(), prefix.size()) == 0) {
+      retval = IP_PROTO_TAG_HTTP_2_0.ptr();
+    } else {
+      retval = super::protocol_contains(prefix);
+    }
+    return retval;
   }
 
 private:

@@ -42,6 +42,7 @@
 #include "StatSystem.h"
 #include "HdrUtils.h"
 #include "../ProxyClientTransaction.h"
+#include <ts/MemView.h>
 
 //#include "AuthHttpAdapter.h"
 
@@ -267,6 +268,13 @@ public:
   void add_cache_sm();
   bool is_private();
   bool is_redirect_required();
+
+  /// Get the protocol stack for the inbound (client, user agent) connection.
+  /// @arg result [out] Array to store the results
+  /// @arg n [in] Size of the array @a result.
+  int populate_client_protocol(ts::StringView *result, int n) const;
+  const char *client_protocol_contains(ts::StringView tag_prefix) const;
+  ts::StringView find_proto_string(HTTPVersion version) const;
 
   int64_t sm_id;
   unsigned int magic;

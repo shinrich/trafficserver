@@ -48,6 +48,8 @@
 //#include "HttpAuthParams.h"
 #include "congest/Congestion.h"
 
+using ts::StringView;
+
 #define DEFAULT_RESPONSE_BUFFER_SIZE_INDEX 6 // 8K
 #define DEFAULT_REQUEST_BUFFER_SIZE_INDEX 6  // 8K
 #define MIN_CONFIG_BUFFER_SIZE_INDEX 5       // 4K
@@ -4711,7 +4713,7 @@ void
 HttpSM::do_http_server_open(bool raw)
 {
   int ip_family = t_state.current.server->dst_addr.sa.sa_family;
-  DebugSM("http_track", "entered inside do_http_server_open ][%s]", ats_ip_family_name(ip_family));
+  DebugSM("http_track", "entered inside do_http_server_open ][%s]", ats_ip_family_name(ip_family).ptr());
 
   // Make sure we are on the "right" thread
   if (ua_session) {
@@ -8017,4 +8019,49 @@ HttpSM::is_redirect_required()
     }
   }
   return redirect_required;
+}
+
+// Fill in the client protocols used.  Return the number of entries returned
+int
+HttpSM::populate_client_protocol(ts::StringView *result, int n) const
+{
+  int retval = 0;
+  if (n > 0) {
+    StringView proto = HttpSM::find_proto_string(t_state.hdr_info.client_request.version_get());
+    if (proto) {
+      result[retval++] = proto;
+      if (n > retval && ua_session) {
+        retval += ua_session->populate_protocol(result + retval, n - retval);
+      }
+    }
+  }
+  return retval;
+}
+
+// Look for a specific protocol
+const char *
+HttpSM::client_protocol_contains(StringView tag_prefix) const
+{
+  const char *retval = nullptr;
+  StringView proto   = HttpSM::find_proto_string(t_state.hdr_info.client_request.version_get());
+  if (proto) {
+    StringView prefix(tag_prefix);
+    if (prefix.size() <= proto.size() && 0 == strncmp(proto.ptr(), prefix.ptr(), prefix.size())) {
+      retval = proto.ptr();
+    } else if (ua_session) {
+      retval = ua_session->protocol_contains(prefix);
+    }
+  }
+  return retval;
+}
+
+StringView
+HttpSM::find_proto_string(HTTPVersion version) const
+{
+  if (version == HTTPVersion(1, 1)) {
+    return IP_PROTO_TAG_HTTP_1_1;
+  } else if (version == HTTPVersion(1, 0)) {
+    return IP_PROTO_TAG_HTTP_1_0;
+  }
+  return nullptr;
 }

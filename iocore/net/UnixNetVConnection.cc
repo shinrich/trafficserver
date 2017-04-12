@@ -259,7 +259,7 @@ read_from_net(NetHandler *nh, UnixNetVConnection *vc, EThread *thread)
     read_reschedule(nh, vc);
     return;
   }
- 
+
   // It is possible that the closed flag got set from HttpSessionManager in the
   // global session pool case.  If so, the closed flag should be stable once we get the
   // s->vio.mutex (the global session pool mutex).
@@ -320,14 +320,14 @@ read_from_net(NetHandler *nh, UnixNetVConnection *vc, EThread *thread)
 
       if (vc->origin_trace) {
         char origin_trace_ip[INET6_ADDRSTRLEN];
-        
+
         ats_ip_ntop(vc->origin_trace_addr, origin_trace_ip, sizeof (origin_trace_ip));
 
         if (r > 0) {
           TraceIn((vc->origin_trace), vc->get_remote_addr(), vc->get_remote_port(),
                   "CLIENT %s:%d\tbytes=%d\n%.*s", origin_trace_ip, vc->origin_trace_port, (int)r,
                   (int)r, (char *)tiovec[0].iov_base);
-        
+
         } else if (r == 0) {
           TraceIn((vc->origin_trace), vc->get_remote_addr(), vc->get_remote_port(),
                   "CLIENT %s:%d closed connection", origin_trace_ip, vc->origin_trace_port);
@@ -337,7 +337,7 @@ read_from_net(NetHandler *nh, UnixNetVConnection *vc, EThread *thread)
         }
 
       }
-      
+
       total_read += rattempted;
     } while (rattempted && r == rattempted && total_read < toread);
 
@@ -584,7 +584,7 @@ write_to_net_io(NetHandler *nh, UnixNetVConnection *vc, EThread *thread)
     }
     if ((needs & EVENTIO_READ) == EVENTIO_READ) {
       read_reschedule(nh, vc);
-    } 
+    }
     return;
   }
 }
@@ -932,7 +932,7 @@ UnixNetVConnection::load_buffer_and_write(int64_t towrite, MIOBufferAccessor &bu
       int64_t l = tmp_reader->block_read_avail();
       if (l <= 0) break;
       char *current_block = tmp_reader->start();
-      
+
       // check if to amount to write exceeds that in this buffer
       int64_t wavail = towrite - total_written;
       if (l > wavail)
@@ -947,12 +947,12 @@ UnixNetVConnection::load_buffer_and_write(int64_t towrite, MIOBufferAccessor &bu
       tmp_reader->consume(l);
       // on to the next block
     }
-    
+
     if (niov == 1)
       r = socketManager.write(con.fd, tiovec[0].iov_base, tiovec[0].iov_len);
     else
       r = socketManager.writev(con.fd, &tiovec[0], niov);
-    
+
     if (origin_trace) {
       char origin_trace_ip[INET6_ADDRSTRLEN];
       ats_ip_ntop(origin_trace_addr, origin_trace_ip, sizeof (origin_trace_ip));
@@ -961,7 +961,7 @@ UnixNetVConnection::load_buffer_and_write(int64_t towrite, MIOBufferAccessor &bu
         TraceOut(origin_trace, get_remote_addr(), get_remote_port(),
             "CLIENT %s:%d\tbytes=%d\n%.*s", origin_trace_ip, origin_trace_port, (int)r,
             (int)r, (char *)tiovec[0].iov_base);
-        
+
       } else if (r == 0) {
         TraceOut(origin_trace, get_remote_addr(), get_remote_port(),
             "CLIENT %s:%d closed connection", origin_trace_ip, origin_trace_port);
@@ -982,7 +982,7 @@ UnixNetVConnection::load_buffer_and_write(int64_t towrite, MIOBufferAccessor &bu
 
   tmp_reader->dealloc();
 
-    
+
   needs |= EVENTIO_WRITE;
 
   return r;
@@ -1174,7 +1174,7 @@ UnixNetVConnection::mainEvent(int event, Event *e)
 }
 
 int
-UnixNetVConnection::populate(Connection &con_in, Continuation *c, void *arg) 
+UnixNetVConnection::populate(Connection &con_in, Continuation *c, void *arg)
 {
   this->con.move(con_in);
   this->mutex = c->mutex;
@@ -1360,12 +1360,12 @@ UnixNetVConnection::migrateToCurrentThread(Continuation *cont, EThread *t)
   // Go ahead and remove the fd from the original thread's epoll structure, so it is not
   // processed on two threads simultaneously
   this->ep.stop();
-  this->do_io_close(); 
+  this->do_io_close();
 
   // The do_io_close will decrement the current stat count, but we are creating a new
   // vc, so increment, so the current count is net unchanged
   NET_SUM_GLOBAL_DYN_STAT(net_connections_currently_open_stat, 1);
-  
+
   // Create new VC:
   NetVConnection *new_vc = NULL;
   if (save_ssl) {
@@ -1386,4 +1386,32 @@ UnixNetVConnection::migrateToCurrentThread(Continuation *cont, EThread *t)
     }
     return netvc;
   }
+}
+
+int
+UnixNetVConnection::populate_protocol(ts::StringView *results, int n) const
+{
+  int retval = 0;
+  if (n > retval) {
+    if (!(results[retval] = options.get_proto_string()).isEmpty())
+      ++retval;
+    if (n > retval) {
+      if (!(results[retval] = options.get_family_string()).isEmpty())
+        ++retval;
+    }
+  }
+  return retval;
+}
+
+const char *
+UnixNetVConnection::protocol_contains(ts::StringView tag) const
+{
+  ts::StringView retval = options.get_proto_string();
+  if (!tag.isNoCasePrefixOf(retval)) { // didn't match IP level, check TCP level
+    retval = options.get_family_string();
+    if (!tag.isNoCasePrefixOf(retval)) { // no match here either, return empty.
+      retval.clear();
+    }
+  }
+  return retval.ptr();
 }

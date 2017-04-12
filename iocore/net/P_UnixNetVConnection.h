@@ -101,13 +101,13 @@ struct OOB_callback : public Continuation {
 class UnixNetVConnection : public NetVConnection
 {
 public:
-  virtual VIO *do_io_read(Continuation *c, int64_t nbytes, MIOBuffer *buf);
-  virtual VIO *do_io_write(Continuation *c, int64_t nbytes, IOBufferReader *buf, bool owner = false);
+  VIO *do_io_read(Continuation *c, int64_t nbytes, MIOBuffer *buf) override;
+  VIO *do_io_write(Continuation *c, int64_t nbytes, IOBufferReader *buf, bool owner = false) override;
 
-  virtual bool get_data(int id, void *data);
+  bool get_data(int id, void *data) override;
 
-  virtual Action *send_OOB(Continuation *cont, char *buf, int len);
-  virtual void cancel_OOB();
+  Action *send_OOB(Continuation *cont, char *buf, int len) override;
+  void cancel_OOB() override;
 
   virtual void
   setSSLHandshakeWantsRead(bool /* flag */)
@@ -131,8 +131,8 @@ public:
     return false;
   }
 
-  virtual void do_io_close(int lerrno = -1);
-  virtual void do_io_shutdown(ShutdownHowTo_t howto);
+  void do_io_close(int lerrno = -1) override;
+  void do_io_shutdown(ShutdownHowTo_t howto) override;
 
   ////////////////////////////////////////////////////////////
   // Set the timeouts associated with this connection.      //
@@ -146,19 +146,19 @@ public:
   // called when handing an  event from this NetVConnection,//
   // or the NetVConnection creation callback.               //
   ////////////////////////////////////////////////////////////
-  virtual void set_active_timeout(ink_hrtime timeout_in);
-  virtual void set_inactivity_timeout(ink_hrtime timeout_in);
-  virtual void cancel_active_timeout();
-  virtual void cancel_inactivity_timeout();
-  virtual void set_action(Continuation* c);
-  virtual void add_to_keep_alive_lru();
-  virtual void remove_from_keep_alive_lru();
+  void set_active_timeout(ink_hrtime timeout_in) override;
+  void set_inactivity_timeout(ink_hrtime timeout_in) override;
+  void cancel_active_timeout() override;
+  void cancel_inactivity_timeout() override;
+  void set_action(Continuation *c) override;
+  void add_to_keep_alive_lru() override;
+  void remove_from_keep_alive_lru() override;
 
   // The public interface is VIO::reenable()
-  virtual void reenable(VIO *vio);
-  virtual void reenable_re(VIO *vio);
+  void reenable(VIO *vio) override;
+  void reenable_re(VIO *vio) override;
 
-  virtual SOCKET get_socket();
+  SOCKET get_socket() override;
 
   virtual ~UnixNetVConnection();
 
@@ -168,6 +168,9 @@ public:
   // The constructor is public just to avoid compile errors.      //
   /////////////////////////////////////////////////////////////////
   UnixNetVConnection();
+
+  int populate_protocol(ts::StringView *results, int n) const override;
+  const char *protocol_contains(ts::StringView tag) const override;
 
 private:
   UnixNetVConnection(const NetVConnection &);
@@ -192,7 +195,7 @@ public:
     return EVENT_ERROR;
   }
   virtual bool
-  getSSLHandShakeComplete()
+  getSSLHandShakeComplete() const
   {
     return (true);
   }
@@ -216,9 +219,9 @@ public:
   void writeReschedule(NetHandler *nh);
   void netActivity(EThread *lthread);
   /**
-   * If the current object's thread does not match the t argument, create a new 
+   * If the current object's thread does not match the t argument, create a new
    * NetVC in the thread t context based on the socket and ssl information in the
-   * current NetVC and mark the current NetVC to be closed.  
+   * current NetVC and mark the current NetVC to be closed.
    */
   UnixNetVConnection *migrateToCurrentThread(Continuation *c, EThread *t);
 
@@ -264,7 +267,7 @@ public:
   ink_hrtime submit_time;
   OOB_callback *oob_ptr;
   bool from_accept_thread;
-  
+
   // es - origin_trace associated connections
   bool origin_trace;
   const sockaddr *origin_trace_addr;
@@ -275,23 +278,23 @@ public:
   int mainEvent(int event, Event *e);
   virtual int connectUp(EThread *t, int fd);
   /**
-   * Populate the current object based on the socket information in in the 
+   * Populate the current object based on the socket information in in the
    * con parameter.
    * This is logic is invoked when the NetVC object is created in a new thread context
    */
   virtual int populate(Connection &con, Continuation *c, void *arg);
   virtual void free(EThread *t);
 
-  virtual ink_hrtime get_inactivity_timeout();
-  virtual ink_hrtime get_active_timeout();
+  ink_hrtime get_inactivity_timeout() override;
+  ink_hrtime get_active_timeout() override;
 
-  virtual void set_local_addr();
-  virtual void set_remote_addr();
-  virtual int set_tcp_init_cwnd(int init_cwnd);
-  virtual void apply_options();
+  void set_local_addr() override;
+  void set_remote_addr() override;
+  int set_tcp_init_cwnd(int init_cwnd) override;
+  void apply_options() override;
 
   friend void write_to_net_io(NetHandler *, UnixNetVConnection *, EThread *);
-  
+
   void setOriginTrace(bool t)
   {
     origin_trace = t;

@@ -25,6 +25,7 @@
 #define __PROXY_CLIENT_TRANSACTION_H__
 
 #include "ProxyClientSession.h"
+#include <ts/MemView.h>
 
 class HttpSM;
 class HttpServerSession;
@@ -70,7 +71,7 @@ public:
   bool get_half_close_flag() { return parent ? parent->get_half_close_flag() : false; }
 
   // What are the debug and hooks_enabled used for?  How are they set?
-  // Just calling through to parent session for now  
+  // Just calling through to parent session for now
   bool debug() const { return parent ? parent->debug() : false; }
   bool hooks_enabled() const { return parent ? parent->hooks_enabled() : false; }
 
@@ -119,9 +120,9 @@ public:
   virtual void transaction_done() { }
   ProxyClientSession *get_parent() { return parent; }
 
-  virtual void set_parent(ProxyClientSession *new_parent) 
-  { 
-    parent = new_parent; 
+  virtual void set_parent(ProxyClientSession *new_parent)
+  {
+    parent = new_parent;
   }
   virtual void set_h2c_upgrade_flag() {}
 
@@ -136,6 +137,17 @@ public:
   void set_restart_immediate(bool val) { restart_immediate = true; }
   bool get_restart_immediate() const { return restart_immediate; }
 
+  virtual int
+  populate_protocol(ts::StringView *result, int size) const
+  {
+    return parent ? parent->populate_protocol(result, size) : 0;
+  }
+
+  virtual const char *
+  protocol_contains(ts::StringView tag_prefix) const
+  {
+    return parent ? parent->protocol_contains(tag_prefix) : nullptr;
+  }
 
 protected:
   ProxyClientSession *parent;
