@@ -404,6 +404,14 @@ Thread Variables
    should improve the situation. Note that this setting should only be used by expert
    system tuners, and will not be beneficial with random fiddling.
 
+.. ts:cv:: CONFIG proxy.config.stop.shutdown_timeout INT 0
+   :reloadable:
+
+   The shutdown timeout(in seconds) to apply when stopping Traffic
+   Server, in which ATS can initiate graceful shutdowns. It only supports
+   HTTP/2 graceful shutdown for now. Stopping Traffic Server here means sending
+   `traffic_server` a signal either by `bin/trafficserver stop` or `kill`.
+
 Network
 =======
 
@@ -3458,9 +3466,9 @@ HTTP/2 Configuration
    :reloadable:
 
    This timeout enables the zombie debugging feature.  If it is non-zero, it sets a zombie event to go off that
-   many seconds in the future when the HTTP2 session reaches one but not both of the terminating events, i.e received 
+   many seconds in the future when the HTTP2 session reaches one but not both of the terminating events, i.e received
    a close event (via client goaway or timeout) and the number of active streams has gone to zero.  If the event is executed,
-   the Traffic Server process will assert.  This mechanism is useful to debug potential leaks in the HTTP2 Stream and Session 
+   the Traffic Server process will assert.  This mechanism is useful to debug potential leaks in the HTTP2 Stream and Session
    processing.
 
 .. ts:cv:: CONFIG proxy.config.http2.push_diary_size INT 256

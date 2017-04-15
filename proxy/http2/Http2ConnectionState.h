@@ -39,6 +39,8 @@ enum class Http2SendDataFrameResult {
   DONE,
 };
 
+enum Http2ShutdownState { NOT_INITIATED, INITIATED, IN_PROGRESS };
+
 class Http2ConnectionSettings
 {
 public:
@@ -129,7 +131,8 @@ public:
       fini_received(false),
       recursion(0),
       fini_event(nullptr),
-      zombie_event(nullptr)
+      zombie_event(nullptr),
+      shutdown_state(NOT_INITIATED)
   {
     SET_HANDLER(&Http2ConnectionState::main_event_handler);
   }
@@ -293,6 +296,18 @@ public:
     }
   }
 
+  Http2ShutdownState
+  get_shutdown_state() const
+  {
+    return shutdown_state;
+  }
+
+  void
+  set_shutdown_state(Http2ShutdownState state)
+  {
+    shutdown_state = state;
+  }
+
 private:
   Http2ConnectionState(const Http2ConnectionState &);            // noncopyable
   Http2ConnectionState &operator=(const Http2ConnectionState &); // noncopyable
@@ -333,6 +348,7 @@ private:
   int recursion;
   Event *fini_event;
   Event *zombie_event;
+  Http2ShutdownState shutdown_state;
 };
 
 #endif // __HTTP2_CONNECTION_STATE_H__
