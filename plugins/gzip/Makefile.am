@@ -18,4 +18,5 @@ include $(top_srcdir)/build/plugins.mk
 
 pkglib_LTLIBRARIES = gzip.la
 gzip_la_SOURCES = gzip.cc configuration.cc misc.cc
-gzip_la_LDFLAGS = $(TS_PLUGIN_LDFLAGS)
+gzip_la_CXXFLAGS = -I/home/y/include
+gzip_la_LDFLAGS = $(TS_PLUGIN_LDFLAGS) -L/home/y/lib64 $(LIB_BROTLIENC)

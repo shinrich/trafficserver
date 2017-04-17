@@ -25,6 +25,7 @@
 #include <fstream>
 #include <algorithm>
 #include <vector>
+#include <sstream>
 #include <fnmatch.h>
 
 namespace Gzip
@@ -93,12 +94,15 @@ enum ParserState {
   kParseEnable,
   kParseCache,
   kParseDisallow,
-  kParseFlush
+  kParseFlush,
+  kParseAlgorithms,
+  kParseAllow
 };
 
 void
-Configuration::AddHostConfiguration(HostConfiguration *hc)
+Configuration::add_host_configuration(HostConfiguration *hc)
 {
+  hc->hold(); // We hold a lease on the HostConfig while it's in this container
   host_configurations_.push_back(hc);
 }
 
@@ -109,63 +113,126 @@ HostConfiguration::add_disallow(const std::string &disallow)
 }
 
 void
+HostConfiguration::add_allow(const std::string &allow)
+{
+  allows_.push_back(allow);
+}
+
+void
 HostConfiguration::add_compressible_content_type(const std::string &content_type)
 {
   compressible_content_types_.push_back(content_type);
 }
 
 HostConfiguration *
-Configuration::Find(const char *host, int host_length)
+Configuration::find(const char *host, int host_length)
 {
   HostConfiguration *host_configuration = host_configurations_[0];
 
-  std::string shost(host, host_length);
+  if (host && host_length > 0 && host_configurations_.size() > 1) {
+    std::string shost(host, host_length);
 
-  for (size_t i = 1; i < host_configurations_.size(); i++) {
-    if (host_configurations_[i]->host() == shost) {
-      host_configuration = host_configurations_[i];
-      break;
+    // ToDo: Maybe use std::find() here somehow?
+    for (HostContainer::iterator it = host_configurations_.begin() + 1; it != host_configurations_.end(); ++it) {
+      if ((*it)->host() == shost) {
+        host_configuration = *it;
+        break;
+      }
     }
   }
 
+  host_configuration->hold(); // Hold a lease
   return host_configuration;
 }
 
+void
+Configuration::release_all()
+{
+  for (HostContainer::iterator it = host_configurations_.begin(); it != host_configurations_.end(); ++it) {
+    (*it)->release();
+  }
+}
+
 bool
-HostConfiguration::IsUrlAllowed(const char *url, int url_len)
+HostConfiguration::is_url_allowed(const char *url, int url_len)
 {
   string surl(url, url_len);
-
-  for (size_t i = 0; i < disallows_.size(); i++) {
-    if (fnmatch(disallows_[i].c_str(), surl.c_str(), 0) == 0) {
-      info("url [%s] disabled for compression, matched on pattern [%s]", surl.c_str(), disallows_[i].c_str());
-      return false;
+  if (has_disallows()) {
+    for (StringContainer::iterator it = disallows_.begin(); it != disallows_.end(); ++it) {
+      if (fnmatch(it->c_str(), surl.c_str(), 0) == 0) {
+        info("url [%s] disabled for compression, matched disallow pattern [%s]", surl.c_str(), it->c_str());
+        return false;
+      }
     }
   }
-
+  if (has_allows()) {
+    for (StringContainer::iterator allow_it = allows_.begin(); allow_it != allows_.end(); ++allow_it) {
+      const char *match_string = allow_it->c_str();
+      bool exclude             = match_string[0] == '!';
+      if (exclude) {
+        ++match_string; // skip !
+      }
+      if (fnmatch(match_string, surl.c_str(), 0) == 0) {
+        info("url [%s] %s for compression, matched allow pattern [%s]", surl.c_str(), exclude ? "disabled" : "enabled",
+             allow_it->c_str());
+        return !exclude;
+      }
+    }
+    info("url [%s] disabled for compression, did not match any allows pattern", surl.c_str());
+    return false;
+  }
+  info("url [%s] enabled for compression, did not match and disallow pattern ", surl.c_str());
   return true;
 }
 
 bool
-HostConfiguration::ContentTypeIsCompressible(const char *content_type, int content_type_length)
+HostConfiguration::is_content_type_compressible(const char *content_type, int content_type_length)
 {
   string scontent_type(content_type, content_type_length);
   bool is_match = false;
 
-  for (size_t i = 0; i < compressible_content_types_.size(); i++) {
-    const char *match_string = compressible_content_types_[i].c_str();
-    bool exclude = match_string[0] == '!';
+  for (StringContainer::iterator it = compressible_content_types_.begin(); it != compressible_content_types_.end(); ++it) {
+    const char *match_string = it->c_str();
+    bool exclude             = match_string[0] == '!';
+
     if (exclude) {
-      match_string++; // skip '!'
+      ++match_string; // skip '!'
     }
     if (fnmatch(match_string, scontent_type.c_str(), 0) == 0) {
-      info("compressible content type [%s], matched on pattern [%s]", scontent_type.c_str(),
-           compressible_content_types_[i].c_str());
+      info("compressible content type [%s], matched on pattern [%s]", scontent_type.c_str(), it->c_str());
       is_match = !exclude;
     }
   }
 
   return is_match;
+}
+
+void
+HostConfiguration::add_compression_algorithms(const string &algorithms)
+{
+  istringstream compress_algo(algorithms);
+  string token;
+  compression_algorithms_ = ALGORITHM_DEFAULT; // remove the default gzip.
+  while (getline(compress_algo, token, ',')) {
+    if (token.find("br") != string::npos) {
+#ifdef HAVE_BROTLI_ENCODE_H
+      compression_algorithms_ |= ALGORITHM_BROTLI;
+#else
+      error("supported-algorithms: brotli support not compiled in.");
+#endif
+    } else if (token.find("gzip") != string::npos)
+      compression_algorithms_ |= ALGORITHM_GZIP;
+    else if (token.find("deflate") != string::npos)
+      compression_algorithms_ |= ALGORITHM_DEFLATE;
+    else
+      error("Unknown compression type. Supported compression-algorithms <br,gzip,deflate>.");
+  }
+}
+
+int
+HostConfiguration::compression_algorithms()
+{
+  return compression_algorithms_;
 }
 
 Configuration *
@@ -183,9 +250,9 @@ Configuration::Parse(const char *path)
 
   trim_if(pathstring, isspace);
 
-  Configuration *c = new Configuration();
+  Configuration *c                              = new Configuration();
   HostConfiguration *current_host_configuration = new HostConfiguration("");
-  c->AddHostConfiguration(current_host_configuration);
+  c->add_host_configuration(current_host_configuration);
 
   if (pathstring.empty()) {
     return c;
@@ -223,19 +290,21 @@ Configuration::Parse(const char *path)
       trim_if(token, isspace);
 
       // should not happen
-      if (!token.size())
+      if (!token.size()) {
         continue;
+      }
 
       // once a comment is encountered, we are done processing the line
-      if (token[0] == '#')
+      if (token[0] == '#') {
         break;
+      }
 
       switch (state) {
       case kParseStart:
         if ((token[0] == '[') && (token[token.size() - 1] == ']')) {
-          std::string current_host = token.substr(1, token.size() - 2);
+          std::string current_host   = token.substr(1, token.size() - 2);
           current_host_configuration = new HostConfiguration(current_host);
-          c->AddHostConfiguration(current_host_configuration);
+          c->add_host_configuration(current_host_configuration);
         } else if (token == "compressible-content-type") {
           state = kParseCompressibleContentType;
         } else if (token == "remove-accept-encoding") {
@@ -248,6 +317,10 @@ Configuration::Parse(const char *path)
           state = kParseDisallow;
         } else if (token == "flush") {
           state = kParseFlush;
+        } else if (token == "supported-algorithms") {
+          state = kParseAlgorithms;
+        } else if (token == "allow") {
+          state = kParseAllow;
         } else {
           warning("failed to interpret \"%s\" at line %zu", token.c_str(), lineno);
         }
@@ -274,6 +347,14 @@ Configuration::Parse(const char *path)
         break;
       case kParseFlush:
         current_host_configuration->set_flush(token == "true");
+        state = kParseStart;
+        break;
+      case kParseAlgorithms:
+        current_host_configuration->add_compression_algorithms(token);
+        state = kParseStart;
+        break;
+      case kParseAllow:
+        current_host_configuration->add_allow(token);
         state = kParseStart;
         break;
       }
