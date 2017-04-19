@@ -537,7 +537,7 @@ Http2Stream::update_write_request(IOBufferReader *buf_reader, int64_t write_len,
       total_added += bytes_added;
     }
     auto nvc = parent->connection_state.ua_session->get_netvc();
-    TraceOut(h2_trace,nvc->get_remote_addr(),nvc->get_remote_port(),"H2 Trace bytes = %d Stream ID = %d \n %.*s",total_added,this->get_id(),total_added,response_buffer.get_current_block()->start());
+    TraceOut(h2_trace,nvc->get_remote_addr(),nvc->get_remote_port(),"H2 Trace bytes = %" PRId64 " Stream ID = %d \n %.*s",total_added,this->get_id(),static_cast<int>(total_added),response_buffer.get_current_block()->start());
   }
 
   bool is_done = false;
