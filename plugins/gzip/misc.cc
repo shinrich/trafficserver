@@ -22,7 +22,7 @@
  */
 
 #include "ts/ts.h"
-#include "ink_defs.h"
+#include "ts/ink_defs.h"
 
 #include "misc.h"
 #include <string.h>
@@ -45,9 +45,9 @@ void
 normalize_accept_encoding(TSHttpTxn /* txnp ATS_UNUSED */, TSMBuffer reqp, TSMLoc hdr_loc)
 {
   TSMLoc field = TSMimeHdrFieldFind(reqp, hdr_loc, TS_MIME_FIELD_ACCEPT_ENCODING, TS_MIME_LEN_ACCEPT_ENCODING);
-  int deflate = 0;
-  int gzip = 0;
-
+  int deflate  = 0;
+  int gzip     = 0;
+  int br       = 0;
   // remove the accept encoding field(s),
   // while finding out if gzip or deflate is supported.
   while (field) {
@@ -63,10 +63,14 @@ normalize_accept_encoding(TSHttpTxn /* txnp ATS_UNUSED */, TSMBuffer reqp, TSMLo
         --value_count;
         val = TSMimeHdrFieldValueStringGet(reqp, hdr_loc, field, value_count, &val_len);
 
-        if (val_len == (int)strlen("gzip"))
+        if (val_len == (int)strlen("br")) {
+          br = !strncmp(val, "br", val_len);
+        }
+        if (val_len == (int)strlen("gzip")) {
           gzip = !strncmp(val, "gzip", val_len);
-        else if (val_len == (int)strlen("deflate"))
+        } else if (val_len == (int)strlen("deflate")) {
           deflate = !strncmp(val, "deflate", val_len);
+        }
       }
     }
 
@@ -77,10 +81,13 @@ normalize_accept_encoding(TSHttpTxn /* txnp ATS_UNUSED */, TSMBuffer reqp, TSMLo
   }
 
   // append a new accept-encoding field in the header
-  if (deflate || gzip) {
+  if (deflate || gzip || br) {
     TSMimeHdrFieldCreate(reqp, hdr_loc, &field);
     TSMimeHdrFieldNameSet(reqp, hdr_loc, field, TS_MIME_FIELD_ACCEPT_ENCODING, TS_MIME_LEN_ACCEPT_ENCODING);
-
+    if (br) {
+      TSMimeHdrFieldValueStringInsert(reqp, hdr_loc, field, -1, "br", strlen("br"));
+      info("normalized accept encoding to br");
+    }
     if (gzip) {
       TSMimeHdrFieldValueStringInsert(reqp, hdr_loc, field, -1, "gzip", strlen("gzip"));
       info("normalized accept encoding to gzip");
@@ -131,8 +138,8 @@ init_hidden_header_name()
   if (TSMgmtStringGet(var_name, &result) != TS_SUCCESS) {
     fatal("failed to get server name");
   } else {
-    int hidden_header_name_len = strlen("x-accept-encoding-") + strlen(result);
-    hidden_header_name = (char *)TSmalloc(hidden_header_name_len + 1);
+    int hidden_header_name_len                 = strlen("x-accept-encoding-") + strlen(result);
+    hidden_header_name                         = (char *)TSmalloc(hidden_header_name_len + 1);
     hidden_header_name[hidden_header_name_len] = 0;
     sprintf(hidden_header_name, "x-accept-encoding-%s", result);
   }
@@ -144,8 +151,8 @@ register_plugin()
 {
   TSPluginRegistrationInfo info;
 
-  info.plugin_name = (char *)"gzip";
-  info.vendor_name = (char *)"Apache Software Foundation";
+  info.plugin_name   = (char *)"gzip";
+  info.vendor_name   = (char *)"Apache Software Foundation";
   info.support_email = (char *)"dev@trafficserver.apache.org";
 
   if (TSPluginRegister(TS_SDK_VERSION_3_0, &info) != TS_SUCCESS) {
