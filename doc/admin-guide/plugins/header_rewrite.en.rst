@@ -345,6 +345,10 @@ first).
 Refer to `Requests vs. Responses`_ for more information on determining the
 context in which the transaction's URL is evaluated.
 
+This condition is *deprecated* as of ATS v7.1.x, please use e.g. %{URL:PATH}
+or %{CLIENT-URL:PATH} instead.
+
+
 QUERY
 ~~~~~
 ::
@@ -354,6 +358,10 @@ QUERY
 The query parameters, if any, of the transaction.  Refer to `Requests vs.
 Responses`_ for more information on determining the context in which the
 transaction's URL is evaluated.
+
+This condition is *deprecated* as of ATS v7.1.x, please use e.g. %{URL:QUERY}
+or %{CLIENT-URL:QUERY} instead.
+
 
 RANDOM
 ~~~~~~
@@ -413,14 +421,15 @@ URL
 ~~~
 ::
 
-    cond %{URL:option} <operand>
+    cond %{URL:<part>} <operand>
 
 The complete URL of the current transaction. This will automatically choose the
 most relevant URL depending upon the hook context in which the condition is
 being evaluated.
 
 Refer to `Requests vs. Responses`_ for more information on determining the
-context in which the transaction's URL is evaluated.
+context in which the transaction's URL is evaluated.  The ``<part>`` may be
+specified according to the options documented in `URL Parts`_.
 
 Condition Operands
 ------------------
