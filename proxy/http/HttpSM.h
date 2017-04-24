@@ -505,7 +505,7 @@ public:
   int64_t cache_response_body_bytes;
   int pushed_response_hdr_bytes;
   int64_t pushed_response_body_bytes;
-  bool client_tcp_reused;
+  int client_req_count;
   // Info about client's SSL connection.
   bool client_ssl_reused;
   bool client_connection_is_ssl;

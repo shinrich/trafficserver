@@ -340,7 +340,7 @@ HttpSM::HttpSM()
     client_request_hdr_bytes(0), client_request_body_bytes(0), server_request_hdr_bytes(0), server_request_body_bytes(0),
     server_response_hdr_bytes(0), server_response_body_bytes(0), client_response_hdr_bytes(0), client_response_body_bytes(0),
     cache_response_hdr_bytes(0), cache_response_body_bytes(0), pushed_response_hdr_bytes(0), pushed_response_body_bytes(0),
-    client_tcp_reused(false), client_ssl_reused(false), client_connection_is_ssl(false), client_sec_protocol("-"),
+    client_req_count(0), client_ssl_reused(false), client_connection_is_ssl(false), client_sec_protocol("-"),
     client_cipher_suite("-"), server_transact_count(0), server_connection_is_ssl(false), server_connection_count(0), plugin_tag(0), plugin_id(0),
     hooks_set(false), have_seen_txn_close(true), cur_hook_id(TS_HTTP_LAST_HOOK), cur_hook(NULL), cur_hooks(0), callout_state(HTTP_API_NO_CALLOUT), terminate_sm(false),
     kill_this_async_done(false), parse_range_done(false)
@@ -551,7 +551,7 @@ HttpSM::attach_client_session(ProxyClientTransaction *client_vc, IOBufferReader 
   ua_session = client_vc;
 
   // Collect log & stats information
-  client_tcp_reused = !(ua_session->is_first_transaction());
+  client_req_count = ua_session->get_transact_count();
   SSLNetVConnection *ssl_vc = dynamic_cast<SSLNetVConnection *>(netvc);
   if (ssl_vc != NULL) {
     client_connection_is_ssl = true;

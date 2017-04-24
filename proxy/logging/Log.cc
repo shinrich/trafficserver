@@ -475,6 +475,11 @@ Log::init_fields()
   global_field_list.add(field, false);
   ink_hash_table_insert(field_symbol_hash, "cqtr", field);
 
+  field = new LogField("client_req_count", "cqtc", LogField::dINT, &LogAccess::marshal_client_req_count,
+                       &LogAccess::unmarshal_int_to_str);
+  global_field_list.add(field, false);
+  ink_hash_table_insert(field_symbol_hash, "cqtc", field);
+
   field = new LogField("client_req_is_ssl", "cqssl", LogField::dINT, &LogAccess::marshal_client_req_is_ssl,
                        &LogAccess::unmarshal_int_to_str);
   global_field_list.add(field, false);
