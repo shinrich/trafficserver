@@ -975,16 +975,25 @@ INKContInternal::destroy()
   if (m_deletable) {
     free();
   } else {
-    // TODO: Should this schedule on some other "thread" ?
-    // TODO: we don't care about the return action?
-    //TSContSchedule((TSCont) this, 0, TS_THREAD_POOL_DEFAULT);
     ink_atomic_increment((int *)&m_event_count, 1);	// Bump up our count because we are going through the handler again
     this_ethread()->schedule_imm(this);
-    /*if (m_event_count <= 0)
+    if (m_event_count <= 0)
     {
-      Warning("INKCont not deletable %d %p", m_event_count, this);
-    }*/
+      Warning("INKCont not deletable m_event_count=%d m_closed=%d %p", m_event_count, m_closed, this);
+    }
   }
+}
+
+int
+INKContInternal::check_delete()
+{
+  if (m_deleted) {
+    if (m_deletable) {
+      free();
+      return true;
+    } 
+  }
+  return false;
 }
 
 void
@@ -1006,15 +1015,18 @@ INKContInternal::handle_event(int event, void *edata)
   if (m_free_magic == INKCONT_INTERN_MAGIC_DEAD) {
     ink_release_assert(!"Plugin tries to use a continuation which is deleted");
   }
-  handle_event_count(event);
-  if (m_deleted) {
-    if (m_deletable) {
-      free();
+  // If this is a periodic event, don't adjust the m_event_count
+  Event *event_obj = static_cast<Event*>(edata);
+  if (!event_obj || !event_obj->period) {
+    handle_event_count(event);
+  }
+  if (!check_delete()) {
+    if (m_deleted) {
+      Warning("INKCont Deletable but not deleted %d m_closed=%d event=%p period%d", 
+              m_event_count, m_closed, event_obj, event_obj ? event_obj->period : 0);
     } else {
-      Warning("INKCont Deletable but not deleted %d", m_event_count);
+      return m_event_func((TSCont) this, (TSEvent)event, edata);
     }
-  } else {
-    return m_event_func((TSCont) this, (TSEvent)event, edata);
   }
   return EVENT_DONE;
 }
@@ -1115,10 +1127,6 @@ INKVConnInternal::do_io_transform(VConnection *vc)
 void
 INKVConnInternal::do_io_close(int error)
 {
-  if (ink_atomic_increment((int *)&m_event_count, 1) < 0) {
-    ink_assert(!"not reached");
-  }
-
   INK_WRITE_MEMORY_BARRIER;
 
   if (error != -1) {
@@ -1138,6 +1146,9 @@ INKVConnInternal::do_io_close(int error)
     m_output_vc->do_io_close(error);
   }
 
+  if (ink_atomic_increment((int *)&m_event_count, 1) < 0) {
+    ink_assert(!"not reached");
+  }
   eventProcessor.schedule_imm(this, ET_NET);
 }
 
@@ -6188,6 +6199,9 @@ TSActionCancel(TSAction actionp)
     a = (Action *)((uintptr_t)actionp - 1);
     i = (INKContInternal *)a->continuation;
     i->handle_event_count(EVENT_IMMEDIATE);
+    if (!i->check_delete()) {
+      Warning("INKCont could not delete on cancel %d m_closed=%d", i->m_event_count, i->m_closed);
+    }
   } else {
     a = (Action *)actionp;
   }

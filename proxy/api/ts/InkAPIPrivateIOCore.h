@@ -50,6 +50,7 @@ public:
 
   void handle_event_count(int event);
   int handle_event(int event, void *edata);
+  int check_delete();
 
 protected:
   virtual void clear();
