@@ -136,6 +136,10 @@ rcv_data_frame(Http2ClientSession &cs, Http2ConnectionState &cstate, const Http2
   // update its offset via consume.  Otherwise, we will read the same data on the
   // second time through
   IOBufferReader *myreader = frame.reader()->clone();
+  // Skip pad length field
+  if (frame.header().flags & HTTP2_FLAGS_DATA_PADDED) {
+    myreader->consume(HTTP2_DATA_PADLEN_LEN);
+  }
   while (nbytes < payload_length - pad_length) {
     size_t read_len = sizeof(buf);
     if (nbytes + read_len > unpadded_length)
