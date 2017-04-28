@@ -1189,6 +1189,7 @@ HttpSM::state_raw_http_server_open(int event, void *data)
   case EVENT_INTERVAL:
     DebugSM("http", "[%" PRId64 "] HttpSM::state_raw_http_server_open event: EVENT_INTERVAL state: %d server_entry: %p", sm_id,
             t_state.current.state, server_entry);
+    do_http_server_open(true);
     return 0;
 
   default:
