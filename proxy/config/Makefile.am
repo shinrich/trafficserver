@@ -42,6 +42,7 @@ dist_sysconf_DATA =	\
   splitdns.config.default \
   ssl_multicert.config.default \
   vaddrs.config.default \
+  ssl_server_name.config.default \
   volume.config.default
 
 install-exec-hook:

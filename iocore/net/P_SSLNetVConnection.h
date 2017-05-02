@@ -165,6 +165,12 @@ public:
     return transparentPassThrough;
   }
 
+  bool
+  GetSNIMapping()
+  {
+    return SNIMapping;
+  }
+
   void
   setTransparentPassThrough(bool val)
   {
@@ -294,6 +300,7 @@ public:
   ink_hrtime sslHandshakeEndTime   = 0;
   ink_hrtime sslLastWriteTime      = 0;
   int64_t sslTotalBytesSent        = 0;
+  char *serverName                 = nullptr;
 
   /// Set by asynchronous hooks to request a specific operation.
   SslVConnOp hookOpRequested;
@@ -328,10 +335,11 @@ private:
     HANDSHAKE_HOOKS_DONE
   } sslHandshakeHookState;
 
-  const SSLNextProtocolSet *npnSet;
-  Continuation *npnEndpoint;
-  SessionAccept *sessionAcceptPtr;
-  bool sslTrace;
+  const SSLNextProtocolSet *npnSet = nullptr;
+  Continuation *npnEndpoint        = nullptr;
+  SessionAccept *sessionAcceptPtr  = nullptr;
+  bool sslTrace                    = false;
+  bool SNIMapping                  = false;
 };
 
 typedef int (SSLNetVConnection::*SSLNetVConnHandler)(int, void *);
