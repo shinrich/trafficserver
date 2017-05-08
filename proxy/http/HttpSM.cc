@@ -1187,8 +1187,13 @@ HttpSM::state_raw_http_server_open(int event, void *data)
     break;
 
   case EVENT_INTERVAL:
+    // If we get EVENT_INTERNAL it means that we moved the transaction
+    // to a different thread in do_http_server_open.  Since we didn't
+    // do any of the actual work in do_http_server_open, we have to
+    // go back and do it now.
     DebugSM("http", "[%" PRId64 "] HttpSM::state_raw_http_server_open event: EVENT_INTERVAL state: %d server_entry: %p", sm_id,
             t_state.current.state, server_entry);
+    do_http_server_open(true);
     return 0;
 
   default:
