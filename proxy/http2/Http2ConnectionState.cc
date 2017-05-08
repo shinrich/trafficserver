@@ -996,7 +996,7 @@ Http2Stream *
 Http2ConnectionState::create_stream(Http2StreamId new_id, Http2Error &error)
 {
   // In half_close state, TS doesn't create new stream. Because GOAWAY frame is sent to client
-  if (ua_session && ua_session->get_half_close_local_flag()) {
+  if (ua_session->get_half_close_local_flag()) {
     error = Http2Error(Http2ErrorClass::HTTP2_ERROR_CLASS_STREAM, Http2ErrorCode::HTTP2_ERROR_REFUSED_STREAM,
                        "refused to create new stream, because ua_session is in half_close state");
     return nullptr;
