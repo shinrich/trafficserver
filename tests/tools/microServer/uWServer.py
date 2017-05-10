@@ -629,11 +629,11 @@ def main():
                         type=str,
                         default="test",
                         help="Mode of operation")
-    parser.add_argument("--connection", "-c",
-                        type=str,
-                        default="nonSSL",
-                        help="use SSL")
-    parser.add_argument("--key", "-k",
+    parser.add_argument("--ssl","-ssl",
+                        type=bool,
+                        default=False,
+                        help="SSL port")
+    parser.add_argument("--key","-k",
                         type=str,
                         default="ssl/server.pem",
                         help="key for ssl connnection")
@@ -665,8 +665,8 @@ def main():
         test_mode_enabled = args.mode == "test"
 
         MyHandler.protocol_version = HTTP_VERSION
-        if options.connection == 'ssl':
-            server = SSLServer((options.ip_address, options.port), MyHandler, options)
+        if options.ssl == True:
+            server = SSLServer((options.ip_address,options.port), MyHandler, options)
         else:
             server = ThreadingServer((options.ip_address, options.port), MyHandler, options)
         server.timeout = 5
