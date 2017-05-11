@@ -981,7 +981,7 @@ Http2ConnectionState::main_event_handler(int event, void *edata)
     send_goaway_frame(latest_streamid_in, Http2ErrorCode::HTTP2_ERROR_NO_ERROR);
     // Stop creating new streams
     SCOPED_MUTEX_LOCK(lock, this->ua_session->mutex, this_ethread());
-    this->ua_session->set_half_close_flag(true);
+    this->ua_session->set_half_close_local_flag(true);
   } break;
 
   default:

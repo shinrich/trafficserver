@@ -342,14 +342,13 @@ private:
   // For Upgrade: h2c
   Http2UpgradeContext upgrade_context;
 
-  VIO *write_vio;
-  int dying_event;
-  bool kill_me;
-  bool half_close_local;
-  int recursion;
-
   InkHashTable *h2_pushed_urls = nullptr;
   uint32_t h2_pushed_urls_size = 0;
+  VIO *write_vio        = nullptr;
+  int dying_event       = 0;
+  bool kill_me          = false;
+  bool half_close_local = false;
+  int recursion         = 0;
 };
 
 extern ClassAllocator<Http2ClientSession> http2ClientSessionAllocator;
