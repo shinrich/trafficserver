@@ -279,6 +279,8 @@ private:
 
   ts::StringView map_tls_protocol_to_tag(const char *proto_string) const;
 
+  bool read_from_handshake_buffer(); 
+
   bool sslHandShakeComplete;
   bool sslClientConnection;
   bool sslClientRenegotiationAbort;

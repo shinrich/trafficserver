@@ -378,6 +378,8 @@ SSLNetVConnection::read_raw_data()
     }
     NET_SUM_DYN_STAT(net_read_bytes_stat, r);
 
+    // Perhaps the fill should be total_read instead of r?
+    // Leaving this to track down later
     this->handShakeBuffer->fill(r);
   }
 
@@ -393,6 +395,29 @@ SSLNetVConnection::read_raw_data()
 
   return r;
 }
+
+/*
+ * Return true, if there is data in the BIO buffers at the end
+ * of this method
+ */
+bool
+SSLNetVConnection::read_from_handshake_buffer() {
+  bool retval = false;
+  if (!BIO_eof(SSL_get_rbio(this->ssl))) {
+    retval = true;
+  } else if (this->handShakeReader->read_avail() <= 0) {
+    char *start = this->handShakeReader->start();
+    char *end = this->handShakeReader->end();
+    this->handShakeBioStored = end - start;
+
+    BIO *rbio = BIO_new_mem_buf(start, this->handShakeBioStored);
+    BIO_set_mem_eof_return(rbio, -1);
+    SSL_set_rbio(this, rbio);
+    retval = true;
+  }
+  return retval;
+}
+
 
 
 // changed by YTS Team, yamsat
@@ -498,8 +523,16 @@ SSLNetVConnection::net_read_io(NetHandler *nh, EThread *lthread)
       this->read.triggered = 0;
       readSignalError(nh, err);
     } else if (ret == SSL_HANDSHAKE_WANT_READ || ret == SSL_HANDSHAKE_WANT_ACCEPT) {
-      read.triggered = 0;
-      nh->read_ready_list.remove(this);
+      // See if there is more data lurking in the handshake buffer
+      if (!read_from_handshake_buffer()) {
+        read.triggered = 0;
+        nh->read_ready_list.remove(this);
+      } else {
+        read.triggered = 1;
+        if (read.enabled) {
+          nh->read_ready_list.in_or_enqueue(this);
+        }
+      }
       readReschedule(nh);
     } else if (ret == SSL_HANDSHAKE_WANT_CONNECT || ret == SSL_HANDSHAKE_WANT_WRITE) {
       write.triggered = 0;
@@ -511,6 +544,9 @@ SSLNetVConnection::net_read_io(NetHandler *nh, EThread *lthread)
       // operations.
       if (ntodo <= 0) {
         readSignalDone(VC_EVENT_READ_COMPLETE, nh);
+        if (this->handShakeReader) {
+          read.triggered = 1;
+        }
       } else {
         read.triggered = 1;
         if (read.enabled)
