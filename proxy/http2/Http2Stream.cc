@@ -23,6 +23,7 @@
 #include "Http2Stream.h"
 #include "Http2ClientSession.h"
 #include "../http/HttpSM.h"
+#include "logging/Log.h"
 
 ClassAllocator<Http2Stream> http2StreamAllocator("http2StreamAllocator");
 
@@ -152,6 +153,7 @@ Http2Stream::send_request(Http2ConnectionState &cstate)
       block = request_buffer.get_current_block();
     }
     done = request_header.print(block->start(), block->write_avail(), &bufindex, &tmp);
+    TraceIn(h2_trace,cstate.ua_session->get_netvc()->get_remote_addr(),cstate.ua_session->get_netvc()->get_remote_port(),"H2 TRACE bytes = %d stream ID = %d \n%.*s",this->get_id(),bufindex,bufindex,block->start());
     dumpoffset += bufindex;
     request_buffer.fill(bufindex);
     if (!done) {
@@ -515,6 +517,8 @@ Http2Stream::update_write_request(IOBufferReader *buf_reader, int64_t write_len,
           if (is_done) {
             send_event = VC_EVENT_WRITE_COMPLETE;
           }
+          auto nvc = parent->connection_state.ua_session->get_netvc();
+          TraceOut(h2_trace,nvc->get_remote_addr(),nvc->get_remote_port(),"H2 Trace bytes = %d Stream ID = %d \n %.*s",static_cast<int>(total_added),this->get_id(),static_cast<int>(total_added),response_buffer.get_current_block()->start());
 
           // If there is additional data, send it along in a data frame.  Or if this was header only
           // make sure to send the end of stream
