@@ -68,9 +68,9 @@ verify_callback(int preverify_ok, X509_STORE_CTX *ctx)
     if(netvc && netvc->getClientVerifyEnable() == 2)
     {
         if(netvc->options.sni_servername)
-            SSLDebug("Hostname verification failed for (%s) but still continuing with the connection establishment", netvc->options.sni_servername.get());
+            Warning("Hostname verification failed for (%s) but still continuing with the connection establishment", netvc->options.sni_servername.get());
         else
-            SSLDebug("Server certificate verification failed but still continuing with the connection establishment");
+            Warning("Server certificate verification failed but still continuing with the connection establishment");
         return 1;
     }
     return preverify_ok;
@@ -103,7 +103,7 @@ verify_callback(int preverify_ok, X509_STORE_CTX *ctx)
     }
     if(netvc->getClientVerifyEnable() == 2)
     {
-        SSLDebug("Server certificate verification failed but continuing with the connection establishment");
+        Warning("Server certificate verification failed but continuing with the connection establishment");
         return preverify_ok;
     }
     return 0;
