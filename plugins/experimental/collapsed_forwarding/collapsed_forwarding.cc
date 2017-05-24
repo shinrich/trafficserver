@@ -231,7 +231,7 @@ static int
 on_txn_close(RequestData *req, TSHttpTxn &txnp, TSCont &contp)
 {
   // done..cleanup
-  TSfree(req);
+  delete req;
   TSContDestroy(contp);
   TSHttpTxnReenable(txnp, TS_EVENT_HTTP_CONTINUE);
   return TS_SUCCESS;
