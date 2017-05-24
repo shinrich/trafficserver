@@ -72,7 +72,7 @@ void
 Http1ClientTransaction::destroy() 
 {
   if (current_reader) {
-    current_reader->ua_session = NULL;
+    //current_reader->ua_session = NULL;
     current_reader = NULL;
   }
 }
