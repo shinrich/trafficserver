@@ -49,7 +49,8 @@ struct HostEnt : RefCountObj {
   u_char hostbuf[DNS_HOSTBUF_SIZE];
 
   SRVHosts srv_hosts;
-
+  bool good = true;
+  bool isNameError();
   virtual void free();
 
   HostEnt()
