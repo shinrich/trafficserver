@@ -317,6 +317,7 @@ public:
   EThread *all_dthreads[MAX_EVENT_THREADS];
   int n_dthreads; // No. of dedicated threads
   volatile int thread_data_used;
+  ink_mutex dedicated_spawn_thread_mutex;
 };
 
 extern inkcoreapi class EventProcessor eventProcessor;
