@@ -289,10 +289,11 @@ public:
    */
   int populate(Connection &con, Continuation *c, void *arg) override;
 
-  SSL *ssl;
-  ink_hrtime sslHandshakeBeginTime;
-  ink_hrtime sslLastWriteTime;
-  int64_t sslTotalBytesSent;
+  SSL *ssl                         = nullptr;
+  ink_hrtime sslHandshakeBeginTime = 0;
+  ink_hrtime sslHandshakeEndTime   = 0;
+  ink_hrtime sslLastWriteTime      = 0;
+  int64_t sslTotalBytesSent        = 0;
 
   /// Set by asynchronous hooks to request a specific operation.
   SslVConnOp hookOpRequested;

@@ -42,33 +42,114 @@ is successful.
 
 .. type:: TSMilestonesType
 
-=============================================== ==========
-Value                                           Milestone
-=============================================== ==========
-:const:`TS_MILESTONE_UA_BEGIN`                  The client connection is accepted.
-:const:`TS_MILESTONE_UA_READ_HEADER_DONE`       The request header from the client has been read and parsed.
-:const:`TS_MILESTONE_UA_BEGIN_WRITE`            The response header write to the client starts.
-:const:`TS_MILESTONE_UA_CLOSE`                  Last I/O activity on the client socket, or connection abort.
-:const:`TS_MILESTONE_SERVER_FIRST_CONNECT`      First time origin server connect attempted or shared shared session attached.
-:const:`TS_MILESTONE_SERVER_CONNECT`            Most recent time origin server connect attempted or shared session attached.
-:const:`TS_MILESTONE_SERVER_CONNECT_END`        More recent time a connection attempt was resolved.
-:const:`TS_MILESTONE_SERVER_BEGIN_WRITE`        First byte is written to the origin server connection.
-:const:`TS_MILESTONE_SERVER_FIRST_READ`         First byte is read from connection to origin server.
-:const:`TS_MILESTONE_SERVER_READ_HEADER_DONE`   Origin server response has been read and parsed.
-:const:`TS_MILESTONE_SERVER_CLOSE`              Last I/O activity on origin server connection.
-:const:`TS_MILESTONE_CACHE_OPEN_READ_BEGIN`     Initiate read of the cache.
-:const:`TS_MILESTONE_CACHE_OPEN_READ_END`       Initial cache read has resolved.
-:const:`TS_MILESTONE_CACHE_OPEN_WRITE_BEGIN`    Start open for cache write.
-:const:`TS_MILESTONE_CACHE_OPEN_WRITE_END`      Cache has been opened for write.
-:const:`TS_MILESTONE_DNS_LOOKUP_BEGIN`          Initiate host resolution in HostDB
-:const:`TS_MILESTONE_DNS_LOOKUP_END`            Host resolution resolves.
-:const:`TS_MILESTONE_SM_START`                  Transaction state machine is initialized.
-:const:`TS_MILESTONE_SM_FINISH`                 Transaction has finished, state machine final logging has started.
-:const:`TS_MILESTONE_PLUGIN_ACTIVE`             Amount of time plugins were active plus start time.
-:const:`TS_MILESTONE_PLUGIN_TOTAL`              Wall time while plugins were active plus start time.
-=============================================== ==========
+	An enumeration of the valid indices of transaction milestone data.
 
-*  The server connect times predate the transmission of the `:literal:`SYN`
+	.. macro:: TS_MILESTONE_SM_START
+
+		Transaction state machine is initialized.
+
+	.. macro:: TS_MILESTONE_UA_BEGIN
+
+		The client connection is accepted.
+
+	.. macro:: TS_MILESTONE_PLUGIN_ACTIVE
+
+		Amount of time plugins were active plus start time.
+
+	.. macro:: TS_MILESTONE_PLUGIN_TOTAL
+
+		Wall time while plugins were active plus start time.
+
+	.. macro:: TS_MILESTONE_UA_READ_HEADER_DONE
+
+		The request header from the client has been read and parsed.
+
+	.. macro:: TS_MILESTONE_CACHE_OPEN_READ_BEGIN
+
+		Initiate read of the cache.
+
+	.. macro:: TS_MILESTONE_CACHE_OPEN_READ_END
+
+		Initial cache read has resolved.
+
+	.. macro:: TS_MILESTONE_CACHE_OPEN_WRITE_BEGIN
+
+		Start open for cache write.
+
+	.. macro:: TS_MILESTONE_CACHE_OPEN_WRITE_END
+
+		Cache has been opened for write.
+
+	.. macro:: TS_MILESTONE_DNS_LOOKUP_BEGIN
+
+		Initiate host resolution in HostDB
+
+	.. macro:: TS_MILESTONE_DNS_LOOKUP_END
+
+		Host resolution resolves.
+
+	.. macro:: TS_MILESTONE_SERVER_FIRST_CONNECT
+
+		First time origin server connect attempted or shared shared session attached.
+
+	.. macro:: TS_MILESTONE_SERVER_CONNECT
+
+		Most recent time origin server connect attempted or shared session attached.
+
+	.. macro:: TS_MILESTONE_SERVER_CONNECT_END
+
+		More recent time a connection attempt was resolved.
+
+	.. macro:: TS_MILESTONE_SERVER_BEGIN_WRITE
+
+		First byte is written to the origin server connection.
+
+	.. macro:: TS_MILESTONE_SERVER_FIRST_READ
+
+		First byte is read from connection to origin server.
+
+	.. macro:: TS_MILESTONE_SERVER_READ_HEADER_DONE
+
+		Origin server response has been read and parsed.
+
+	.. macro:: TS_MILESTONE_UA_BEGIN_WRITE
+
+		The response header write to the client starts.
+
+	.. macro:: TS_MILESTONE_SERVER_CLOSE
+
+		Last I/O activity on origin server connection.
+
+	.. macro:: TS_MILESTONE_UA_CLOSE
+
+		Last I/O activity on the client socket, or connection abort.
+
+	.. macro:: TS_MILESTONE_SM_FINISH
+
+		Transaction has finished, state machine final logging has started.
+
+	.. macro:: TS_MILESTONE_PLUGIN_ACTIVE
+
+		Amount of time plugins were active (running plugin code).
+
+	.. macro:: TS_MILESTONE_PLUGIN_TOTAL
+
+		Amount of time spent in or waiting for plugins.
+
+        .. macro:: TS_MILESTONE_TLS_HANDSHAKE_START
+
+                Timestamp when the server starts the TLS handshake. 0 if no handshake is performed (connection reuse).
+
+        .. macro:: TS_MILESTONE_TLS_HANDSHAKE_END
+
+                Timestamp when the server completes the TLS handshake. 0 if no handshake is performed (connection reuse).
+
+	.. macro:: TS_MILESTONE_LAST_ENTRY
+
+		A psuedo index which is set to be one more than the last valid index. This is useful for looping over the data.
+
+
+*  The server connect times predate the transmission of the :literal:`SYN`
    packet. That is, before a connection to the origin server is completed.
 
 *  A connection attempt is resolved when no more connection related activity
