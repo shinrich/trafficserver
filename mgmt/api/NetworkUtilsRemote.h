@@ -67,8 +67,10 @@ void *event_poll_thread_main(void *arg);
 struct mgmtapi_sender : public mgmt_message_sender {
   explicit mgmtapi_sender(int _fd) : fd(_fd) {}
   virtual TSMgmtError send(void *msg, size_t msglen) const;
+  bool is_connected() const override { return fd != ts::NO_FD; }
 
   int fd;
+
 };
 
 #define MGMTAPI_SEND_MESSAGE(fd, optype, ...) send_mgmt_request(mgmtapi_sender(fd), (optype), __VA_ARGS__)
