@@ -666,8 +666,22 @@ LogAccessHttp::marshal_client_req_tcp_reused(char *buf)
 {
   if (buf) {
     int64_t tcp_reused;
-    tcp_reused = m_http_sm->client_tcp_reused;
+    tcp_reused = (m_http_sm->client_req_count > 1);
     marshal_int(buf, tcp_reused);
+  }
+  return INK_MIN_ALIGN;
+}
+
+/*-------------------------------------------------------------------------
+  -------------------------------------------------------------------------*/
+
+int
+LogAccessHttp::marshal_client_req_count(char *buf)
+{
+  if (buf) {
+    int64_t req_count;
+    req_count = m_http_sm->client_req_count;
+    marshal_int(buf, req_count);
   }
   return INK_MIN_ALIGN;
 }
