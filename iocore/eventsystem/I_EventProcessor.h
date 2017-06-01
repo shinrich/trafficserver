@@ -237,6 +237,8 @@ public:
   Event *schedule_spawn(void (*f)(EThread *), EventType ev_type);
 
   EventProcessor();
+  EventProcessor(const EventProcessor &) = delete;
+  EventProcessor &operator=(const EventProcessor &) = delete;
 
   /**
     Initializes the EventProcessor and its associated threads. Spawns the
@@ -292,19 +294,14 @@ public:
     those created by spawn_thread
 
   */
-  int n_ethreads;
+  int n_ethreads = 0;
 
   /**
     Total number of thread groups created so far. This is the count of
     all the thread groups (event types) created for this EventProcessor.
 
   */
-  int n_thread_groups;
-
-private:
-  // prevent unauthorized copies (Not implemented)
-  EventProcessor(const EventProcessor &);
-  EventProcessor &operator=(const EventProcessor &);
+  int n_thread_groups = 0;
 
 public:
   /*------------------------------------------------------*\
@@ -315,8 +312,8 @@ public:
   EThread *assign_thread(EventType etype);
 
   EThread *all_dthreads[MAX_EVENT_THREADS];
-  int n_dthreads; // No. of dedicated threads
-  volatile int thread_data_used;
+  volatile int n_dthreads       = 0; // No. of dedicated threads
+  volatile int thread_data_used = 0;
   ink_mutex dedicated_spawn_thread_mutex;
 };
 

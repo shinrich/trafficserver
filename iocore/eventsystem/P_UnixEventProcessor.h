@@ -30,7 +30,7 @@
 const int LOAD_BALANCE_INTERVAL = 1;
 
 TS_INLINE
-EventProcessor::EventProcessor() : n_ethreads(0), n_thread_groups(0), n_dthreads(0), thread_data_used(0)
+EventProcessor::EventProcessor()
 {
   memset(all_ethreads, 0, sizeof(all_ethreads));
   memset(all_dthreads, 0, sizeof(all_dthreads));
