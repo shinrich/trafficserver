@@ -60,13 +60,14 @@ TS_INLINE EThread *
 EventProcessor::assign_thread(EventType etype)
 {
   int next;
+  ThreadGroupDescriptor *tg = &thread_group[etype];
 
   ink_assert(etype < MAX_EVENT_TYPES);
-  if (n_threads_for_type[etype] > 1)
-    next = next_thread_for_type[etype]++ % n_threads_for_type[etype];
+  if (tg->_count > 1)
+    next = tg->_next_round_robin++ % tg->_count;
   else
     next = 0;
-  return (eventthread[etype][next]);
+  return tg->_thread[next];
 }
 
 TS_INLINE Event *
