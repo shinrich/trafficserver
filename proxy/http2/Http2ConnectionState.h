@@ -39,7 +39,7 @@ enum class Http2SendDataFrameResult {
   DONE,
 };
 
-enum Http2ShutdownState { NOT_INITIATED, INITIATED, IN_PROGRESS };
+enum Http2ShutdownState { HTTP2_SHUTDOWN_NONE, HTTP2_SHUTDOWN_NOT_INITIATED, HTTP2_SHUTDOWN_INITIATED, HTTP2_SHUTDOWN_IN_PROGRESS };
 
 class Http2ConnectionSettings
 {
@@ -161,6 +161,9 @@ public:
   void
   destroy()
   {
+    if (shutdown_cont_event) {
+      shutdown_cont_event->cancel();
+    }
     cleanup_streams();
 
     mutex = NULL; // magic happens - assigning to NULL frees the ProxyMutex
@@ -343,12 +346,13 @@ private:
   //     another CONTINUATION frame."
   Http2StreamId continued_stream_id;
   IOVec continued_buffer;
-  bool _scheduled;
-  bool fini_received;
-  int recursion;
-  Event *fini_event;
-  Event *zombie_event;
-  Http2ShutdownState shutdown_state;
+  bool _scheduled                   = false;
+  bool fini_received                = false;
+  int recursion                     = 0;
+  Event *fini_event                 = nullptr;
+  Event *zombie_event               = nullptr;
+  Http2ShutdownState shutdown_state = HTTP2_SHUTDOWN_NONE;
+  Event *shutdown_cont_event        = nullptr;
 };
 
 #endif // __HTTP2_CONNECTION_STATE_H__

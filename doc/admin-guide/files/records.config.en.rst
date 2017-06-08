@@ -404,6 +404,19 @@ Thread Variables
    should improve the situation. Note that this setting should only be used by expert
    system tuners, and will not be beneficial with random fiddling.
 
+.. ts:cv:: CONFIG proxy.config.restart.stop_listening INT 0
+   :reloadable:
+
+   This option specifies whether |TS| should close listening sockets while shutting down gracefully.
+
+   ===== ======================================================================
+   Value Description
+   ===== ======================================================================
+   ``0`` Listening sockets will be kept open.
+   ``1`` Listening sockets will be closed when |TS| starts shutting down.
+   ===== ======================================================================
+
+
 .. ts:cv:: CONFIG proxy.config.stop.shutdown_timeout INT 0
    :reloadable:
 

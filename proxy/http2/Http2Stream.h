@@ -190,8 +190,9 @@ public:
   virtual bool
   ignore_keep_alive() override
   {
-    // HTTP/2 deals with keep alive at a higher level.
-    return true;
+    // If we return true here, Connection header will always be "close".
+    // It should be handled as the same as HTTP/1.1
+    return false;
   }
 
   void restart_sending();
