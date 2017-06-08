@@ -290,8 +290,9 @@ public:
       diags->set_stderr_output(bind_stderr);
     }
 
-    if (signal_received[SIGTERM]) {
+    if (signal_received[SIGTERM] || signal_received[SIGINT]) {
       signal_received[SIGTERM] = false;
+      signal_received[SIGINT]  = false;
 
       RecInt timeout = 0;
       REC_ReadConfigInteger(timeout, "proxy.config.stop.shutdown_timeout");
@@ -300,7 +301,7 @@ public:
         http2_drain = true;
       }
 
-      Debug("server", "received SIGTERM, shutting down in %" PRId64 "secs", timeout);
+      Debug("server", "received exit signal, shutting down in %" PRId64 "secs", timeout);
 
       // Shutdown in `timeout` seconds (or now if that is 0).
       eventProcessor.schedule_in(new AutoStopCont(), HRTIME_SECONDS(timeout));
@@ -504,10 +505,11 @@ proxy_signal_handler(int signo, siginfo_t *info, void *ctx)
 
   // These signals are all handled by SignalContinuation.
   switch (signo) {
+  case SIGHUP:
+  case SIGINT:
+  case SIGTERM:
   case SIGUSR1:
   case SIGUSR2:
-  case SIGHUP:
-  case SIGTERM:
     return;
   }
 
