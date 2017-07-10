@@ -201,29 +201,19 @@ ssl_read_from_net(SSLNetVConnection *sslvc, EThread *lthread, int64_t &ret)
   ssl_error_t sslErr     = SSL_ERROR_NONE;
   int64_t nread          = 0;
 
-  bool trace = sslvc->getSSLTrace();
+  bool trace     = sslvc->getSSLTrace();
+  int64_t toread = buf.writer()->write_avail();
+  if (toread > s->vio.ntodo()) {
+    toread = s->vio.ntodo();
+  }
 
   bytes_read = 0;
-  while (sslErr == SSL_ERROR_NONE) {
-    int64_t block_write_avail = buf.writer()->block_write_avail();
-    if (block_write_avail <= 0) {
-      // If we filled up one block, give back to the event loop so we don't
-      // overbuffer.
-      if (bytes_read > 0) {
-        break;
-      } else { // Make sure there is a block to write into
-        buf.writer()->add_block();
-        block_write_avail = buf.writer()->block_write_avail();
-        if (block_write_avail <= 0) {
-          Warning("Cannot add new block");
-          break;
-        }
-      }
-    }
+  while (sslErr == SSL_ERROR_NONE && bytes_read < toread) {
+    int64_t amount_to_read = toread - bytes_read;
 
-    Debug("ssl", "[SSL_NetVConnection::ssl_read_from_net] b->write_avail()=%" PRId64, block_write_avail);
+    Debug("ssl", "[SSL_NetVConnection::ssl_read_from_net] b->write_avail()=%" PRId64, amount_to_read);
     char *current_block = buf.writer()->end();
-    sslErr              = SSLReadBuffer(sslvc->ssl, current_block, block_write_avail, nread);
+    sslErr              = SSLReadBuffer(sslvc->ssl, current_block, amount_to_read, nread);
 
     Debug("ssl", "[SSL_NetVConnection::ssl_read_from_net] nread=%d", (int)nread);
     if (!sslvc->origin_trace) {
@@ -309,8 +299,15 @@ ssl_read_from_net(SSLNetVConnection *sslvc, EThread *lthread, int64_t &ret)
 
     ret = bytes_read;
 
-    event = (s->vio.ntodo() <= 0) ? SSL_READ_COMPLETE : SSL_READ_READY;
+    // If we read it all, don't worry about the other events and just send read complete
+    if (s->vio.ntodo() <= 0) {
+      event = SSL_READ_COMPLETE;
+    }
     if (sslErr == SSL_ERROR_NONE && s->vio.ntodo() > 0) {
+      // Translate the NONE error to either read complete or read ready (more on the wire)
+      if (s->vio.ntodo() > 0) {
+        event = SSL_READ_READY;
+      }
       // We stopped with data on the wire (to avoid overbuffering).  Make sure we are triggered
       sslvc->read.triggered = 1;
     }
