@@ -22,7 +22,7 @@
 A Proposal for Server Client and Transaction Generalization
 ***********************************************************
 
-Currently ATS only supports HTTP/1.x to the origin.  There is a need to support HTTP/2 as well and likely other protocols in the future. 
+Currently ATS only supports HTTP/1.x to the origin.  There is a need to additionally support HTTP/2 and likely other protocols in the future. 
 To support that change, we propose generalizing the current Server Session class structure in a similar way the Client Session classes
 were generalized.
 
@@ -69,15 +69,14 @@ ProxyServerTransaction
    :align: center
    :alt: ProxyServerTransaction hierarchy
 
-The ProxyServerTransaction class abstracts the key features of a client transaction.  It has a reference to its
-parent ProxyServerSession.  The HttpSM will reference at most one ProxyServerTransaction.
+The ProxyServerTransaction class abstracts the key features of a server transaction.  It has a reference to its
+parent ProxyServerSession.  The HttpSM will reference at most one ProxyServerTransaction via the server_session member variable.
 
 There will be two concrete subclasses: Http1ServerTransaction and Http2ServerStream.
 
 The bulk of the logic in the current HttpServerSession will be split between Http1ServerSession and Http1ServerTransaction.
 
-Presumably the Http2ServerSession and Http2ServerStream will be able to leverage much of the existing Http2ConnectionState and HTTP2
-classes.
+Presumably the Http2ServerSession and Http2ServerStream will be able to leverage much of the existing Http2ConnectionState and HTTP2 classes.
 
 Server Session Object Relationships
 ===================================
@@ -93,7 +92,7 @@ This diagram shows the relationships between objects created as part of a HTTP/1
 object performs the basic network level protocols.  The Http1ServerSession object has a reference to the 
 associated NetVC object.  The NetVC object is available via the :code:`ProxyServerSession::get_netvc()` method.
 
-The Http1ServerSession object contains a Http1ServerTransaction object.  
+The Http1ServerSession object contains a Http1ServerTransaction object.
 
 The Http1ServerTransaction object is associated with the HttpSM object :code:`HttpSM::attach_server_session()`.
 
@@ -108,7 +107,7 @@ This diagram shows the relationships between objects created as part of a HTTP/2
 to the HTTP/1.x case.  The Http2ServerSession object interacts with the NetVC.  The Http2ServerStream object is associated
 with the HttpSM via the :code:`HttpSM::attach_server_session()` call.
 
-One difference is that the Http/2 protocol allows for multiple simultaneous transactions, so the Http2ServerSession
+One difference is that the HTTP/2 protocol allows for multiple simultaneous transactions, so the Http2ServerSession
 object must be able to manage multiple streams. From the HttpSM perspective it is interacting with a 
 ProxyServerTransaction object, and there is no difference between working with a Http2ServerStream and a Http1ServerTransaction.
 
@@ -119,14 +118,19 @@ Open Issues
 HTTP/2 additions
 ----------------
 
-HTTP/2 communication to origin should be able to leverage a lot of the logic in the proxy/http2 area, but presumable we are missing 
-some client-oriented logic.
+HTTP/2 communication to origin should be able to leverage a lot of the logic in the proxy/http2 area, but presumable we are missing some client-oriented logic.
 
 Sticky servers
 --------------
+
+The current ATS implementation binds the HttpServerSession to the ProxyClientServer session.  The next
+time the transaction comes through session, it will attempt to reuse that HttpServerSession if the 
+setting proxy.config.http.attach_server_session_to_client is set to 1 and the hostname and/or IP address matches. 
+
+We will need to think carefully on the impact of this "stickiness" on the Http2ServerSessions.
 
 Limiting HTTP/2 Session Reuse
 -----------------------------
 
 Since HTTP/2 allows for multiple simultaneous streams, we don't remove the Http2ServerSession object from the HttpSessionManager.  All
-the requests
+the requests for a particular origin with a single Http2ServerSession would create streams on the same sessions.  At a minimum the reuse logic should follow the maximum concurrent stream limits.  Perhaps additional settings will be needed.
