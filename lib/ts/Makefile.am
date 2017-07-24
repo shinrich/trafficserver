@@ -191,6 +191,7 @@ libtsutil_la_SOURCES = \
   signals.cc \
   signals.h \
   string_view.h \
+  BufferWriter.h \
   X509HostnameValidator.cc \
   X509HostnameValidator.h
 
@@ -247,7 +248,8 @@ test_tslib_CPPFLAGS = $(AM_CPPFLAGS)\
 test_tslib_LDADD = libtsutil.la
 test_tslib_SOURCES = \
 	unit-tests/main.cpp \
-	unit-tests/string_view.cpp
+	unit-tests/string_view.cpp \
+	unit-tests/test_BufferWriter.cc
 
 CompileParseRules_SOURCES = CompileParseRules.cc
 
