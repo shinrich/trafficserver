@@ -96,11 +96,6 @@ enum Variability_t {
   VARIABILITY_ALL,
 };
 
-enum ContentEncoding {
-  NO_GZIP = 0,
-  GZIP,
-};
-
 class HttpTransactCache
 {
 public:
@@ -121,8 +116,10 @@ public:
                                                          MIMEField *cached_accept_field = NULL);
 
   static float calculate_quality_of_accept_encoding_match(MIMEField *accept_field, MIMEField *content_field,
-                                                          MIMEField *cached_accept_field = NULL);
-  static ContentEncoding match_gzip(MIMEField *accept_field);
+                                                          MIMEField *cached_accept_field = nullptr);
+
+  // 'encoding_identifier' is a nul-terminated string.
+  static bool match_content_encoding(MIMEField *accept_field, const char *encoding_identifier);
 
   static float calculate_quality_of_accept_language_match(MIMEField *accept_field, MIMEField *content_field,
                                                           MIMEField *cached_accept_field = NULL);
