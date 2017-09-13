@@ -25,10 +25,10 @@ Test new ccid and ctid log fields
 # need Curl
 Test.SkipUnless(
     Condition.HasProgram(
-        "curl", "Curl need to be installed on system for this test to work"),
+        "curl", "Curl need to be installed on system for this test to work")
     # Condition.IsPlatform("linux"), Don't see the need for this.
-    Condition.HasATSFeature('TS_USE_TLS_ALPN'),
-    Condition.HasCurlFeature('http2')
+    # Condition.HasATSFeature('TS_USE_TLS_ALPN'), Not yet supported in YATS.
+    # Condition.HasCurlFeature('http2') Not yet supported in YATS.
 )
 
 # Define default ATS.  "select_ports=False" needed because SSL port used.
