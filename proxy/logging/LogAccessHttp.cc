@@ -40,6 +40,7 @@
 #include "LogConfig.h"
 #include "Log.h"
 #include "I_Machine.h"
+#include "LogUtilsHttp.h"
 
 /*-------------------------------------------------------------------------
   LogAccessHttp
@@ -817,6 +818,14 @@ LogAccessHttp::marshal_client_req_uuid(char *buf)
 /*-------------------------------------------------------------------------
 -------------------------------------------------------------------------*/
 int
+LogAccessHttp::marshal_client_req_all_header_fields(char *buf)
+{
+  return LogUtils::marshalMimeHdr(m_client_request, buf);
+}
+
+/*-------------------------------------------------------------------------
+-------------------------------------------------------------------------*/
+int
 LogAccessHttp::marshal_client_security_protocol(char *buf)
 {
   const char *proto = m_http_sm->client_sec_protocol;
@@ -1006,6 +1015,15 @@ LogAccessHttp::marshal_cache_hit_miss(char *buf)
 }
 
 /*-------------------------------------------------------------------------
+-------------------------------------------------------------------------*/
+
+int
+LogAccessHttp::marshal_proxy_resp_all_header_fields(char *buf)
+{
+  return LogUtils::marshalMimeHdr(m_proxy_response, buf);
+}
+
+/*-------------------------------------------------------------------------
   -------------------------------------------------------------------------*/
 
 int
@@ -1096,6 +1114,15 @@ LogAccessHttp::marshal_proxy_req_is_ssl(char *buf)
     marshal_int(buf, is_ssl);
   }
   return INK_MIN_ALIGN;
+}
+
+/*-------------------------------------------------------------------------
+-------------------------------------------------------------------------*/
+
+int
+LogAccessHttp::marshal_proxy_req_all_header_fields(char *buf)
+{
+  return LogUtils::marshalMimeHdr(m_proxy_request, buf);
 }
 
 /*-------------------------------------------------------------------------
@@ -1287,6 +1314,15 @@ LogAccessHttp::marshal_server_connect_attempts(char *buf)
 }
 
 /*-------------------------------------------------------------------------
+-------------------------------------------------------------------------*/
+
+int
+LogAccessHttp::marshal_server_resp_all_header_fields(char *buf)
+{
+  return LogUtils::marshalMimeHdr(m_server_response, buf);
+}
+
+/*-------------------------------------------------------------------------
   -------------------------------------------------------------------------*/
 
 int
@@ -1363,6 +1399,12 @@ LogAccessHttp::marshal_cache_resp_http_version(char *buf)
     marshal_int((buf + INK_MIN_ALIGN), minor);
   }
   return (2 * INK_MIN_ALIGN);
+}
+
+int
+LogAccessHttp::marshal_cache_resp_all_header_fields(char *buf)
+{
+  return LogUtils::marshalMimeHdr(m_cache_response, buf);
 }
 
 int

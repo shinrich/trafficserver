@@ -213,6 +213,11 @@ LOG_ACCESS_DEFAULT_FIELD(marshal_client_req_uuid, DEFAULT_STR_FIELD)
 /*-------------------------------------------------------------------------
   -------------------------------------------------------------------------*/
 
+LOG_ACCESS_DEFAULT_FIELD(marshal_client_req_all_header_fields, DEFAULT_STR_FIELD)
+
+/*-------------------------------------------------------------------------
+  -------------------------------------------------------------------------*/
+
 LOG_ACCESS_DEFAULT_FIELD(marshal_client_req_timestamp_sec, DEFAULT_INT_FIELD)
 LOG_ACCESS_DEFAULT_FIELD(marshal_client_req_timestamp_ms, DEFAULT_INT_FIELD)
 
@@ -264,6 +269,11 @@ LOG_ACCESS_DEFAULT_FIELD(marshal_cache_result_subcode, DEFAULT_INT_FIELD)
   -------------------------------------------------------------------------*/
 
 LOG_ACCESS_DEFAULT_FIELD(marshal_cache_hit_miss, DEFAULT_INT_FIELD)
+
+/*-------------------------------------------------------------------------
+  -------------------------------------------------------------------------*/
+
+LOG_ACCESS_DEFAULT_FIELD(marshal_proxy_resp_all_header_fields, DEFAULT_STR_FIELD)
 
 /*-------------------------------------------------------------------------
   -------------------------------------------------------------------------*/
@@ -337,6 +347,11 @@ LOG_ACCESS_DEFAULT_FIELD(marshal_proxy_req_is_ssl, DEFAULT_INT_FIELD)
 /*-------------------------------------------------------------------------
   -------------------------------------------------------------------------*/
 
+LOG_ACCESS_DEFAULT_FIELD(marshal_proxy_req_all_header_fields, DEFAULT_STR_FIELD)
+
+/*-------------------------------------------------------------------------
+  -------------------------------------------------------------------------*/
+
 LOG_ACCESS_DEFAULT_FIELD(marshal_server_host_ip, DEFAULT_IP_FIELD)
 
 /*-------------------------------------------------------------------------
@@ -395,6 +410,11 @@ LOG_ACCESS_DEFAULT_FIELD(marshal_server_connect_attempts, DEFAULT_INT_FIELD)
 /*-------------------------------------------------------------------------
   -------------------------------------------------------------------------*/
 
+LOG_ACCESS_DEFAULT_FIELD(marshal_server_resp_all_header_fields, DEFAULT_STR_FIELD)
+
+/*-------------------------------------------------------------------------
+  -------------------------------------------------------------------------*/
+
 LOG_ACCESS_DEFAULT_FIELD(marshal_cache_resp_status_code, DEFAULT_INT_FIELD)
 
 /*-------------------------------------------------------------------------
@@ -422,6 +442,8 @@ LogAccess::marshal_cache_resp_http_version(char *buf)
   }
   return (2 * INK_MIN_ALIGN);
 }
+
+LOG_ACCESS_DEFAULT_FIELD(marshal_cache_resp_all_header_fields, DEFAULT_STR_FIELD)
 
 LOG_ACCESS_DEFAULT_FIELD(marshal_cache_write_code, DEFAULT_INT_FIELD)
 
