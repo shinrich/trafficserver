@@ -1556,3 +1556,33 @@ UnixNetVConnection::remove_from_active_queue()
 {
   nh->remove_from_active_queue(this);
 }
+
+int
+UnixNetVConnection::populate_protocol(ts::string_view *results, int n) const
+{
+  int retval = 0;
+  if (n > retval) {
+    if (!(results[retval] = options.get_proto_string()).empty()) {
+      ++retval;
+    }
+    if (n > retval) {
+      if (!(results[retval] = options.get_family_string()).empty()) {
+        ++retval;
+      }
+    }
+  }
+  return retval;
+}
+
+const char *
+UnixNetVConnection::protocol_contains(ts::string_view tag) const
+{
+  ts::string_view retval = options.get_proto_string();
+  if (!IsNoCasePrefixOf(tag, retval)) { // didn't match IP level, check TCP level
+    retval = options.get_family_string();
+    if (!IsNoCasePrefixOf(tag, retval)) { // no match here either, return empty.
+      ink_zero(retval);
+    }
+  }
+  return retval.data();
+}

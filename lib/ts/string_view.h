@@ -33,6 +33,7 @@
 #include <utility>
 #include <string>
 #include <ostream>
+#include <cstring>
 
 #if __cplusplus < 201402
 #define CONSTEXPR14 inline
@@ -1219,4 +1220,31 @@ template <class _Type, class _Traits> struct hash<ts::basic_string_view<_Type, _
     return hash<typename string_type::const_pointer>()(x.data());
   }
 };
+}
+
+/// Literal suffix for string_view.
+/// @note This enables @c string_view literals from C++ string literals in @c constexpr contexts, which
+/// is not the case for the character pointer constructor.
+/// @internal This must be in the global namespace to be found.
+constexpr ts::string_view operator"" _sv(const char *str, size_t len) noexcept
+{
+  return ts::string_view(str, len);
+}
+
+//////////////////////////////////////////////////////////////////////////////////////
+// TS local extensions, not dependent on our local implementation of std::string_view.
+
+/// Check for prefix.
+/// @return @c true if @a lhs is a prefix (ignoring case) of @a rhs.
+inline bool
+IsNoCasePrefixOf(ts::string_view const &lhs, ts::string_view const &rhs)
+{
+  return lhs.size() <= rhs.size() && 0 == strncasecmp(lhs.data(), rhs.data(), lhs.size());
+}
+/// Check for prefix.
+/// @return @c true if @a lhs is a prefix of @a rhs.
+inline bool
+IsPrefixOf(ts::string_view const &lhs, ts::string_view const &rhs)
+{
+  return lhs.size() <= rhs.size() && 0 == memcmp(lhs.data(), rhs.data(), lhs.size());
 }
