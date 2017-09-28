@@ -1120,16 +1120,21 @@ REC_readString(const char *name, bool *found, bool lock)
   return _tmp;
 }
 
-//-------------------------------------------------------------------------
-// RecConfigReadConfigDir
-//-------------------------------------------------------------------------
+// RecConfigReadConfigDir. Note that we handle environmental configuration
+// overrides specially here. Normally we would override the configuration
+// variable when we read records.config but to avoid the bootstrapping
+// problem, we make an explicit check here.
 char *
 RecConfigReadConfigDir()
 {
-  char buf[PATH_NAME_MAX];
+  char buf[PATH_NAME_MAX] = {0};
+  
+  if (const char *env = getenv("PROXY_CONFIG_CONFIG_DIR")) {
+    ink_strlcpy(buf, env, sizeof(buf));
+  } else {
+    RecGetRecordString("proxy.config.config_dir", buf, sizeof(buf));
+  }
 
-  buf[0] = '\0';
-  RecGetRecordString("proxy.config.config_dir", buf, PATH_NAME_MAX);
   if (strlen(buf) > 0) {
     return Layout::get()->relative(buf);
   } else {
@@ -1186,6 +1191,15 @@ RecConfigReadBinDir()
   } else {
     return ats_strdup(Layout::get()->bindir);
   }
+}
+
+//-------------------------------------------------------------------------
+// RecConfigReadPluginDir
+//-------------------------------------------------------------------------
+char *
+RecConfigReadPluginDir()
+{
+  return RecConfigReadPrefixPath("proxy.config.plugin.plugin_dir");
 }
 
 //-------------------------------------------------------------------------

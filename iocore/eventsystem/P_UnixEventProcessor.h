@@ -29,16 +29,6 @@
 
 const int LOAD_BALANCE_INTERVAL = 1;
 
-TS_INLINE
-EventProcessor::EventProcessor()
-{
-  memset(all_ethreads, 0, sizeof(all_ethreads));
-  memset(all_dthreads, 0, sizeof(all_dthreads));
-  memset(n_threads_for_type, 0, sizeof(n_threads_for_type));
-  memset(next_thread_for_type, 0, sizeof(next_thread_for_type));
-  ink_mutex_init(&dedicated_spawn_thread_mutex, "EventProcessorDedicatedThreadSpawn");
-}
-
 TS_INLINE off_t
 EventProcessor::allocate(int size)
 {
@@ -63,10 +53,11 @@ EventProcessor::assign_thread(EventType etype)
   ThreadGroupDescriptor *tg = &thread_group[etype];
 
   ink_assert(etype < MAX_EVENT_TYPES);
-  if (tg->_count > 1)
+  if (tg->_count > 1) {
     next = tg->_next_round_robin++ % tg->_count;
-  else
+  } else {
     next = 0;
+  }
   return tg->_thread[next];
 }
 

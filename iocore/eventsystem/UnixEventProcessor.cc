@@ -231,7 +231,7 @@ EventProcessor::EventProcessor() : thread_initializer(this)
   ink_zero(all_ethreads);
   ink_zero(all_dthreads);
   ink_zero(thread_group);
-  ink_mutex_init(&dedicated_thread_spawn_mutex);
+  ink_mutex_init(&dedicated_thread_spawn_mutex, nullptr);
   // Because ET_NET is compile time set to 0 it *must* be the first type registered.
   this->register_event_type("ET_NET");
 }

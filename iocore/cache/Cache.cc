@@ -609,8 +609,8 @@ CacheProcessor::start_internal(int flags)
 
 #if AIO_MODE == AIO_MODE_NATIVE
   int etype            = ET_NET;
-  int n_netthreads     = eventProcessor.n_threads_for_type[etype];
-  EThread **netthreads = eventProcessor.eventthread[etype];
+  int n_netthreads     = eventProcessor.thread_group[etype]._count;
+  EThread **netthreads = eventProcessor.thread_group[etype]._thread;
   for (int i = 0; i < n_netthreads; ++i) {
     netthreads[i]->diskHandler = new DiskHandler();
     netthreads[i]->schedule_imm(netthreads[i]->diskHandler);

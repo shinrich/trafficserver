@@ -199,7 +199,6 @@ public:
 
   /**
     Initializes the net processor. This must be called before the event threads are started.
-
   */
   virtual void init() = 0;
 
