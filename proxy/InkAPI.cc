@@ -8036,8 +8036,8 @@ _conf_to_memberp(TSOverridableConfigKey conf, OverridableHttpConfigParams *overr
   case TS_CONFIG_HTTP_CACHE_RANGE_LOOKUP:
     ret = &overridableHttpConfig->cache_range_lookup;
     break;
-  case TS_CONFIG_HTTP_NORMALIZE_AE_GZIP:
-    ret = &overridableHttpConfig->normalize_ae_gzip;
+  case TS_CONFIG_HTTP_NORMALIZE_AE:
+    ret = &overridableHttpConfig->normalize_ae;
     break;
   case TS_CONFIG_HTTP_DEFAULT_BUFFER_SIZE:
     typ = OVERRIDABLE_TYPE_INT;
@@ -8425,6 +8425,12 @@ TSHttpTxnConfigFind(const char *name, int length, TSOverridableConfigKey *conf, 
     }
     break;
 
+  case 30:
+    if (!strncmp(name, "proxy.config.http.normalize_ae", length)) {
+      cnf = TS_CONFIG_HTTP_NORMALIZE_AE;
+    }
+    break;
+
   case 31:
     if (!strncmp(name, "proxy.config.http.chunking.size", length)) {
       cnf = TS_CONFIG_HTTP_CHUNKING_SIZE;
@@ -8451,17 +8457,8 @@ TSHttpTxnConfigFind(const char *name, int length, TSOverridableConfigKey *conf, 
     break;
 
   case 35:
-    switch (name[length - 1]) {
-    case 'e':
-      if (!strncmp(name, "proxy.config.http.cache.range.write", length)) {
-        cnf = TS_CONFIG_HTTP_CACHE_RANGE_WRITE;
-      }
-      break;
-    case 'p':
-      if (!strncmp(name, "proxy.config.http.normalize_ae_gzip", length)) {
-        cnf = TS_CONFIG_HTTP_NORMALIZE_AE_GZIP;
-      }
-      break;
+    if (!strncmp(name, "proxy.config.http.cache.range.write", length)) {
+      cnf = TS_CONFIG_HTTP_CACHE_RANGE_WRITE;
     }
     break;
 
