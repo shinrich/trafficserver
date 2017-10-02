@@ -553,6 +553,19 @@ SSLTicketParams::LoadTicket()
 }
 
 void
+SSLTicketParams::LoadTicketData(char *ticket_data, int ticket_data_len)
+{
+  cleanup();
+#if HAVE_OPENSSL_SESSION_TICKETS
+  if (ticket_data != nullptr && ticket_data_len > 0) {
+    default_global_keyblock = ticket_block_create(ticket_data, ticket_data_len);
+  } else {
+    default_global_keyblock = ssl_create_ticket_keyblock(nullptr);
+  }
+#endif
+}
+
+void
 SSLTicketKeyConfig::startup()
 {
   auto sslTicketKey = new ConfigUpdateHandler<SSLTicketKeyConfig>();
@@ -575,7 +588,20 @@ SSLTicketKeyConfig::reconfigure()
       return false;
     }
   }
+  configid = configProcessor.set(configid, ticketKey);
+  return true;
+}
 
+bool
+SSLTicketKeyConfig::reconfigure_data(char *ticket_data, int ticket_data_len)
+{
+  SSLTicketParams *ticketKey = new SSLTicketParams();
+  if (ticketKey) {
+    if (!ticketKey->LoadTicketData(ticket_data, ticket_data_len)) {
+      delete ticketKey;
+      return false;
+    }
+  }
   configid = configProcessor.set(configid, ticketKey);
   return true;
 }

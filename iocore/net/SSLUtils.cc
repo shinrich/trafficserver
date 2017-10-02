@@ -28,6 +28,7 @@
 #include "ts/ink_mutex.h"
 #include "P_OCSPStapling.h"
 #include "SSLSessionCache.h"
+#include "InkAPIInternal.h"
 #include "SSLDynlock.h"
 
 #include <string>
@@ -213,6 +214,7 @@ ssl_session_timed_out(SSL_SESSION *session)
   return SSL_SESSION_get_timeout(session) < (long)(time(nullptr) - SSL_SESSION_get_time(session));
 }
 
+int SSL_session_Timed_out(SSL_SESSION *session);
 static void ssl_rm_cached_session(SSL_CTX *ctx, SSL_SESSION *sess);
 
 static SSL_SESSION *
@@ -231,20 +233,25 @@ ssl_get_cached_session(SSL *ssl, const unsigned char *id, int len, int *copy)
     Debug("ssl.session_cache.get", "ssl_get_cached_session cached session '%s' context %p", printable_buf, SSL_get_SSL_CTX(ssl));
   }
 
-  SSL_SESSION *session = nullptr;
+  APIHook *hook = ssl_hooks->get(TS_SSL_SESSION_INTERNAL_HOOK);
+  while (hook) {
+    hook->invoke(TS_EVENT_SSL_SESSION_GET, &sid);
+    hook = hook->m_link.next;
+  }
 
+  SSL_SESSION *session = nullptr;
   if (session_cache->getSession(sid, &session)) {
     ink_assert(session);
 
     // Double check the timeout
     if (ssl_session_timed_out(session)) {
       SSL_INCREMENT_DYN_STAT(ssl_session_cache_miss);
-// Due to bug in openssl, the timeout is checked, but only removed
-// from the openssl built-in hash table.  The external remove cb is not called
+      // Due to bug in openssl, the timeout is checked, but only removed
+      // from the openssl built-in hash table.  The external remove cb is not called
 #if 0 // This is currently eliminated, since it breaks things in odd ways (see TS-3710)
       ssl_rm_cached_session(SSL_get_SSL_CTX(ssl), session);
-      session = nullptr;
 #endif
+      session = nullptr;
     } else {
       SSLNetVConnection *netvc = SSLNetVCAccess(ssl);
       SSL_INCREMENT_DYN_STAT(ssl_session_cache_hit);
@@ -273,6 +280,13 @@ ssl_new_cached_session(SSL *ssl, SSL_SESSION *sess)
   SSL_INCREMENT_DYN_STAT(ssl_session_cache_new_session);
   session_cache->insertSession(sid, sess);
 
+  // Call hook after new session is created
+  APIHook *hook = ssl_hooks->get(TS_SSL_SESSION_INTERNAL_HOOK);
+  while (hook) {
+    hook->invoke(TS_EVENT_SSL_SESSION_NEW, &sid);
+    hook = hook->m_link.next;
+  }
+
   return 0;
 }
 
@@ -282,6 +296,13 @@ ssl_rm_cached_session(SSL_CTX *ctx, SSL_SESSION *sess)
   unsigned int len        = 0;
   const unsigned char *id = SSL_SESSION_get_id(sess, &len);
   SSLSessionID sid(id, len);
+
+  // Call hook before session is removed
+  APIHook *hook = ssl_hooks->get(TS_SSL_SESSION_INTERNAL_HOOK);
+  while (hook) {
+    hook->invoke(TS_EVENT_SSL_SESSION_REMOVE, &sid);
+    hook = hook->m_link.next;
+  }
 
   if (diags->tag_activated("ssl.session_cache")) {
     char printable_buf[(len * 2) + 1];

@@ -163,6 +163,7 @@ struct SSLTicketParams : public ConfigInfo {
   ssl_ticket_key_block *default_global_keyblock;
   char *ticket_key_filename;
   bool LoadTicket();
+  void LoadTicketData(char *ticket_data, int ticket_data_len);
   void cleanup();
 
   ~SSLTicketParams() { cleanup(); }
@@ -171,6 +172,7 @@ struct SSLTicketParams : public ConfigInfo {
 struct SSLTicketKeyConfig {
   static void startup();
   static bool reconfigure();
+  static bool reconfigure_data(char *ticket_data, int ticket_data_len);
 
   static SSLTicketParams *
   acquire()

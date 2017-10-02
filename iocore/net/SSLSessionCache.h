@@ -31,16 +31,16 @@
 #include "ts/ink_platform.h"
 #include "P_SSLUtils.h"
 #include "ts/RbTree.h"
+#include "ts/apidefs.h"
 #include <openssl/ssl.h>
 
 #define SSL_MAX_SESSION_SIZE 256
 
-struct SSLSessionID {
-  char bytes[SSL_MAX_SSL_SESSION_ID_LENGTH];
-  size_t len;
+struct SSLSessionID : public TSSslSessionID {
 
-  SSLSessionID(const unsigned char *s, size_t l) : len(l)
+  SSLSessionID(const unsigned char *s, size_t l) 
   {
+    len = l;
     ink_release_assert(l <= sizeof(bytes));
     memcpy(bytes, s, l);
   }
@@ -134,6 +134,7 @@ public:
   ~SSLSessionBucket();
   void insertSession(const SSLSessionID &, SSL_SESSION *ctx);
   bool getSession(const SSLSessionID &, SSL_SESSION **ctx);
+  int getSessionBuffer(const SSLSessionID &, char *buffer, int &len);
   void removeSession(const SSLSessionID &);
 
 private:
@@ -149,6 +150,7 @@ class SSLSessionCache
 {
 public:
   bool getSession(const SSLSessionID &sid, SSL_SESSION **sess) const;
+  int getSessionBuffer(const SSLSessionID &sid, char *buffer, int &len) const;
   void insertSession(const SSLSessionID &sid, SSL_SESSION *sess);
   void removeSession(const SSLSessionID &sid);
   SSLSessionCache();

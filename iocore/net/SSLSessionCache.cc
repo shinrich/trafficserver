@@ -49,6 +49,16 @@ SSLSessionCache::~SSLSessionCache()
   delete[] session_bucket;
 }
 
+int
+SSLSessionCache::getSessionBuffer(const SSLSessionID &sid, char *buffer, int &len) const
+{
+  uint64_t hash = sid.hash();
+  uint64_t target_bucket = hash % nbuckets;
+  SSLSessionBucket *bucket = &session_bucket[target_bucket];
+
+  return bucket->getSessionBuffer(sid, buffer, len);
+}
+
 bool
 SSLSessionCache::getSession(const SSLSessionID &sid, SSL_SESSION **sess) const
 {
@@ -62,7 +72,6 @@ SSLSessionCache::getSession(const SSLSessionID &sid, SSL_SESSION **sess) const
     Debug("ssl.session_cache.get", "SessionCache looking in bucket %" PRId64 " (%p) for session '%s' (hash: %" PRIX64 ").",
           target_bucket, bucket, buf, hash);
   }
-
   return bucket->getSession(sid, sess);
 }
 
@@ -144,6 +153,37 @@ SSLSessionBucket::insertSession(const SSLSessionID &id, SSL_SESSION *sess)
   queue.enqueue(ssl_session.release());
 
   PRINT_BUCKET("insertSession after")
+}
+
+int
+SSLSessionBucket::getSessionBuffer(const SSLSessionID &id, char *buffer, int &len)
+{
+  int true_len = 0;
+  MUTEX_TRY_LOCK(lock, mutex, this_ethread());
+  if (!lock.is_locked()) {
+    SSL_INCREMENT_DYN_STAT(ssl_session_cache_lock_contention);
+    if (SSLConfigParams::session_cache_skip_on_lock_contention)
+      return true_len;
+
+    lock.acquire(this_ethread());
+  }
+
+  // We work backwards because that's the most likely place we'll find our session...
+  SSLSession *node = queue.tail;
+  while (node) {
+    if (node->session_id == id) {
+      true_len = node->len_asn1_data;
+      if (buffer) {
+        const unsigned char *loc = reinterpret_cast<const unsigned char *>(node->asn1_data->data());
+        if (true_len < len) 
+          len = true_len;  
+        memcpy(buffer, loc, len);
+        return true_len;
+      }
+    }
+    node = node->link.prev;
+  }
+  return 0;
 }
 
 bool

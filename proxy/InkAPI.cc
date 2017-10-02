@@ -43,6 +43,7 @@
 #include "P_HostDB.h"
 #include "P_Cache.h"
 #include "I_RecCore.h"
+#include "P_SSLConfig.h"
 #include "ProxyConfig.h"
 #include "Plugin.h"
 #include "LogObject.h"
@@ -9138,6 +9139,12 @@ TSSslContextDestroy(TSSslContext ctx)
   SSLReleaseContext(reinterpret_cast<SSL_CTX *>(ctx));
 }
 
+tsapi void
+TSSslTicketKeyUpdate(char *ticketData, int ticketDataLen)
+{
+  SSLTicketKeyConfig::reconfigure_data(ticketData, ticketDataLen);
+}
+
 void
 TSRegisterProtocolSet(TSVConn sslp, TSNextProtocolSet ps)
 {
@@ -9222,6 +9229,56 @@ TSVConnReenable(TSVConn vconn)
       // We schedule the reenable to the home thread of ssl_vc.
       ssl_vc->thread->schedule_imm(new TSSslCallback(ssl_vc));
     }
+  }
+}
+
+extern SSLSessionCache *session_cache; // declared extern in P_SSLConfig.h
+
+TSSslSession
+TSSslSessionGet(const TSSslSessionID *session_id)
+{
+  SSL_SESSION *session = NULL;
+  if (session_id) {
+    session_cache->getSession(reinterpret_cast<const SSLSessionID &>(*session_id), &session);
+  }
+  return reinterpret_cast<TSSslSession>(session);
+}
+
+int
+TSSslSessionGetBuffer(const TSSslSessionID *session_id, char *buffer, int *len_ptr)
+{
+  int true_len = 0;
+  if (session_id && len_ptr) {
+    true_len = session_cache->getSessionBuffer(reinterpret_cast<const SSLSessionID &>(*session_id), buffer, *len_ptr);
+  }
+  return true_len;
+}
+
+TSReturnCode
+TSSslSessionInsert(const TSSslSessionID *session_id, TSSslSession add_session)
+{
+  if (session_id) {
+    SSL_SESSION *session = reinterpret_cast<SSL_SESSION *>(add_session);
+    // Remove the old one if it is there
+    session_cache->removeSession(reinterpret_cast<const SSLSessionID &>(*session_id));
+
+    session_cache->insertSession(reinterpret_cast<const SSLSessionID &>(*session_id), session);
+    // insertSession returns void, assume all went well
+    return TS_SUCCESS;
+  } else {
+    return TS_ERROR;
+  }
+}
+
+TSReturnCode
+TSSslSessionRemove(const TSSslSessionID *session_id)
+{
+  if (session_id) {
+    session_cache->removeSession(reinterpret_cast<const SSLSessionID &>(*session_id));
+    // removeSession returns void, assume all went well
+    return TS_SUCCESS;
+  } else {
+    return TS_ERROR;
   }
 }
 
