@@ -27,7 +27,9 @@ import sys
 
 pip_packages = [
     "autest",
-    "hyper"
+    "hyper",
+    "requests",
+    "dnslib"
 ]
 
 
