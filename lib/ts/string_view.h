@@ -1207,3 +1207,17 @@ operator<<(std::basic_ostream<_Type, _Traits> &os, const basic_string_view<_Type
 using string_view = basic_string_view<char>;
 
 } // namespace ts
+
+namespace std
+{
+template <class _Type, class _Traits> struct hash<ts::basic_string_view<_Type, _Traits>> {
+  using string_type = ts::basic_string_view<_Type, _Traits>;
+
+  size_t
+  operator()(string_type const &x) const
+  {
+    return hash<typename string_type::const_pointer>()(x.data());
+  }
+};
+}
+
