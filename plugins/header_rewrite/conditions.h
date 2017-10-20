@@ -359,6 +359,24 @@ protected:
   bool eval(const Resources &res);
 };
 
+class ConditionIp : public Condition
+{
+  typedef Matchers<std::string> MatcherType;
+
+public:
+  explicit ConditionIp() : _ip_qual(IP_QUAL_CLIENT) { TSDebug(PLUGIN_NAME_DBG, "Calling CTOR for ConditionIp"); };
+  void initialize(Parser &p);
+  void set_qualifier(const std::string &q);
+  void append_value(std::string &s, const Resources &res);
+
+protected:
+  bool eval(const Resources &res);
+
+private:
+  DISALLOW_COPY_AND_ASSIGN(ConditionIp);
+  IpQualifiers _ip_qual;
+};
+
 class ConditionClientIp : public Condition
 {
   typedef Matchers<std::string> MatcherType;
@@ -478,6 +496,31 @@ protected:
 private:
   DISALLOW_COPY_AND_ASSIGN(ConditionId);
   IdQualifiers _id_qual;
+};
+
+/// Information about the inbound (client) session.
+class ConditionInbound : public Condition
+{
+  using MatcherType = Matchers<std::string>;
+  using self        = ConditionInbound;
+
+public:
+  explicit ConditionInbound() { TSDebug(PLUGIN_NAME_DBG, "Calling CTOR for ConditionInbound"); };
+  ConditionInbound(self &) = delete;
+  self &operator=(self &) = delete;
+
+  void initialize(Parser &p);
+  void set_qualifier(const std::string &q);
+  void append_value(std::string &s, const Resources &res);
+  static void append_value(std::string &s, const Resources &res, NetworkSessionQualifiers qual);
+
+  static constexpr const char *TAG = "INBOUND";
+
+protected:
+  bool eval(const Resources &res);
+
+private:
+  NetworkSessionQualifiers _net_qual = NET_QUAL_STACK;
 };
 
 #endif // __CONDITIONS_H

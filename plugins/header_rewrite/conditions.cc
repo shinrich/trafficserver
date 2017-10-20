@@ -24,6 +24,7 @@
 #include <arpa/inet.h>
 #include <cctype>
 #include <sstream>
+#include <array>
 
 #include "ts/ts.h"
 
@@ -62,10 +63,7 @@ ConditionStatus::eval(const Resources &res)
 void
 ConditionStatus::append_value(std::string &s, const Resources &res)
 {
-  std::ostringstream oss;
-
-  oss << res.resp_status;
-  s += oss.str();
+  s += std::to_string(res.resp_status);
   TSDebug(PLUGIN_NAME, "Appending STATUS(%d) to evaluation value -> %s", res.resp_status, s.c_str());
 }
 
@@ -231,7 +229,7 @@ ConditionHeader::append_value(std::string &s, const Resources &res)
       s.append(value, len);
       // multiple headers with the same name must be semantically the same as one value which is comma separated
       if (next_field_loc) {
-        s.append(",");
+        s += ',';
       }
       TSHandleMLocRelease(bufp, hdr_loc, field_loc);
       field_loc = next_field_loc;
@@ -348,17 +346,10 @@ ConditionUrl::set_qualifier(const std::string &q)
 }
 
 void
-ConditionUrl::append_value(std::string & /* s ATS_UNUSED */, const Resources & /* res ATS_UNUSED */)
+ConditionUrl::append_value(std::string &s, const Resources &res)
 {
-}
-
-bool
-ConditionUrl::eval(const Resources &res)
-{
-  TSDebug(PLUGIN_NAME, "ConditionUrl::eval");
   TSMLoc url     = nullptr;
   TSMBuffer bufp = nullptr;
-  std::string s;
 
   if (res._rri != nullptr) {
     // called at the remap hook
@@ -375,7 +366,7 @@ ConditionUrl::eval(const Resources &res)
       url = res._rri->mapToUrl;
     } else {
       TSError("[header_rewrite] Invalid option value");
-      return false;
+      return;
     }
   } else {
     TSMLoc hdr_loc = nullptr;
@@ -387,21 +378,63 @@ ConditionUrl::eval(const Resources &res)
       hdr_loc = res.hdr_loc;
     } else {
       TSError("[header_rewrite] Rule not supported at this hook");
-      return false;
+      return;
     }
     if (TSHttpHdrUrlGet(bufp, hdr_loc, &url) != TS_SUCCESS) {
       TSError("[header_rewrite] Error getting the URL");
-      return false;
+      return;
     }
   }
 
-  if (_url_qual == URL_QUAL_HOST) {
-    int host_len     = 0;
-    const char *host = TSUrlHostGet(bufp, url, &host_len);
-    s.append(host, host_len);
-    TSDebug(PLUGIN_NAME, "   Host to match is: %.*s", host_len, host);
-  }
+  int i;
+  const char *q_str;
 
+  switch (_url_qual) {
+  case URL_QUAL_HOST:
+    q_str = TSUrlHostGet(bufp, url, &i);
+    s.append(q_str, i);
+    TSDebug(PLUGIN_NAME, "   Host to match is: %.*s", i, q_str);
+    break;
+  case URL_QUAL_PORT:
+    i = TSUrlPortGet(bufp, url);
+    s.append(std::to_string(i));
+    TSDebug(PLUGIN_NAME, "   Port to match is: %d", i);
+    break;
+  case URL_QUAL_PATH:
+    q_str = TSUrlPathGet(bufp, url, &i);
+    s.append(q_str, i);
+    TSDebug(PLUGIN_NAME, "   Path to match is: %.*s", i, q_str);
+    break;
+  case URL_QUAL_QUERY:
+    q_str = TSUrlHttpQueryGet(bufp, url, &i);
+    s.append(q_str, i);
+    TSDebug(PLUGIN_NAME, "   Query parameters to match is: %.*s", i, q_str);
+    break;
+  case URL_QUAL_MATRIX:
+    q_str = TSUrlHttpParamsGet(bufp, url, &i);
+    s.append(q_str, i);
+    TSDebug(PLUGIN_NAME, "   Matrix parameters to match is: %.*s", i, q_str);
+    break;
+  case URL_QUAL_SCHEME:
+    q_str = TSUrlSchemeGet(bufp, url, &i);
+    s.append(q_str, i);
+    TSDebug(PLUGIN_NAME, "   Scheme to match is: %.*s", i, q_str);
+    break;
+  case URL_QUAL_URL:
+  case URL_QUAL_NONE:
+    q_str = TSUrlStringGet(bufp, url, &i);
+    s.append(q_str, i);
+    TSDebug(PLUGIN_NAME, "   URL to match is: %.*s", i, q_str);
+    break;
+  }
+}
+
+bool
+ConditionUrl::eval(const Resources &res)
+{
+  std::string s;
+
+  append_value(s, res);
   return static_cast<const Matchers<std::string> *>(_matcher)->test(s);
 }
 
@@ -577,6 +610,76 @@ ConditionClientIp::append_value(std::string &s, const Resources &res)
   char ip[INET6_ADDRSTRLEN];
 
   if (getIP(TSHttpTxnClientAddrGet(res.txnp), ip)) {
+    s += ip;
+  }
+}
+
+void
+ConditionIp::initialize(Parser &p)
+{
+  Condition::initialize(p);
+
+  MatcherType *match = new MatcherType(_cond_op);
+
+  match->set(p.get_arg());
+  _matcher = match;
+}
+
+void
+ConditionIp::set_qualifier(const std::string &q)
+{
+  Condition::set_qualifier(q);
+
+  TSDebug(PLUGIN_NAME, "\tParsing %%{IP:%s} qualifier", q.c_str());
+
+  if (q == "CLIENT") {
+    _ip_qual = IP_QUAL_CLIENT;
+  } else if (q == "INBOUND") {
+    _ip_qual = IP_QUAL_INBOUND;
+  } else if (q == "SERVER") {
+    _ip_qual = IP_QUAL_SERVER;
+  } else if (q == "OUTBOUND") {
+    _ip_qual = IP_QUAL_OUTBOUND;
+  } else {
+    TSError("[%s] Unknown IP() qualifier: %s", PLUGIN_NAME, q.c_str());
+  }
+}
+
+bool
+ConditionIp::eval(const Resources &res)
+{
+  std::string s;
+
+  append_value(s, res);
+  bool rval = static_cast<const Matchers<std::string> *>(_matcher)->test(s);
+
+  TSDebug(PLUGIN_NAME, "Evaluating IP(): %s - rval: %d", s.c_str(), rval);
+
+  return rval;
+}
+
+void
+ConditionIp::append_value(std::string &s, const Resources &res)
+{
+  bool ip_set = false;
+  char ip[INET6_ADDRSTRLEN];
+
+  switch (_ip_qual) {
+  case IP_QUAL_CLIENT:
+    ip_set = (nullptr != getIP(TSHttpTxnClientAddrGet(res.txnp), ip));
+    break;
+  case IP_QUAL_INBOUND:
+    ip_set = (nullptr != getIP(TSHttpTxnIncomingAddrGet(res.txnp), ip));
+    break;
+  case IP_QUAL_SERVER:
+    ip_set = (nullptr != getIP(TSHttpTxnServerAddrGet(res.txnp), ip));
+    break;
+  case IP_QUAL_OUTBOUND:
+    ip_set = (nullptr != getIP(TSHttpTxnOutgoingAddrGet(res.txnp), ip));
+    break;
+  }
+
+  if (ip_set) {
     s.append(ip);
   }
 }
@@ -1077,5 +1180,127 @@ ConditionId::eval(const Resources &res)
 
     TSDebug(PLUGIN_NAME, "Evaluating ID(): %s - rval: %d", s.c_str(), rval);
     return rval;
+  }
+}
+
+void
+ConditionInbound::initialize(Parser &p)
+{
+  Condition::initialize(p);
+
+  MatcherType *match = new MatcherType(_cond_op);
+
+  match->set(p.get_arg());
+  _matcher = match;
+}
+
+void
+ConditionInbound::set_qualifier(const std::string &q)
+{
+  Condition::set_qualifier(q);
+
+  TSDebug(PLUGIN_NAME, "\tParsing %%{%s:%s} qualifier", TAG, q.c_str());
+
+  if (q == "LOCAL-ADDR") {
+    _net_qual = NET_QUAL_LOCAL_ADDR;
+  } else if (q == "LOCAL-PORT") {
+    _net_qual = NET_QUAL_LOCAL_PORT;
+  } else if (q == "REMOTE-ADDR") {
+    _net_qual = NET_QUAL_REMOTE_ADDR;
+  } else if (q == "REMOTE-PORT") {
+    _net_qual = NET_QUAL_REMOTE_PORT;
+  } else if (q == "TLS") {
+    _net_qual = NET_QUAL_TLS;
+  } else if (q == "H2") {
+    _net_qual = NET_QUAL_H2;
+  } else if (q == "IPV4") {
+    _net_qual = NET_QUAL_IPV4;
+  } else if (q == "IPV6") {
+    _net_qual = NET_QUAL_IPV6;
+  } else if (q == "IP-FAMILY") {
+    _net_qual = NET_QUAL_IP_FAMILY;
+  } else if (q == "STACK") {
+    _net_qual = NET_QUAL_STACK;
+  } else {
+    TSError("[%s] Unknown %s() qualifier: %s", PLUGIN_NAME, TAG, q.c_str());
+  }
+}
+
+bool
+ConditionInbound::eval(const Resources &res)
+{
+  std::string s;
+
+  append_value(s, res);
+  bool rval = static_cast<const Matchers<std::string> *>(_matcher)->test(s);
+
+  TSDebug(PLUGIN_NAME, "Evaluating %s(): %s - rval: %d", TAG, s.c_str(), rval);
+
+  return rval;
+}
+
+void
+ConditionInbound::append_value(std::string &s, const Resources &res)
+{
+  this->append_value(s, res, _net_qual);
+}
+
+void
+ConditionInbound::append_value(std::string &s, const Resources &res, NetworkSessionQualifiers qual)
+{
+  const char *zret = nullptr;
+  char text[INET6_ADDRSTRLEN];
+
+  switch (qual) {
+  case NET_QUAL_LOCAL_ADDR: {
+    zret = getIP(TSHttpTxnIncomingAddrGet(res.txnp), text);
+  } break;
+  case NET_QUAL_LOCAL_PORT: {
+    uint16_t port = getPort(TSHttpTxnIncomingAddrGet(res.txnp));
+    snprintf(text, sizeof(text), "%d", port);
+    zret = text;
+  } break;
+  case NET_QUAL_REMOTE_ADDR: {
+    zret = getIP(TSHttpTxnClientAddrGet(res.txnp), text);
+  } break;
+  case NET_QUAL_REMOTE_PORT: {
+    uint16_t port = getPort(TSHttpTxnClientAddrGet(res.txnp));
+    snprintf(text, sizeof(text), "%d", port);
+    zret = text;
+  } break;
+  case NET_QUAL_TLS:
+    zret = TSHttpTxnClientProtocolStackContains(res.txnp, "tls/");
+    break;
+  case NET_QUAL_H2:
+    zret = TSHttpTxnClientProtocolStackContains(res.txnp, "h2");
+    break;
+  case NET_QUAL_IPV4:
+    zret = TSHttpTxnClientProtocolStackContains(res.txnp, "ipv4");
+    break;
+  case NET_QUAL_IPV6:
+    zret = TSHttpTxnClientProtocolStackContains(res.txnp, "ipv6");
+    break;
+  case NET_QUAL_IP_FAMILY:
+    zret = TSHttpTxnClientProtocolStackContains(res.txnp, "ip");
+    break;
+  case NET_QUAL_STACK: {
+    std::array<char const *, 8> tags;
+    int count  = 0;
+    size_t len = 0;
+    TSHttpTxnClientProtocolStackGet(res.txnp, tags.size(), tags.data(), &count);
+    for (int i = 0; i < count; ++i) {
+      len += 1 + strlen(tags[i]);
+    }
+    s.reserve(len);
+    for (int i = 0; i < count; ++i) {
+      if (i)
+        s += ',';
+      s += tags[i];
+    }
+  } break;
+  }
+
+  if (zret) {
+    s += zret;
   }
 }
