@@ -107,11 +107,11 @@ tr.StillRunningAfter = server
 tr.StillRunningAfter = ts
 
 # HTTP2 POST: www.example.com Host, chunked body
-tr = Test.AddTestRun()
-tr.Processes.Default.Command = 'curl --http2 -k https://127.0.0.1:{0} --verbose -H "Host: www.anotherexample.com" -d "Knock knock"'.format(
-    ts.Variables.ssl_port)
-tr.Processes.Default.ReturnCode = 0
-tr.Processes.Default.Streams.stderr = "gold/h2_chunked_POST_200.gold"
+# tr = Test.AddTestRun()
+# tr.Processes.Default.Command = 'curl --http2 -k https://127.0.0.1:{0} --verbose -H "Host: www.anotherexample.com" -d "Knock knock"'.format(
+#     ts.Variables.ssl_port)
+# tr.Processes.Default.ReturnCode = 0
+# tr.Processes.Default.Streams.stderr = "gold/h2_chunked_POST_200.gold"
 
 # HTTP1.1 POST: www.yetanotherexample.com Host, explicit size
 tr = Test.AddTestRun()
