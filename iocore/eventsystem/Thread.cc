@@ -89,7 +89,7 @@ spawn_thread_internal(void *a)
   return nullptr;
 }
 
-ink_thread
+void
 Thread::start(const char *name, void *stack, size_t stacksize, ThreadFunction const &f)
 {
   auto *p = new thread_data_internal{f, this, ""};
@@ -99,7 +99,5 @@ Thread::start(const char *name, void *stack, size_t stacksize, ThreadFunction co
   if (stacksize == 0) {
     stacksize = DEFAULT_STACKSIZE;
   }
-  tid = ink_thread_create(spawn_thread_internal, p, 0, stacksize, stack);
-
-  return tid;
+  ink_thread_create(&tid, spawn_thread_internal, p, 0, stacksize, stack);
 }

@@ -93,7 +93,7 @@ ProcessManager::start(std::function<void()> const &cb)
 
   ink_release_assert(running == 0);
   ink_atomic_increment(&running, 1);
-  poll_thread = ink_thread_create(processManagerThread, NULL, 0, 0, NULL);
+  ink_thread_create(&poll_thread, processManagerThread, nullptr, 0, 0, nullptr);
 }
 
 void
