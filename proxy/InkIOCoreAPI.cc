@@ -208,13 +208,13 @@ TSThreadDestroy(TSThread thread)
   // The thread must be destroyed by the same thread that created
   // it because that thread is holding the thread mutex.
   ink_release_assert(ithread->mutex->thread_holding == ithread);
-  
-    // If this thread was created by TSThreadCreate() rather than
-    // TSThreadInit, then we must not destroy it before it's done.
-    if (ithread->func) {
-      ink_release_assert(ithread->completion.done == true);
-    }
-  
+
+  // If this thread was created by TSThreadCreate() rather than
+  // TSThreadInit, then we must not destroy it before it's done.
+  if (ithread->func) {
+    ink_release_assert(ithread->completion.done == true);
+  }
+
   delete ithread;
 }
 

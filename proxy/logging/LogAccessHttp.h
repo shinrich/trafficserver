@@ -162,7 +162,6 @@ public:
   int marshal_http_header_field(LogField::Container container, char *field, char *buf) override;
   int marshal_http_header_field_escapify(LogField::Container container, char *field, char *buf) override;
 
-
   virtual int marshal_milestone_fmt_sec(TSMilestonesType ms, char *buf);
 
   int marshal_milestone(TSMilestonesType ms, char *buf) override;

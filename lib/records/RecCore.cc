@@ -1128,7 +1128,7 @@ char *
 RecConfigReadConfigDir()
 {
   char buf[PATH_NAME_MAX] = {0};
-  
+
   if (const char *env = getenv("PROXY_CONFIG_CONFIG_DIR")) {
     ink_strlcpy(buf, env, sizeof(buf));
   } else {

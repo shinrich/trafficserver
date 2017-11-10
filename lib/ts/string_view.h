@@ -1220,4 +1220,3 @@ template <class _Type, class _Traits> struct hash<ts::basic_string_view<_Type, _
   }
 };
 }
-
