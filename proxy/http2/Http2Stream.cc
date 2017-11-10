@@ -159,7 +159,8 @@ Http2Stream::send_request(Http2ConnectionState &cstate)
       block = request_buffer.get_current_block();
     }
     done = _req_header.print(block->start(), block->write_avail(), &bufindex, &tmp);
-    TraceIn(h2_trace,cstate.ua_session->get_netvc()->get_remote_addr(),cstate.ua_session->get_netvc()->get_remote_port(),"H2 TRACE bytes = %d stream ID = %d \n%.*s",this->get_id(),bufindex,bufindex,block->start());
+    TraceIn(h2_trace, cstate.ua_session->get_netvc()->get_remote_addr(), cstate.ua_session->get_netvc()->get_remote_port(),
+            "H2 TRACE bytes = %d stream ID = %d \n%.*s", this->get_id(), bufindex, bufindex, block->start());
     dumpoffset += bufindex;
     request_buffer.fill(bufindex);
     if (!done) {
@@ -537,7 +538,8 @@ Http2Stream::update_write_request(IOBufferReader *buf_reader, int64_t write_len,
       total_added += bytes_added;
     }
     auto nvc = parent->connection_state.ua_session->get_netvc();
-    TraceOut(h2_trace,nvc->get_remote_addr(),nvc->get_remote_port(),"H2 Trace bytes = %" PRId64 " Stream ID = %d \n %.*s",total_added,this->get_id(),static_cast<int>(total_added),response_buffer.get_current_block()->start());
+    TraceOut(h2_trace, nvc->get_remote_addr(), nvc->get_remote_port(), "H2 Trace bytes = %" PRId64 " Stream ID = %d \n %.*s",
+             total_added, this->get_id(), static_cast<int>(total_added), response_buffer.get_current_block()->start());
   }
 
   bool is_done = false;

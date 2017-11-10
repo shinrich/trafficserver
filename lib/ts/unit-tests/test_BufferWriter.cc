@@ -44,7 +44,6 @@ TEST_CASE("BufferWriter::write(StringView)", "[BWWSV]")
     bool good;
 
     X() : i(0), j(0), good(true) {}
-
     X &
     write(char c) override
     {

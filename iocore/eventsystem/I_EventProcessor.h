@@ -367,7 +367,6 @@ private:
 
   public:
     ThreadInit(EventProcessor *evp) : _evp(evp) { SET_HANDLER(&self::init); }
-
     int
     init(int /* event ATS_UNUSED */, Event *ev)
     {

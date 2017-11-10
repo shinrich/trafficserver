@@ -98,15 +98,15 @@ rcv_data_frame(Http2ConnectionState &cstate, const Http2Frame &frame)
   if (stream->get_state() != Http2StreamState::HTTP2_STREAM_STATE_OPEN &&
       stream->get_state() != Http2StreamState::HTTP2_STREAM_STATE_HALF_CLOSED_LOCAL) {
     // Ignore stream error because of MS Edge browser
-    if (frame.header().length == 0 && frame.header().type == HTTP2_FRAME_TYPE_DATA && 
-        frame.header().flags == HTTP2_FLAGS_DATA_END_STREAM && 
+    if (frame.header().length == 0 && frame.header().type == HTTP2_FRAME_TYPE_DATA &&
+        frame.header().flags == HTTP2_FLAGS_DATA_END_STREAM &&
         stream->get_state() == Http2StreamState::HTTP2_STREAM_STATE_HALF_CLOSED_REMOTE) {
       ip_port_text_buffer ipb;
       const char *client_ip = ats_ip_ntop(cstate.ua_session->get_client_addr(), ipb, sizeof(ipb));
       Error("zero length data frame and END_STREAM on HALF_CLOSED_REMOTE stream client_ip=%s", client_ip);
       return Http2Error(Http2ErrorClass::HTTP2_ERROR_CLASS_NONE);
     }
-    return Http2Error(Http2ErrorClass::HTTP2_ERROR_CLASS_STREAM, Http2ErrorCode::HTTP2_ERROR_STREAM_CLOSED, 
+    return Http2Error(Http2ErrorClass::HTTP2_ERROR_CLASS_STREAM, Http2ErrorCode::HTTP2_ERROR_STREAM_CLOSED,
                       "recv data stream closed");
   }
 
@@ -1034,9 +1034,9 @@ Http2ConnectionState::create_stream(Http2StreamId new_id, Http2Error &error)
   netvc->add_to_active_queue();
   // reset the activity timeout everytime a new stream is created
   netvc->set_active_timeout(HRTIME_SECONDS(Http2::active_timeout_in));
-  auto ssl_vc=dynamic_cast<SSLNetVConnection*>(netvc);
-  if(ssl_vc) {
-    new_stream->h2_trace=ssl_vc->getSSLTrace();
+  auto ssl_vc = dynamic_cast<SSLNetVConnection *>(netvc);
+  if (ssl_vc) {
+    new_stream->h2_trace = ssl_vc->getSSLTrace();
   }
   return new_stream;
 }
