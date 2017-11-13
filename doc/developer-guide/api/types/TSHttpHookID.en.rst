@@ -78,7 +78,7 @@ Enumeration Members
 
 .. c:member:: TSHttpHookID TS_SSL_SERVERNAME_HOOK
 
-.. c:member:: TSHttpHookID TS_SSL_LAST_HOOK
+.. c:member TSHttpHookID TS_SSL_VERIFY_CLIENT_HOOK
 
 .. c:member:: TSHttpHookID TS_HTTP_LAST_HOOK
 

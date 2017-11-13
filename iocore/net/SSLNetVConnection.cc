@@ -1085,7 +1085,8 @@ int
 SSLNetVConnection::sslServerHandShakeEvent(int &err)
 {
   // Continue on if we are in the invoked state.  The hook has not yet reenabled
-  if (sslHandshakeHookState == HANDSHAKE_HOOKS_CERT_INVOKE || sslHandshakeHookState == HANDSHAKE_HOOKS_PRE_INVOKE) {
+  if (sslHandshakeHookState == HANDSHAKE_HOOKS_CERT_INVOKE || sslHandshakeHookState == HANDSHAKE_HOOKS_CLIENT_CERT_INVOKE ||
+      sslHandshakeHookState == HANDSHAKE_HOOKS_PRE_INVOKE) {
     return SSL_WAIT_FOR_HOOK;
   }
 
@@ -1520,7 +1521,10 @@ SSLNetVConnection::reenable(NetHandler *nh)
   }
   if (curHook != nullptr) {
     // Invoke the hook and return, wait for next reenable
-    if (sslHandshakeHookState == HANDSHAKE_HOOKS_CERT) {
+    if (sslHandshakeHookState == HANDSHAKE_HOOKS_CLIENT_CERT) {
+      sslHandshakeHookState = HANDSHAKE_HOOKS_CLIENT_CERT_INVOKE;
+      curHook->invoke(TS_EVENT_SSL_VERIFY_CLIENT, this);
+    } else if (sslHandshakeHookState == HANDSHAKE_HOOKS_CERT) {
       sslHandshakeHookState = HANDSHAKE_HOOKS_CERT_INVOKE;
       curHook->invoke(TS_EVENT_SSL_CERT, this);
     } else if (sslHandshakeHookState == HANDSHAKE_HOOKS_SNI) {
@@ -1543,6 +1547,10 @@ SSLNetVConnection::reenable(NetHandler *nh)
       break;
     case HANDSHAKE_HOOKS_CERT:
     case HANDSHAKE_HOOKS_CERT_INVOKE:
+      sslHandshakeHookState = HANDSHAKE_HOOKS_CLIENT_CERT;
+      break;
+    case HANDSHAKE_HOOKS_CLIENT_CERT:
+    case HANDSHAKE_HOOKS_CLIENT_CERT_INVOKE:
       sslHandshakeHookState = HANDSHAKE_HOOKS_DONE;
       break;
     default:
@@ -1575,7 +1583,8 @@ bool
 SSLNetVConnection::callHooks(TSEvent eventId)
 {
   // Only dealing with the SNI/CERT hook so far.
-  ink_assert(eventId == TS_EVENT_SSL_CERT || eventId == TS_EVENT_SSL_SERVERNAME || eventId == TS_EVENT_SSL_SERVER_VERIFY_HOOK);
+  ink_assert(eventId == TS_EVENT_SSL_CERT || eventId == TS_EVENT_SSL_SERVERNAME || eventId == TS_EVENT_SSL_SERVER_VERIFY_HOOK ||
+             eventId == TS_EVENT_SSL_VERIFY_CLIENT);
   Debug("ssl", "callHooks sslHandshakeHookState=%d", this->sslHandshakeHookState);
 
   // Move state if it is appropriate
@@ -1616,7 +1625,7 @@ SSLNetVConnection::callHooks(TSEvent eventId)
       curHook = curHook->next();
     }
     if (curHook == nullptr) {
-      this->sslHandshakeHookState = HANDSHAKE_HOOKS_DONE;
+      this->sslHandshakeHookState = HANDSHAKE_HOOKS_CLIENT_CERT;
     } else {
       this->sslHandshakeHookState = HANDSHAKE_HOOKS_CERT_INVOKE;
     }
@@ -1624,6 +1633,14 @@ SSLNetVConnection::callHooks(TSEvent eventId)
   case HANDSHAKE_HOOKS_DONE:
     if (eventId == TS_EVENT_VCONN_CLOSE) {
       curHook = ssl_hooks->get(TS_VCONN_CLOSE_INTERNAL_HOOK);
+    }
+    break;
+  case HANDSHAKE_HOOKS_CLIENT_CERT:
+  case HANDSHAKE_HOOKS_CLIENT_CERT_INVOKE:
+    if (!curHook) {
+      curHook = ssl_hooks->get(TS_SSL_VERIFY_CLIENT_INTERNAL_HOOK);
+    } else {
+      curHook = curHook->next();
     }
     break;
   default:
@@ -1634,7 +1651,6 @@ SSLNetVConnection::callHooks(TSEvent eventId)
     } else {
       curHook                     = nullptr;
      this->sslHandshakeHookState = HANDSHAKE_HOOKS_DONE;
- 
     }
   }
 

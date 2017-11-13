@@ -264,6 +264,13 @@ public:
         }
       }
       break;
+    case HANDSHAKE_HOOKS_CLIENT_CERT:
+    case HANDSHAKE_HOOKS_CLIENT_CERT_INVOKE:
+      if (eventId == TS_EVENT_SSL_VERIFY_CLIENT || eventId == TS_EVENT_VCONN_PRE_ACCEPT) {
+        retval = true;
+      }
+      break;
+
     case HANDSHAKE_HOOKS_DONE:
       retval = true;
       break;
@@ -344,6 +351,8 @@ private:
     HANDSHAKE_HOOKS_SNI,
     HANDSHAKE_HOOKS_CERT,
     HANDSHAKE_HOOKS_CERT_INVOKE,
+    HANDSHAKE_HOOKS_CLIENT_CERT,
+    HANDSHAKE_HOOKS_CLIENT_CERT_INVOKE,
     HANDSHAKE_HOOKS_DONE
   } sslHandshakeHookState;
 

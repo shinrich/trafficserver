@@ -56,7 +56,8 @@ example_Plugins = \
 	txn-data-sink.la \
 	version.la \
 	replace-protoset.la \
-	vconn_args.la
+	vconn_args.la \
+	verify_cert.la
 
 example_Plugins += \
 	cppapi/AsyncHttpFetch.la \
@@ -109,6 +110,7 @@ psi_la_SOURCES = thread-pool/psi.c thread-pool/thread.c
 query_remap_la_SOURCES = query-remap/query-remap.c
 remap_header_add_la_SOURCES = remap_header_add/remap_header_add.cc
 remap_la_SOURCES = remap/remap.cc
+replace_protoset_la_SOURCES = replace-protoset/replace-protoset.cc
 replace_header_la_SOURCES = replace-header/replace-header.c
 response_header_1_la_SOURCES = response-header-1/response-header-1.c
 secure_link_la_SOURCES = secure-link/secure-link.c
@@ -116,8 +118,10 @@ server_push_la_SOURCES = server-push/server-push.c
 server_transform_la_SOURCES = server-transform/server-transform.c
 ssl_preaccept_la_SOURCES = ssl-preaccept/ssl-preaccept.cc
 ssl_sni_la_SOURCES = ssl-sni/ssl-sni.cc
+ssl_sni_la_LIBADD = $(libtsconfig)
 ssl_sni_whitelist_la_SOURCES = ssl-sni-whitelist/ssl-sni-whitelist.cc
-replace_protoset_la_SOURCES = replace-protoset/replace-protoset.cc
+ssl_sni_whitelist_la_LIBADD = $(libtsconfig)
+verify_cert_la_SOURCES = verify_cert/verify_cert.cc
 statistic_la_SOURCES = statistic/statistic.cc
 thread_1_la_SOURCES = thread-1/thread-1.c
 txn_data_sink_la_SOURCES = txn-data-sink/txn-data-sink.c
