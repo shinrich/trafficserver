@@ -14,7 +14,7 @@ FOREVER="$((60 * 60 * 24 * 365 * 1000))"
 
 case "$SELECT" in
 1)
-    echo "--url http://one.two.three/foo"
+    echo "--url http://one.two.three/foo/abcde/qrstuvwxyz"
     echo "--useparts 1"
     echo "--algorithm 1"
     echo "--duration $FOREVER"
@@ -23,20 +23,38 @@ case "$SELECT" in
     ;;
 2)
     echo "--client 127.0.0.1"
-    echo "--url http://four.five.six/foo"
-    echo "--useparts=1"
+    echo "--url http://four.five.six/foo/abcde/qrstuvwxyz"
+    echo "--useparts 1"
     echo "--algorithm 1"
     echo "--duration $FOREVER"
-    echo "--keyindex 13"
-    echo "--key CGRDwMO96_vRjFCfks6oxkeV7IdTnA6f"
+    echo "--keyindex 15"
+    echo "--key 9MuXIiZ70HPi_qhqfSgdu9oJHpcj9yaO"
     ;;
 3)
-    echo "--url http://seven.eight.nine/foo"
-    echo "--useparts=1"
+    echo "--url http://seven.eight.nine/foo/abcde/qrstuvwxyz"
+    echo "--useparts 1"
     echo "--algorithm 2"
     echo "--duration $FOREVER"
     echo "--keyindex 0"
     echo "--key hV3wqyq1QxJeF76JkzHf93tuLYv_abw5"
+    ;;
+4)
+    echo "--client 127.0.0.1"
+    echo "--url http://seven.eight.nine/foo/abcde/qrstuvwxyz"
+    echo "--useparts 010"
+    echo "--algorithm 2"
+    echo "--duration $FOREVER"
+    echo "--keyindex 13"
+    echo "--key CGRDwMO96_vRjFCfks6oxkeV7IdTnA6f"
+    ;;
+5)
+    echo "--client 127.0.0.1"
+    echo "--url http://seven.eight.nine/foo/abcde/qrstuvwxyz"
+    echo "--useparts 101"
+    echo "--algorithm 2"
+    echo "--duration $FOREVER"
+    echo "--keyindex 13"
+    echo "--key CGRDwMO96_vRjFCfks6oxkeV7IdTnA6f"
     ;;
 *h*)
     ;;
@@ -101,4 +119,4 @@ if [[ "$?" != 0 ]] ; then
     exit 1
 fi
 
-$CMD $ARGS
+$CMD $ARGS | tr ' ' '\n' | tail -1
