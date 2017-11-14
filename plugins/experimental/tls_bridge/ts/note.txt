@@ -1,0 +1,2 @@
+These are copies of files in lib/ts that are not yet in Oath 7.1.x. This should be removed once Oath 7.1.x updates to a version
+that has these files.
