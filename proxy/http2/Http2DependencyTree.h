@@ -198,7 +198,7 @@ Http2DependencyTree<T>::add(uint32_t parent_id, uint32_t id, uint32_t weight, bo
 
 template <typename T>
 bool
-Tree<T>::in(Node *current, Node *node)
+Http2DependencyTree<T>::in(Node *current, Node *node)
 {
   bool retval = false;
   if (current == nullptr)
@@ -242,11 +242,6 @@ Http2DependencyTree<T>::remove(Node *node)
     Node *child = node->children.pop();
     parent->children.push(child);
     child->parent = parent;
-  }
-
-  // delete the shadow parent
-  if (parent->is_shadow() && parent->children.empty() && parent->queue->empty()) {
-    remove(parent);
   }
 
   // ink_release_assert(!this->in(nullptr, node));
