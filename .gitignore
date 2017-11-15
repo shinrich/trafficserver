@@ -53,6 +53,7 @@ cmd/traffic_ctl/traffic_ctl
 cmd/traffic_crashlog/traffic_crashlog
 cmd/traffic_top/traffic_top
 cmd/traffic_manager/traffic_manager
+cmd/traffic_manager/test_metrics
 cmd/traffic_layout/traffic_layout
 cmd/traffic_via/traffic_via
 cmd/traffic_wccp/traffic_wccp
@@ -81,6 +82,8 @@ lib/ts/test_Regex
 lib/ts/test_PriorityQueue
 lib/ts/test_X509HostnameValidator
 lib/ts/test_tsutil
+lib/ts/test_MemView
+lib/ts/test_tslib
 lib/perl/lib/Apache/TS.pm
 
 iocore/net/test_certlookup
@@ -98,6 +101,7 @@ proxy/http2/test_HPACK
 proxy/http2/hpack-tests/results
 proxy/logging/test_LogUtils
 
+plugins/test_s3auth
 plugins/header_rewrite/header_rewrite_test
 plugins/experimental/esi/*_test
 plugins/experimental/sslheaders/test_sslheaders
@@ -123,6 +127,7 @@ proxy/traffic_logcat
 proxy/traffic_logstats
 proxy/traffic_server
 proxy/test_xml_parser
+proxy/http/test_ForwardedConfig
 
 libtool
 m4/libtool.m4
@@ -164,3 +169,6 @@ tools/trafficserver.pc
 BUILDS
 DEBUG
 RELEASE
+
+tests/env-test/
+tests/_sandbox/
