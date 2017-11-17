@@ -100,7 +100,7 @@ TSRemapNewInstance(int argc, char *argv[], void **ih, char *errbuf, int errbuf_s
   struct config *cfg;
 
   if ((argc < 3) || (argc > 4)) {
-    snprintf(errbuf, errbuf_size - 1,
+    snprintf(errbuf, errbuf_size,
              "[TSRemapNewInstance] - Argument count wrong (%d)... config file path is required first pparam, \"pristineurl\" is"
              "optional second pparam.",
              argc);
@@ -117,7 +117,7 @@ TSRemapNewInstance(int argc, char *argv[], void **ih, char *errbuf, int errbuf_s
   TSDebug(PLUGIN_NAME, "config file name: %s", config_file);
   FILE *file = fopen(config_file, "r");
   if (file == NULL) {
-    snprintf(errbuf, errbuf_size - 1, "[TSRemapNewInstance] - Error opening file %s.", config_file);
+    snprintf(errbuf, errbuf_size, "[TSRemapNewInstance] - Error opening file %s.", config_file);
     return TS_ERROR;
   }
 
@@ -149,7 +149,7 @@ TSRemapNewInstance(int argc, char *argv[], void **ih, char *errbuf, int errbuf_s
       *pos = '\0';
     }
     if (pos == NULL || strlen(value) >= MAX_KEY_LEN) {
-      snprintf(errbuf, errbuf_size - 1, "[TSRemapNewInstance] - Maximum key length (%d) exceeded on line %d.", MAX_KEY_LEN - 1,
+      snprintf(errbuf, errbuf_size, "[TSRemapNewInstance] - Maximum key length (%d) exceeded on line %d.", MAX_KEY_LEN - 1,
                line_no);
       fclose(file);
       free_cfg(cfg);
@@ -167,8 +167,7 @@ TSRemapNewInstance(int argc, char *argv[], void **ih, char *errbuf, int errbuf_s
       }
       TSDebug(PLUGIN_NAME, "key number %d == %s", keynum, value);
       if (keynum >= MAX_KEY_NUM || keynum < 0) {
-        snprintf(errbuf, errbuf_size - 1, "[TSRemapNewInstance] - Key number (%d) >= MAX_KEY_NUM (%d) or NaN.", keynum,
-                 MAX_KEY_NUM);
+        snprintf(errbuf, errbuf_size, "[TSRemapNewInstance] - Key number (%d) >= MAX_KEY_NUM (%d) or NaN.", keynum, MAX_KEY_NUM);
         fclose(file);
         free_cfg(cfg);
         return TS_ERROR;
@@ -219,7 +218,7 @@ TSRemapNewInstance(int argc, char *argv[], void **ih, char *errbuf, int errbuf_s
       cfg->pristine_url_flag = 1;
 
     } else {
-      snprintf(errbuf, errbuf_size - 1, "[TSRemapNewInstance] - second pparam (if present) must be pristineurl");
+      snprintf(errbuf, errbuf_size, "[TSRemapNewInstance] - second pparam (if present) must be pristineurl");
       free_cfg(cfg);
       return TS_ERROR;
     }
@@ -228,20 +227,20 @@ TSRemapNewInstance(int argc, char *argv[], void **ih, char *errbuf, int errbuf_s
   switch (cfg->err_status) {
   case TS_HTTP_STATUS_MOVED_TEMPORARILY:
     if (cfg->err_url == NULL) {
-      snprintf(errbuf, errbuf_size - 1, "[TSRemapNewInstance] - Invalid config, err_status == 302, but err_url == NULL");
+      snprintf(errbuf, errbuf_size, "[TSRemapNewInstance] - Invalid config, err_status == 302, but err_url == NULL");
       free_cfg(cfg);
       return TS_ERROR;
     }
     break;
   case TS_HTTP_STATUS_FORBIDDEN:
     if (cfg->err_url != NULL) {
-      snprintf(errbuf, errbuf_size - 1, "[TSRemapNewInstance] - Invalid config, err_status == 403, but err_url != NULL");
+      snprintf(errbuf, errbuf_size, "[TSRemapNewInstance] - Invalid config, err_status == 403, but err_url != NULL");
       free_cfg(cfg);
       return TS_ERROR;
     }
     break;
   default:
-    snprintf(errbuf, errbuf_size - 1, "[TSRemapNewInstance] - Return code %d not supported.", cfg->err_status);
+    snprintf(errbuf, errbuf_size, "[TSRemapNewInstance] - Return code %d not supported.", cfg->err_status);
     free_cfg(cfg);
     return TS_ERROR;
   }
@@ -274,13 +273,13 @@ getAppQueryString(const char *query_string, int query_length)
 {
   int done = 0;
   char *p;
-  char buf[MAX_QUERY_LEN];
+  char buf[MAX_QUERY_LEN + 1];
 
-  if (query_length >= MAX_QUERY_LEN) {
+  if (query_length > MAX_QUERY_LEN) {
     TSDebug(PLUGIN_NAME, "Cannot process the query string as the length exceeds %d bytes.", MAX_QUERY_LEN);
     return NULL;
   }
-  memset(buf, 0, MAX_QUERY_LEN);
+  memset(buf, 0, sizeof(buf));
   strncpy(buf, query_string, query_length);
   p = buf;
 
@@ -399,11 +398,6 @@ TSRemapDoRemap(void *ih, TSHttpTxn txnp, TSRemapRequestInfo *rri)
     goto deny;
   }
 
-  if (strncmp(url, "http://", strlen("http://")) != 0) {
-    err_log(url, "Invalid URL scheme - only http supported.");
-    goto deny;
-  }
-
   /* first, parse the query string */
   query++; /* get rid of the ? */
   TSDebug(PLUGIN_NAME, "Query string is:%s", query);
@@ -518,7 +512,13 @@ TSRemapDoRemap(void *ih, TSHttpTxn txnp, TSRemapRequestInfo *rri)
 
   /* find the string that was signed - cycle through the parts letters, adding the part of the fqdn/path if it is 1 */
   cp = strchr(url, '?');
-  memcpy(urltokstr, &url[strlen("http://")], cp - url - strlen("http://"));
+  // Skip scheme and initial forward slashes.
+  const char *skip = strchr(url, ':');
+  if (!skip || skip[1] != '/' || skip[2] != '/') {
+    goto deny;
+  }
+  skip += 3;
+  memcpy(urltokstr, skip, cp - skip);
   char *strtok_r_p;
   const char *part = strtok_r(urltokstr, "/", &strtok_r_p);
   while (part != NULL) {
