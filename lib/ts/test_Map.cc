@@ -208,7 +208,6 @@ main(int /* argc ATS_UNUSED */, char ** /*argv ATS_UNUSED */)
   ink_assert(sh.get("af") == 10);
   ink_assert(sh.get("ac") == 7);
 
-<<<<<<< HEAD
   ChainHashMap<cchar *, StringHashFns, int> ssh;
   ssh.put(hi, 1);
   ssh.put(ho, 2);
