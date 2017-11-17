@@ -81,8 +81,8 @@ int cache_config_mutex_retry_delay             = 2;
 int cache_read_while_writer_retry_delay        = 50;
 int cache_config_read_while_writer_max_retries = 10;
 #ifdef HTTP_CACHE
-int cache_config_auto_clear_stripe             = 1;
-static int enable_cache_empty_http_doc         = 0;
+int cache_config_auto_clear_stripe     = 1;
+static int enable_cache_empty_http_doc = 0;
 /// Fix up a specific known problem with the 4.2.0 release.
 /// Not used for stripes with a cache version later than 4.2.0.
 int cache_config_compatibility_4_2_0_fixup = 1;
@@ -750,7 +750,7 @@ CacheProcessor::start_internal(int flags)
     if (cb_after_init)
       cb_after_init();
     Emergency("Cache initialization failed - only %d out of %d disks were valid and all were required.", gndisks,
-          theCacheStore.n_disks_in_config);
+              theCacheStore.n_disks_in_config);
   }
 
   return 0;
