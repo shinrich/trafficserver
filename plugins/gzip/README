@@ -5,6 +5,7 @@ this plugin gzips or deflates or deflates responses, whichever is applicable
 it can compress origin respones as well as cached responses
 
 installation:
+if the brotli package is not installed, run 'yinst install brotli'.
 make && sudo make install
 
 if no makefile is present, you can compile it using
