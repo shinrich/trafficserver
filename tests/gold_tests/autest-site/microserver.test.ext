@@ -119,3 +119,7 @@ def MakeOriginServer(obj, name,public_ip=False,ssl=False,options={}):
 
 AddTestRunSet(MakeOriginServer,name="MakeOriginServer")
 AddTestRunSet(MakeOriginServer,name="MakeOrigin")
+
+ExtendTest(MakeOriginServer, name="MakeOriginServer")
+ExtendTest(MakeOriginServer, name="MakeOrigin")
+
