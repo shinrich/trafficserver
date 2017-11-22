@@ -1,0 +1,6 @@
+HTTP/
+^> X-Ats-Gzip-Test:
+^> Accept-Encoding:
+^< Content-
+^< Vary:
+^$
