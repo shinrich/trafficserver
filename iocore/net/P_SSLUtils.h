@@ -25,6 +25,7 @@
 #include "ts/ink_config.h"
 #include "ts/Diags.h"
 #include "P_SSLClientUtils.h"
+#include <ts/TextView.h>
 
 #define OPENSSL_THREAD_DEFINES
 
@@ -240,26 +241,20 @@ class TunnelHashMap
 {
 public:
   struct HostStruct {
-    cchar *hostname;
-    int len;
+    std::string hostname;
     int port;
-    HostStruct(cchar *name, int hostnamelen, int port_)
-    {
-      hostname = name;
-      len      = hostnamelen;
-      port     = port_;
-    }
+    HostStruct(cchar *name, size_t len, int port_) : hostname(name, len), port(port_) {}
   };
 
   typedef HashMap<cchar *, StringHashFns, const HostStruct *> Tunnel_hashMap;
   Tunnel_hashMap TunnelhMap;
 
   void
-  emplace(cchar *key, std::string &hostname)
+  emplace(cchar *key, std::string const &hostname)
   {
-    ts::ConstBuffer addr, port;
-    if (ats_ip_parse(ts::ConstBuffer(hostname.data(), hostname.length()), &addr, &port) == 0) {
-      auto *hs = new HostStruct(ats_strdup(addr._ptr), addr._size, atoi(port._ptr));
+    ts::string_view addr, port;
+    if (ats_ip_parse(ts::string_view{hostname}, &addr, &port) == 0) {
+      auto *hs = new HostStruct(addr.data(), addr.size(), svtoi(port));
       TunnelhMap.put(ats_strdup(key), hs);
     }
   }
@@ -267,7 +262,7 @@ public:
   void
   emplace(cchar *key, cchar *name, int hostnamelen, int port_)
   {
-    auto *hs = new HostStruct(ats_strdup(name), hostnamelen, port_);
+    auto *hs = new HostStruct(name, hostnamelen, port_);
     TunnelhMap.put(ats_strdup(key), hs);
   }
 
