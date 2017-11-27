@@ -32,15 +32,16 @@
 #if !defined(_SSLNetVConnection_h_)
 #define _SSLNetVConnection_h_
 
-#include "ts/ink_platform.h"
-#include "P_EventSystem.h"
-#include "P_UnixNetVConnection.h"
-#include "P_UnixNet.h"
-#include "ts/apidefs.h"
-#include <ts/MemView.h>
+#include <ts/ink_platform.h>
+#include <ts/apidefs.h>
+#include <ts/string_view.h>
 
 #include <openssl/ssl.h>
 #include <openssl/err.h>
+
+#include "P_EventSystem.h"
+#include "P_UnixNetVConnection.h"
+#include "P_UnixNet.h"
 
 // These are included here because older OpenSSL libraries don't have them.
 // Don't copy these defines, or use their values directly, they are merely
@@ -285,8 +286,8 @@ public:
     return ssl ? SSL_get_cipher_name(ssl) : nullptr;
   }
 
-  int populate_protocol(ts::StringView *results, int n) const override;
-  const char *protocol_contains(ts::StringView tag) const override;
+  int populate_protocol(ts::string_view *results, int n) const override;
+  const char *protocol_contains(ts::string_view tag) const override;
 
   /**
    * Populate the current object based on the socket information in in the
@@ -305,11 +306,12 @@ public:
   /// Set by asynchronous hooks to request a specific operation.
   SslVConnOp hookOpRequested;
 
-private:
-  SSLNetVConnection(const SSLNetVConnection &);
-  SSLNetVConnection &operator=(const SSLNetVConnection &);
+  // noncopyable
+  SSLNetVConnection(const SSLNetVConnection &) = delete;
+  SSLNetVConnection &operator=(const SSLNetVConnection &) = delete;
 
-  ts::StringView map_tls_protocol_to_tag(const char *proto_string) const;
+private:
+  ts::string_view map_tls_protocol_to_tag(const char *proto_string) const;
   bool update_rbio(bool move_to_socket);
 
   bool sslHandShakeComplete;

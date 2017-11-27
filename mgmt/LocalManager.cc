@@ -33,6 +33,7 @@
 #include "FileManager.h"
 #include "ClusterCom.h"
 #include "VMap.h"
+#include <ts/string_view.h>
 
 #if TS_USE_POSIX_CAP
 #include <sys/capability.h>
@@ -1032,14 +1033,14 @@ LocalManager::listenForProxy()
 
     // read backlong configuration value and overwrite the default value if found
     bool found;
+    ts::string_view fam{ats_ip_family_name(p.m_family)};
     RecInt backlog = REC_readInteger("proxy.config.net.listen_backlog", &found);
     backlog        = (found && backlog >= 0) ? backlog : ats_tcp_somaxconn();
 
     if ((listen(p.m_fd, backlog)) < 0) {
-      mgmt_fatal(errno, "[LocalManager::listenForProxy] Unable to listen on port: %d (%s)\n", p.m_port,
-                 ats_ip_family_name(p.m_family).ptr());
+      mgmt_fatal(errno, "[LocalManager::listenForProxy] Unable to listen on port: %d (%.*s)\n", p.m_port, fam.size(), fam.data());
     }
-    mgmt_log("[LocalManager::listenForProxy] Listening on port: %d (%s)\n", p.m_port, ats_ip_family_name(p.m_family).ptr());
+    mgmt_log("[LocalManager::listenForProxy] Listening on port: %d (%.*s)\n", p.m_port, fam.size(), fam.data());
   }
   return;
 }
