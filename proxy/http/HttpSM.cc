@@ -641,7 +641,7 @@ HttpSM::setup_blind_tunnel_port()
       t_state.hdr_info.client_request.url_set(&u);
       auto *hs = TunnelMap.find(ssl_vc->serverName);
       if (hs != nullptr) {
-        t_state.hdr_info.client_request.url_get()->host_set(hs->hostname, hs->len);
+        t_state.hdr_info.client_request.url_get()->host_set(hs->hostname.data(), hs->hostname.size());
         if (hs->port > 0) {
           t_state.hdr_info.client_request.url_get()->port_set(hs->port);
         } else {
@@ -1484,7 +1484,7 @@ plugins required to work with sni_routing.
 
       if (ssl_vc && ssl_vc->GetSNIMapping()) {
         if (hs != nullptr) {
-          t_state.hdr_info.client_request.url_get()->host_set(hs->hostname, hs->len);
+          t_state.hdr_info.client_request.url_get()->host_set(hs->hostname.data(), hs->hostname.size());
           if (hs->port > 0) {
             t_state.hdr_info.client_request.url_get()->port_set(hs->port);
           } else {
