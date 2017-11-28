@@ -70,5 +70,5 @@ NetVCOptions::get_family_string() const
   default:
     break;
   }
-  return nullptr;
+  return {};
 }
