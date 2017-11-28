@@ -8281,5 +8281,5 @@ HttpSM::find_proto_string(HTTPVersion version) const
   } else if (version == HTTPVersion(1, 0)) {
     return IP_PROTO_TAG_HTTP_1_0;
   }
-  return nullptr;
+  return {};
 }
