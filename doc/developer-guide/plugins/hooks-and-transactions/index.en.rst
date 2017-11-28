@@ -39,6 +39,8 @@ This chapter contains the following sections:
    intercepting-http-transactions.en
    initiate-http-connection.en
    http-alternate-selection.en
+   ssl-hooks.en
+   ssl-session-api.en
 
 .. _developer-plugins-hooks:
 
