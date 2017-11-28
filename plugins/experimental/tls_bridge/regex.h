@@ -31,6 +31,7 @@
 class Regex
 {
   using self_type = Regex;
+
 public:
   enum Flag {
     CASE_INSENSITIVE = 0x0001, // default is case sensitive
@@ -39,7 +40,7 @@ public:
   };
 
   Regex() = default;
-  Regex(self_type && that);
+  Regex(self_type &&that);
 
   bool compile(const char *pattern, const unsigned flags = 0);
   // It is safe to call exec() concurrently on the same object instance
@@ -49,12 +50,12 @@ public:
   ~Regex();
 
 private:
-  pcre *regex = nullptr;
+  pcre *regex             = nullptr;
   pcre_extra *regex_extra = nullptr;
 };
 
-inline
-Regex::Regex(self_type && that) {
+inline Regex::Regex(self_type &&that)
+{
   std::swap(regex, that.regex);
   std::swap(regex_extra, that.regex_extra);
 }

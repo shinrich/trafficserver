@@ -13,7 +13,7 @@ using ts::TextView;
 // Base format string for making the internal CONNECT.
 char const CONNECT_FORMAT[] = "CONNECT https:%.*s HTTP/1.1\r\n\r\n";
 
-const TextView METHOD_CONNECT{ TS_HTTP_METHOD_CONNECT, TS_HTTP_LEN_CONNECT };
+const TextView METHOD_CONNECT{TS_HTTP_METHOD_CONNECT, TS_HTTP_LEN_CONNECT};
 
 /* ------------------------------------------------------------------------------------ */
 // Utility functions
@@ -37,7 +37,8 @@ Hdr_Remove_Field(TSMBuffer mbuf, TSMLoc hdr_loc, TextView field)
     is matched against the regular expressions. If matched the associated peer is used, otherwise the
     transaction is not intercepted.
  */
-class BridgeConfig {
+class BridgeConfig
+{
   using self_type = BridgeConfig;
 
   /// Configuration item, regex -> destination.
@@ -45,12 +46,12 @@ class BridgeConfig {
     using self_type = BridgeConfig;
 
     /// Construct an item.
-    Item(const char* pattern, Regex && r, const char* dest) : _pattern(pattern), _r(std::move(r)), _dest(dest) {}
-
+    Item(const char *pattern, Regex &&r, const char *dest) : _pattern(pattern), _r(std::move(r)), _dest(dest) {}
     std::string _pattern; ///< Original configuration regular expression.
-    Regex _r; ///< Compiled regex.
-    std::string _dest; ///< Destination if matched.
+    Regex _r;             ///< Compiled regex.
+    std::string _dest;    ///< Destination if matched.
   };
+
 public:
   /// Load the configuration from the command line args.
   void load_config(int argc, const char *argv[]);
@@ -59,6 +60,7 @@ public:
   /// Find a match for @a name.
   /// @return The destination or an empty view if no match.
   TextView match(TextView name);
+
 private:
   /// Configuration item storage.
   std::vector<Item> _items;
@@ -73,13 +75,13 @@ BridgeConfig::count() const
 void
 BridgeConfig::load_config(int argc, const char *argv[])
 {
-  for (int i = 0 ; i < argc ; i += 2 ) {
+  for (int i = 0; i < argc; i += 2) {
     Regex r;
-    if (i+1 >= argc) {
+    if (i + 1 >= argc) {
       TSError("%s: Destination regular expression without peer", PLUGIN_TAG);
     } else {
       if (r.compile(argv[i]), Regex::ANCHORED) {
-        _items.emplace_back(argv[i], std::move(r), argv[i+1]);
+        _items.emplace_back(argv[i], std::move(r), argv[i + 1]);
       } else {
         TSError("%s: Failed to compile regular expression '%s'", PLUGIN_TAG, argv[i]);
       }
@@ -90,9 +92,9 @@ BridgeConfig::load_config(int argc, const char *argv[])
 TextView
 BridgeConfig::match(TextView name)
 {
-  for ( auto& item : _items ) {
+  for (auto &item : _items) {
     if (item._r.exec(name)) {
-      return { item._dest };
+      return {item._dest};
     }
   }
   return {};
@@ -107,8 +109,8 @@ BridgeConfig Config;
 struct Bridge {
   /// An I/O operation wrapper.
   struct Op {
-    TSVIO _vio = nullptr; ///< VIO for operation.
-    TSIOBuffer _buff = nullptr; ///< Buffer for operation.
+    TSVIO _vio               = nullptr; ///< VIO for operation.
+    TSIOBuffer _buff         = nullptr; ///< Buffer for operation.
     TSIOBufferReader _reader = nullptr; ///< Reader for operation.
 
     /// Initialize - set up buffer and reader.
@@ -120,8 +122,8 @@ struct Bridge {
   /// Per VConn data.
   struct VCData {
     TSVConn _vc = nullptr; ///< The virtual connection.
-    Op _write; ///< Write operational data.
-    Op _read; ///< Read operational data.
+    Op _write;             ///< Write operational data.
+    Op _read;              ///< Read operational data.
 
     /// Initialize - assign the VC and set up the IOBuffers and readers.
     void init(TSVConn vc);
@@ -143,21 +145,21 @@ struct Bridge {
 
   TSCont _self_cont; ///< The continuation that handles events for @a this.
   TSHttpTxn _ua_txn; ///< User Agent transaction.
-  TextView _peer; ///< ATS peer for upstream connection.
-  VCData _ua; ///< User agent connection.
-  VCData _out; ///< Outbound connection.
+  TextView _peer;    ///< ATS peer for upstream connection.
+  VCData _ua;        ///< User agent connection.
+  VCData _out;       ///< Outbound connection.
 
-  sockaddr const * _ua_addr; ///< User Agent address, needed for outbound connect.
+  sockaddr const *_ua_addr; ///< User Agent address, needed for outbound connect.
 
   /// Parsing state for the response of the internal connect.
   enum OutboundState {
-    PRE, ///< Not ready to try it yet.
-    OPEN, ///< Initial internal CONNECT sent.
-    OK, ///< Received '200' local response.
-    READY, ///< Received local response terminal.
+    PRE,    ///< Not ready to try it yet.
+    OPEN,   ///< Initial internal CONNECT sent.
+    OK,     ///< Received '200' local response.
+    READY,  ///< Received local response terminal.
     STREAM, ///< In byte streaming mode.
-    EOS, ///< Streaming is done.
-    ERROR, ///< Upstream connection failure.
+    EOS,    ///< Streaming is done.
+    ERROR,  ///< Upstream connection failure.
   } _out_resp_state = PRE;
   /// Track depth into outbound response terminal.
   int _out_terminal_pos = 0;
@@ -197,18 +199,18 @@ struct Bridge {
 };
 
 /// Used to generate IDs for the plugin connections.
-std::atomic<int64_t> ConnectionCounter {0};
+std::atomic<int64_t> ConnectionCounter{0};
 
 Bridge::Bridge(TSCont cont, TSHttpTxn txn, TextView peer) : _self_cont(cont), _ua_txn(txn), _peer(peer)
 {
-    _ua_addr = TSHttpTxnClientAddrGet(_ua_txn);
+  _ua_addr = TSHttpTxnClientAddrGet(_ua_txn);
 }
 
 void
 Bridge::net_accept(TSVConn vc)
 {
   char buff[1024];
-  int64_t n = snprintf(buff, sizeof(buff)-1, CONNECT_FORMAT, static_cast<int>(_peer.size()), _peer.data());
+  int64_t n = snprintf(buff, sizeof(buff) - 1, CONNECT_FORMAT, static_cast<int>(_peer.size()), _peer.data());
 
   TSDebug(PLUGIN_TAG, "Received UA VConn");
   // UA side intercepted.
@@ -234,29 +236,31 @@ Bridge::read_ready(TSVIO vio)
   TSDebug(PLUGIN_TAG, "READ READY");
   if (vio == _out._read._vio) {
     switch (_out_resp_state) {
-    case PRE: break; // this should never happen.
-    case ERROR: break;
-    case EOS: break;
+    case PRE:
+      break; // this should never happen.
+    case ERROR:
+      break;
+    case EOS:
+      break;
     case OPEN:
       if (!this->check_outbound_OK() || _out_resp_state != OK)
         break;
-      // FALL THROUGH
+    // FALL THROUGH
     case OK:
       if (!this->check_outbound_terminal() || _out_resp_state != READY)
         break;
-      // FALL THROUGH
+    // FALL THROUGH
     case READY:
       // Do setup for flowing upstream data to user agent.
       _out.do_write(_self_cont, INT64_MAX);
       TSVIOReenable(_out._write._vio);
       _out_resp_state = STREAM;
-      // FALL THROUGH
+    // FALL THROUGH
     case STREAM:
       this->flow_to_ua();
       break;
     }
-  }
-  else if (vio == _ua._read._vio) {
+  } else if (vio == _ua._read._vio) {
     this->flow_to_outbound();
   }
 }
@@ -275,13 +279,10 @@ Bridge::check_outbound_OK()
     // Sigh, just unroll the check.
     if (block[0] == 'H' && block[1] == 'T' && block[2] == 'T' && block[3] == 'P' && block[4] == '/') {
       block += 5;
-      if (block[1] == '.' &&
-          ((block[0] == '1' && (block[2] == '0' || block[2] == '1')) ||
-           (block[0] == '0' && block[2] == '9')))
-      {
+      if (block[1] == '.' && ((block[0] == '1' && (block[2] == '0' || block[2] == '1')) || (block[0] == '0' && block[2] == '9'))) {
         block += 3;
         block.ltrim_if(&isspace);
-        TextView code = block.take_prefix_if(&isspace);
+        TextView code  = block.take_prefix_if(&isspace);
         TSHttpStatus c = static_cast<TSHttpStatus>(ts::svtoi(code));
         if (TS_HTTP_STATUS_OK == c) {
           _out_resp_state = OK;
@@ -322,13 +323,15 @@ Bridge::check_outbound_terminal()
     while (block) {
       char c = *block;
       if ('\r' == c) {
-        if (_out_terminal_pos == 2) _out_terminal_pos = 3;
-        else _out_terminal_pos = 1;
+        if (_out_terminal_pos == 2)
+          _out_terminal_pos = 3;
+        else
+          _out_terminal_pos = 1;
       } else if ('\n' == c) {
         if (_out_terminal_pos == 3) {
           _out_terminal_pos = 4;
-          _out_resp_state = READY;
-          zret = true;
+          _out_resp_state   = READY;
+          zret              = true;
           TSDebug(PLUGIN_TAG, "Outbound ready");
         } else if (_out_terminal_pos == 1) {
           _out_terminal_pos = 2;
@@ -426,9 +429,9 @@ Bridge::update_ua_response()
         TSHttpHdrReasonSet(mbuf, hdr_loc, _out_response_reason.data(), _out_response_reason.size());
     }
     // TS insists on adding these fields, despite it being a CONNECT.
-    Hdr_Remove_Field(mbuf, hdr_loc, { TS_MIME_FIELD_TRANSFER_ENCODING, TS_MIME_LEN_TRANSFER_ENCODING });
-    Hdr_Remove_Field(mbuf, hdr_loc, { TS_MIME_FIELD_AGE, TS_MIME_LEN_AGE });
-    Hdr_Remove_Field(mbuf, hdr_loc, { TS_MIME_FIELD_PROXY_CONNECTION, TS_MIME_LEN_PROXY_CONNECTION });
+    Hdr_Remove_Field(mbuf, hdr_loc, {TS_MIME_FIELD_TRANSFER_ENCODING, TS_MIME_LEN_TRANSFER_ENCODING});
+    Hdr_Remove_Field(mbuf, hdr_loc, {TS_MIME_FIELD_AGE, TS_MIME_LEN_AGE});
+    Hdr_Remove_Field(mbuf, hdr_loc, {TS_MIME_FIELD_PROXY_CONNECTION, TS_MIME_LEN_PROXY_CONNECTION});
     TSHandleMLocRelease(mbuf, TS_NULL_MLOC, hdr_loc);
   } else {
     TSDebug(PLUGIN_TAG, "Failed to retrieve client response");
@@ -478,7 +481,7 @@ Bridge::VCData::first_block_data()
   TSIOBufferBlock b = TSIOBufferReaderStart(_read._reader);
   if (b) {
     int64_t k;
-    const char * s = TSIOBufferBlockReadStart(b, _read._reader, &k);
+    const char *s = TSIOBufferBlockReadStart(b, _read._reader, &k);
     return {s, static_cast<size_t>(k)};
   }
   return {nullptr, 0};
@@ -493,7 +496,7 @@ Bridge::VCData::consume(int64_t n)
 void
 Bridge::Op::init()
 {
-  _buff = TSIOBufferCreate();
+  _buff   = TSIOBufferCreate();
   _reader = TSIOBufferReaderAlloc(_buff);
 }
 
@@ -513,12 +516,12 @@ Bridge::Op::close()
 /* ------------------------------------------------------------------------------------ */
 // Basically a dispatcher - look up the Bridge instance and call the appropriate method.
 int
-CB_Exec(TSCont contp, TSEvent ev_idx, void* data)
+CB_Exec(TSCont contp, TSEvent ev_idx, void *data)
 {
-  auto ctx = static_cast<Bridge*>(TSContDataGet(contp));
+  auto ctx = static_cast<Bridge *>(TSContDataGet(contp));
 
   switch (ev_idx) {
-  case TS_EVENT_NET_ACCEPT :
+  case TS_EVENT_NET_ACCEPT:
     ctx->net_accept(static_cast<TSVConn>(data));
     break;
   case TS_EVENT_VCONN_READ_READY:
@@ -551,7 +554,7 @@ CB_Exec(TSCont contp, TSEvent ev_idx, void* data)
 
 // Handle a new transaction - check if it should be intercepted and if so do the intercept.
 int
-CB_Read_Request_Hdr(TSCont contp, TSEvent ev_idx, void* data)
+CB_Read_Request_Hdr(TSCont contp, TSEvent ev_idx, void *data)
 {
   auto txn = static_cast<TSHttpTxn>(data);
   TSMBuffer mbuf;
@@ -560,18 +563,18 @@ CB_Read_Request_Hdr(TSCont contp, TSEvent ev_idx, void* data)
   if (!TSHttpTxnIsInternal(txn)) {
     if (TS_SUCCESS == TSHttpTxnClientReqGet(txn, &mbuf, &hdr_loc)) {
       int method_len;
-      const char* method_data = TSHttpHdrMethodGet(mbuf, hdr_loc, &method_len);
+      const char *method_data = TSHttpHdrMethodGet(mbuf, hdr_loc, &method_len);
       if (TextView{method_data, method_len} == METHOD_CONNECT) {
-        int host_len = 0;
-        const char* host_name = TSHttpHdrHostGet(mbuf, hdr_loc, &host_len);
+        int host_len          = 0;
+        const char *host_name = TSHttpHdrHostGet(mbuf, hdr_loc, &host_len);
         TextView peer{Config.match({host_name, host_len})};
         if (peer) {
           // Everything checks, let's intercept.
           auto actor = TSContCreate(CB_Exec, TSContMutexGet(reinterpret_cast<TSCont>(txn)));
-          auto ctx = new Bridge(actor, txn, peer);
+          auto ctx   = new Bridge(actor, txn, peer);
 
-          TSDebug(PLUGIN_TAG, "Intercepting transaction %" PRIu64 " to '%.*s' via '%.*s'", TSHttpTxnIdGet(txn)
-                  , host_len, host_name, static_cast<int>(peer.size()), peer.data());
+          TSDebug(PLUGIN_TAG, "Intercepting transaction %" PRIu64 " to '%.*s' via '%.*s'", TSHttpTxnIdGet(txn), host_len, host_name,
+                  static_cast<int>(peer.size()), peer.data());
 
           TSContDataSet(actor, ctx);
           // Need to play games with the response, delaying it until upstream connection is done.
@@ -592,14 +595,14 @@ CB_Read_Request_Hdr(TSCont contp, TSEvent ev_idx, void* data)
 /* ------------------------------------------------------------------------------------ */
 
 void
-TSPluginInit(int argc, char const* argv[])
+TSPluginInit(int argc, char const *argv[])
 {
-  TSPluginRegistrationInfo info { PLUGIN_NAME, "Oath:", "solidwallofcode@oath.com"} ;
+  TSPluginRegistrationInfo info{PLUGIN_NAME, "Oath:", "solidwallofcode@oath.com"};
 
   if (TSPluginRegister(&info) != TS_SUCCESS)
     TSError(PLUGIN_NAME ": plugin registration failed.");
 
-  Config.load_config(argc-1, argv+1);
+  Config.load_config(argc - 1, argv + 1);
   if (Config.count() <= 0)
     TSError("%s: No destinations defined, plugin disabled", PLUGIN_TAG);
 
