@@ -5711,6 +5711,14 @@ HttpSM::handle_server_setup_error(int event, void *data)
     // if (vio->op == VIO::WRITE && vio->ndone == 0) {
     if (server_entry->write_vio && server_entry->write_vio->nbytes > 0 && server_entry->write_vio->ndone == 0) {
       t_state.current.state = HttpTransact::CONNECTION_ERROR;
+      // Clean up the vc_table entry so any events in play to that vio 
+      // don't get handled.  The connection isn't there
+      if (server_entry) {
+        ink_assert(server_entry->vc_type == HTTP_SERVER_VC);
+        vc_table.cleanup_entry(server_entry);
+        server_entry   = nullptr;
+        server_session = nullptr;
+      } 
     } else {
       t_state.current.state = HttpTransact::INACTIVE_TIMEOUT;
     }
