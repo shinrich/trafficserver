@@ -179,6 +179,7 @@ public:
   }
 
   void send_body();
+  void restart_sending();
   void push_promise(URL &url, const MIMEField *accept_encoding);
 
   // Stream level window size

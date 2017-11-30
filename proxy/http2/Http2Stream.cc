@@ -311,9 +311,7 @@ Http2Stream::do_io_write(Continuation *c, int64_t nbytes, IOBufferReader *abuffe
   write_vio.ndone     = 0;
   write_vio.vc_server = this;
   write_vio.op        = VIO::WRITE;
-  if (!send_reader) {
-    send_reader = send_buffer.alloc_reader();
-  }
+  send_reader = abuffer;
   return update_write_request(abuffer, nbytes, false) ? &write_vio : nullptr;
 }
 
@@ -524,6 +522,15 @@ Http2Stream::update_read_request(int64_t read_len, bool call_update)
   }
 }
 
+void
+Http2Stream::restart_sending()
+{
+  send_response_body();
+  if (this->write_vio.ntodo() > 0 && this->write_vio.get_writer()->write_avail() > 0) {
+    write_vio._cont->handleEvent(VC_EVENT_WRITE_READY, &write_vio);
+  }
+}
+
 bool
 Http2Stream::update_write_request(IOBufferReader *buf_reader, int64_t write_len, bool call_update)
 {
@@ -541,46 +548,38 @@ Http2Stream::update_write_request(IOBufferReader *buf_reader, int64_t write_len,
   }
   ink_release_assert(this->get_thread() == this_ethread());
   Http2ClientSession *parent = static_cast<Http2ClientSession *>(this->get_parent());
-  // Copy over data in the abuffer into resp_buffer.  Then schedule a WRITE_READY or
-  // WRITE_COMPLETE event
+
   SCOPED_MUTEX_LOCK(lock, write_vio.mutex, this_ethread());
-  int64_t total_added = 0;
+
+  // if response is chunked, limit the dechunked_buffer size.
+  bool is_done = false;
+  if (this->chunked) {
+    if (chunked_handler.dechunked_buffer && chunked_handler.dechunked_buffer->max_read_avail() > HTTP2_MAX_BUFFER_USAGE) {
+      if (buffer_full_write_event == nullptr) {
+        buffer_full_write_event = get_thread()->schedule_imm(this, VC_EVENT_WRITE_READY);
+      }
+    } else {
+      this->response_process_data(is_done);
+    }
+  }
+
+  int64_t bytes_avail = this->response_get_data_reader()->read_avail();
   if (write_vio.nbytes > 0 && write_vio.ntodo() > 0) {
     int64_t num_to_write = write_vio.ntodo();
     if (num_to_write > write_len) {
       num_to_write = write_len;
     }
-    int64_t bytes_avail = buf_reader->read_avail();
     if (bytes_avail > num_to_write) {
       bytes_avail = num_to_write;
     }
-
-    if (static_cast<Http2ClientSession *>(parent)->write_buffer_size() > HTTP2_MAX_BUFFER_USAGE ||
-        send_buffer.max_read_avail() > HTTP2_MAX_BUFFER_USAGE ||
-        (chunked_handler.dechunked_buffer && chunked_handler.dechunked_buffer->max_read_avail() > HTTP2_MAX_BUFFER_USAGE)) {
-      if (buffer_full_write_event == nullptr) {
-        buffer_full_write_event = get_thread()->schedule_imm(this, VC_EVENT_WRITE_READY);
-      }
-      return true;
-    }
-
-    while (total_added < bytes_avail) {
-      int64_t bytes_added = send_buffer.write(buf_reader, bytes_avail);
-      buf_reader->consume(bytes_added);
-      total_added += bytes_added;
-    }
   }
 
-  IOBufferReader *send_reader = this->send_get_data_reader();
-  int64_t send_buffer_size    = send_reader->read_avail();
-  Http2StreamDebug("write_vio.nbytes=%" PRId64 ", write_vio.ndone=%" PRId64 ", buf_reader.read_avail=%" PRId64
-                   ", total_added=%" PRId64 ", send_buffer=%" PRId64,
-                   write_vio.nbytes, write_vio.ndone, buf_reader ? buf_reader->read_avail() : 0, total_added, send_buffer_size);
+  Http2StreamDebug("write_vio.nbytes=%" PRId64 ", write_vio.ndone=%" PRId64 ", write_vio.write_avail=%" PRId64
+                   ", reader.read_avail=%" PRId64,
+                   write_vio.nbytes, write_vio.ndone, write_vio.get_writer()->write_avail(), bytes_avail);
 
-  bool is_done = false;
-  this->process_data(is_done);
-  if (total_added > 0 || is_done) {
-    int send_event = (write_vio.ntodo() == send_buffer_size || is_done) ? VC_EVENT_WRITE_COMPLETE : VC_EVENT_WRITE_READY;
+  if (bytes_avail > 0 || is_done) {
+    int send_event = (write_vio.ntodo() == bytes_avail || is_done) ? VC_EVENT_WRITE_COMPLETE : VC_EVENT_WRITE_READY;
 
     // Process the new data
     if (!this->parsing_header_done) {
@@ -676,7 +675,6 @@ Http2Stream::update_write_request(IOBufferReader *buf_reader, int64_t write_len,
         }
       }
     }
-
     Http2StreamDebug("write update (event=%d)", send_event);
   }
 
