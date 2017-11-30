@@ -187,6 +187,14 @@ public:
   bool update_write_request(IOBufferReader *buf_reader, int64_t write_len, bool send_update);
   void reenable(VIO *vio) override;
   virtual void transaction_done() override;
+  virtual bool
+  ignore_keep_alive() override
+  {
+    // HTTP/2 deals with keep alive at a higher level.
+    return true;
+  }
+
+  void restart_sending();
   void send_response_body();
   void push_promise(URL &url, const MIMEField *accept_encoding);
 
@@ -273,7 +281,6 @@ private:
   Http2StreamId _id;
   Http2StreamState _state;
 
-  MIOBuffer response_buffer;
   HTTPHdr _req_header;
   VIO read_vio;
   VIO write_vio;

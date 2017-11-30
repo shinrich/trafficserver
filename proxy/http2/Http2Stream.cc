@@ -309,7 +309,7 @@ Http2Stream::do_io_write(Continuation *c, int64_t nbytes, IOBufferReader *abuffe
   write_vio.ndone     = 0;
   write_vio.vc_server = this;
   write_vio.op        = VIO::WRITE;
-  response_reader     = response_buffer.alloc_reader();
+  response_reader     = abuffer;
   return update_write_request(abuffer, nbytes, false) ? &write_vio : nullptr;
 }
 
@@ -513,6 +513,15 @@ Http2Stream::update_read_request(int64_t read_len, bool call_update)
   }
 }
 
+void
+Http2Stream::restart_sending()
+{
+  send_response_body();
+  if (this->write_vio.ntodo() > 0 && this->write_vio.get_writer()->write_avail() > 0) {
+    write_vio._cont->handleEvent(VC_EVENT_WRITE_READY, &write_vio);
+  }
+}
+
 bool
 Http2Stream::update_write_request(IOBufferReader *buf_reader, int64_t write_len, bool call_update)
 {
@@ -530,39 +539,36 @@ Http2Stream::update_write_request(IOBufferReader *buf_reader, int64_t write_len,
   }
   ink_release_assert(this->get_thread() == this_ethread());
   Http2ClientSession *parent = static_cast<Http2ClientSession *>(this->get_parent());
-  // Copy over data in the abuffer into resp_buffer.  Then schedule a WRITE_READY or
-  // WRITE_COMPLETE event
+
   SCOPED_MUTEX_LOCK(lock, write_vio.mutex, this_ethread());
-  int64_t total_added = 0;
+
+  // if response is chunked, limit the dechunked_buffer size.
+  bool is_done = false;
+  if (this->chunked) {
+    this->response_process_data(is_done);
+  }
+
+  if (this->response_get_data_reader() == nullptr) {
+    return retval;
+  }
+
+  int64_t bytes_avail = this->response_get_data_reader()->read_avail();
   if (write_vio.nbytes > 0 && write_vio.ntodo() > 0) {
     int64_t num_to_write = write_vio.ntodo();
     if (num_to_write > write_len) {
       num_to_write = write_len;
     }
-    int64_t bytes_avail = buf_reader->read_avail();
     if (bytes_avail > num_to_write) {
       bytes_avail = num_to_write;
     }
-    while (total_added < bytes_avail) {
-      int64_t bytes_added = response_buffer.write(buf_reader, bytes_avail);
-      buf_reader->consume(bytes_added);
-      total_added += bytes_added;
-    }
-    auto nvc = parent->connection_state.ua_session->get_netvc();
-    TraceOut(h2_trace, nvc->get_remote_addr(), nvc->get_remote_port(), "H2 Trace bytes = %" PRId64 " Stream ID = %d \n %.*s",
-             total_added, this->get_id(), static_cast<int>(total_added), response_buffer.get_current_block()->start());
   }
 
-  IOBufferReader *response_reader = this->response_get_data_reader();
-  int64_t response_buffer_size    = response_reader->read_avail();
-  Http2StreamDebug("write_vio.nbytes=%" PRId64 ", write_vio.ndone=%" PRId64 ", buf_reader.read_avail=%" PRId64
-                   ", total_added=%" PRId64 ", response_buffer=%" PRId64,
-                   write_vio.nbytes, write_vio.ndone, buf_reader ? buf_reader->read_avail() : 0, total_added, response_buffer_size);
+  Http2StreamDebug("write_vio.nbytes=%" PRId64 ", write_vio.ndone=%" PRId64 ", write_vio.write_avail=%" PRId64
+                   ", reader.read_avail=%" PRId64,
+                   write_vio.nbytes, write_vio.ndone, write_vio.get_writer()->write_avail(), bytes_avail);
 
-  bool is_done = false;
-  this->response_process_data(is_done);
-  if (total_added > 0 || is_done) {
-    int send_event = (write_vio.ntodo() == response_buffer_size || is_done) ? VC_EVENT_WRITE_COMPLETE : VC_EVENT_WRITE_READY;
+  if (bytes_avail > 0 || is_done) {
+    int send_event = (write_vio.ntodo() == bytes_avail || is_done) ? VC_EVENT_WRITE_COMPLETE : VC_EVENT_WRITE_READY;
 
     // Process the new data
     if (!this->response_header_done) {
@@ -601,7 +607,6 @@ Http2Stream::update_write_request(IOBufferReader *buf_reader, int64_t write_len,
             }
           } else {
             this->mark_body_done();
-            // Send the data frame
             send_response_body();
           }
         }
@@ -630,7 +635,6 @@ Http2Stream::update_write_request(IOBufferReader *buf_reader, int64_t write_len,
         }
       }
     }
-
     Http2StreamDebug("write update (event=%d)", send_event);
   }
 
@@ -703,7 +707,6 @@ Http2Stream::destroy()
 
   // Drop references to all buffer data
   request_buffer.clear();
-  response_buffer.clear();
 
   // Free the mutexes in the VIO
   read_vio.mutex.clear();
