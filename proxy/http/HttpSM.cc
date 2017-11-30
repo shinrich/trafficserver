@@ -8044,6 +8044,9 @@ HttpSM::redirect_request(const char *redirect_url, const int redirect_len)
   // we have a new OS and need to have DNS lookup the new OS
   t_state.dns_info.lookup_success = false;
   t_state.force_dns               = false;
+
+  // Must reset whether the InkAPI had set the destination address
+  t_state.api_server_addr_set = false;
   t_state.server_info.clear();
   t_state.parent_info.clear();
 
