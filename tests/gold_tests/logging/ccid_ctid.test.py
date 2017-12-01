@@ -27,8 +27,9 @@ Test.SkipUnless(
     Condition.HasProgram(
         "curl", "Curl need to be installed on system for this test to work"),
     # Condition.IsPlatform("linux"), Don't see the need for this.
-    Condition.HasATSFeature('TS_USE_TLS_ALPN'), #Not yet supported in YATS.
-    Condition.HasCurlFeature('http2') #Not yet supported in YATS.
+    Condition.HasATSFeature('TS_USE_TLS_ALPN'),
+    Condition.HasCurlFeature('http2'),
+    Condition.HasProgram("netstat", "netstat need to be installed on system for this test to work")
 )
 
 # Define default ATS.  "select_ports=False" needed because SSL port used.
@@ -71,8 +72,11 @@ log.ascii {
 
 # Ask the OS if the port is ready for connect()
 #
+
+
 def CheckPort(Port):
     return lambda: 0 == subprocess.call('netstat --listen --tcp -n | grep -q :{}'.format(Port), shell=True)
+
 
 tr = Test.AddTestRun()
 # Delay on readiness of ssl port
