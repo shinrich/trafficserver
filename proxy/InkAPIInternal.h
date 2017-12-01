@@ -38,7 +38,7 @@
 
 /* Some defines that might be candidates for configurable settings later.
  */
-#define HTTP_SSN_TXN_MAX_USER_ARG 16 /* max number of user arguments for Transactions and Sessions */
+#define TS_HTTP_MAX_USER_ARG 16 /* max number of user arguments for Transactions and Sessions */
 
 typedef enum {
   OVERRIDABLE_TYPE_NULL = 0,
