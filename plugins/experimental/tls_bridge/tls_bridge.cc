@@ -1,8 +1,8 @@
-#include "ts/ts.h"
+#include <ts/ts.h>
 #include <atomic>
 #include <vector>
 #include <inttypes.h>
-#include "ts/TextView.h"
+#include <ts/TextView.h>
 #include "regex.h"
 
 #define PLUGIN_NAME "TLS Bridge"
@@ -13,6 +13,7 @@ using ts::TextView;
 // Base format string for making the internal CONNECT.
 char const CONNECT_FORMAT[] = "CONNECT https:%.*s HTTP/1.1\r\n\r\n";
 
+// TextView of the 'CONNECT' method string.
 const TextView METHOD_CONNECT{TS_HTTP_METHOD_CONNECT, TS_HTTP_LEN_CONNECT};
 
 /* ------------------------------------------------------------------------------------ */
@@ -46,6 +47,8 @@ class BridgeConfig
     using self_type = BridgeConfig;
 
     /// Construct an item.
+    /// @internal Pass in the compiled regex because no instance of this is created if
+    /// the regex doesn't compile successfully.
     Item(const char *pattern, Regex &&r, const char *dest) : _pattern(pattern), _r(std::move(r)), _dest(dest) {}
     std::string _pattern; ///< Original configuration regular expression.
     Regex _r;             ///< Compiled regex.
@@ -78,12 +81,12 @@ BridgeConfig::load_config(int argc, const char *argv[])
   for (int i = 0; i < argc; i += 2) {
     Regex r;
     if (i + 1 >= argc) {
-      TSError("%s: Destination regular expression without peer", PLUGIN_TAG);
+      TSError("[%s] Destination regular expression without peer", PLUGIN_TAG);
     } else {
       if (r.compile(argv[i]), Regex::ANCHORED) {
         _items.emplace_back(argv[i], std::move(r), argv[i + 1]);
       } else {
-        TSError("%s: Failed to compile regular expression '%s'", PLUGIN_TAG, argv[i]);
+        TSError("[%s] Failed to compile regular expression '%s'", PLUGIN_TAG, argv[i]);
       }
     }
   }
@@ -600,11 +603,11 @@ TSPluginInit(int argc, char const *argv[])
   TSPluginRegistrationInfo info{PLUGIN_NAME, "Oath:", "solidwallofcode@oath.com"};
 
   if (TSPluginRegister(&info) != TS_SUCCESS)
-    TSError(PLUGIN_NAME ": plugin registration failed.");
+    TSError("[%s] plugin registration failed.", PLUGIN_TAG);
 
   Config.load_config(argc - 1, argv + 1);
   if (Config.count() <= 0)
-    TSError("%s: No destinations defined, plugin disabled", PLUGIN_TAG);
+    TSError("[%s] No destinations defined, plugin disabled", PLUGIN_TAG);
 
   TSCont contp = TSContCreate(CB_Read_Request_Hdr, TSMutexCreate());
   TSHttpHookAdd(TS_HTTP_READ_REQUEST_HDR_HOOK, contp);
