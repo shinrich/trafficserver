@@ -1485,13 +1485,7 @@ LogAccessHttp::marshal_client_http_connection_id(char *buf)
   if (buf) {
     int64_t id = 0;
     if (m_http_sm) {
-      auto p = m_http_sm->ua_session;
-      if (p) {
-        auto p2 = p->get_parent();
-        if (p2) {
-          id = p2->connection_id();
-        }
-      }
+      id = m_http_sm->client_connection_id();
     }
     marshal_int(buf, id);
   }
@@ -1507,10 +1501,7 @@ LogAccessHttp::marshal_client_http_transaction_id(char *buf)
   if (buf) {
     int64_t id = 0;
     if (m_http_sm) {
-      auto p = m_http_sm->ua_session;
-      if (p) {
-        id = p->get_transaction_id();
-      }
+      id = m_http_sm->client_transaction_id();
     }
     marshal_int(buf, id);
   }

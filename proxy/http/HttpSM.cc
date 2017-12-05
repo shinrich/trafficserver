@@ -530,6 +530,17 @@ HttpSM::attach_client_session(ProxyClientTransaction *client_vc, IOBufferReader 
   }
   ua_session = client_vc;
 
+  // It seems to be possible that the ua_session pointer will go stale before log entries for this HTTP transaction are
+  // generated.  Therefore, collect information that may be needed for logging from the ua_session object at this point.
+  //
+  _client_transaction_id = ua_session->get_transaction_id();
+  {
+    auto p = ua_session->get_parent();
+    if (p) {
+      _client_connection_id = p->connection_id();
+    }
+  }
+
   // Collect log & stats information
   client_tcp_reused         = !(ua_session->is_first_transaction());
   SSLNetVConnection *ssl_vc = dynamic_cast<SSLNetVConnection *>(netvc);
@@ -5711,14 +5722,14 @@ HttpSM::handle_server_setup_error(int event, void *data)
     // if (vio->op == VIO::WRITE && vio->ndone == 0) {
     if (server_entry->write_vio && server_entry->write_vio->nbytes > 0 && server_entry->write_vio->ndone == 0) {
       t_state.current.state = HttpTransact::CONNECTION_ERROR;
-      // Clean up the vc_table entry so any events in play to that vio 
+      // Clean up the vc_table entry so any events in play to that vio
       // don't get handled.  The connection isn't there
       if (server_entry) {
         ink_assert(server_entry->vc_type == HTTP_SERVER_VC);
         vc_table.cleanup_entry(server_entry);
         server_entry   = nullptr;
         server_session = nullptr;
-      } 
+      }
     } else {
       t_state.current.state = HttpTransact::INACTIVE_TIMEOUT;
     }
