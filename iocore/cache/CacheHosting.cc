@@ -774,7 +774,7 @@ extern volatile int gnvol;
 
 extern void cplist_init();
 extern int cplist_reconfigure();
-static int configs = 4;
+static int configs = 3;
 
 Queue<CacheVol> saved_cp_list;
 int saved_cp_list_len;
