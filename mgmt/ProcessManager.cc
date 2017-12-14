@@ -161,14 +161,14 @@ ProcessManager::processManagerThread(void *arg)
 
     if (pmgmt->require_lm) {
       ret = pmgmt->pollLMConnection();
-      if (ret < 0 && pmgmt->running) {
+      if (ret < 0 && pmgmt->running && !shutdown_event_system) {
         Alert("exiting with read error from process manager: %s", strerror(-ret));
       }
     }
 
     pmgmt->processEventQueue();
     ret = pmgmt->processSignalQueue();
-    if (ret < 0 && pmgmt->running) {
+    if (ret < 0 && pmgmt->running && !shutdown_event_system) {
       Alert("exiting with write error from process manager: %s", strerror(-ret));
     }
 
@@ -258,7 +258,7 @@ ProcessManager::processEventQueue()
     }
 
     // A shutdown message is a normal exit, so Alert rather than Fatal.
-    if (mh->msg_id == MGMT_EVENT_SHUTDOWN) {
+    if (mh->msg_id == MGMT_EVENT_SHUTDOWN && !shutdown_event_system) {
       Alert("exiting on shutdown message");
     }
 
