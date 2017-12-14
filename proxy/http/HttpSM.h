@@ -177,6 +177,22 @@ enum HttpPluginTunnel_t {
 class CoreUtils;
 class PluginVCCore;
 
+class PostDataBuffers
+{
+public:
+  PostDataBuffers() { Debug("http_redirect", "[PostDataBuffers::PostDataBuffers]"); }
+
+  MIOBuffer *postdata_copy_buffer            = nullptr;
+  IOBufferReader *postdata_copy_buffer_start = nullptr;
+  IOBufferReader *ua_buffer_reader           = nullptr;
+
+  void clear();
+  void init(IOBufferReader *ua_reader);
+  void copy_partial_post_data();
+
+  ~PostDataBuffers();
+};
+
 class HttpSM : public Continuation
 {
   friend class HttpPagesHandler;
@@ -288,6 +304,14 @@ public:
   PluginVCCore *plugin_tunnel;
 
   HttpTransact::State t_state;
+
+  // _postbuf api
+  int64_t postbuf_reader_avail();
+  int64_t postbuf_buffer_avail();
+  void postbuf_clear();
+  void disable_redirect();
+  void postbuf_copy_partial_data();
+  void postbuf_init(IOBufferReader *ua_reader);
 
 protected:
   int reentrancy_count;
@@ -576,6 +600,7 @@ public:
 
 private:
   int _client_connection_id = -1, _client_transaction_id = -1;
+  PostDataBuffers _postbuf;
 };
 
 // Function to get the cache_sm object - YTS Team, yamsat
@@ -681,6 +706,43 @@ HttpSM::is_transparent_passthrough_allowed()
 {
   return (t_state.client_info.is_transparent && ua_session->is_transparent_passthrough_allowed() &&
           ua_session->get_transact_count() == 1);
+}
+
+inline int64_t
+HttpSM::postbuf_reader_avail()
+{
+  return this->_postbuf.ua_buffer_reader->read_avail();
+}
+
+inline int64_t
+HttpSM::postbuf_buffer_avail()
+{
+  return this->_postbuf.postdata_copy_buffer_start->read_avail();
+}
+
+inline void
+HttpSM::postbuf_clear()
+{
+  this->_postbuf.clear();
+}
+
+inline void
+HttpSM::disable_redirect()
+{
+  this->enable_redirection = false;
+  this->_postbuf.clear();
+}
+
+inline void
+HttpSM::postbuf_copy_partial_data()
+{
+  this->_postbuf.copy_partial_post_data();
+}
+
+inline void
+HttpSM::postbuf_init(IOBufferReader *ua_reader)
+{
+  this->_postbuf.init(ua_reader);
 }
 
 #endif
