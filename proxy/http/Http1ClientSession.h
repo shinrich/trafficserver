@@ -158,8 +158,8 @@ public:
 
   virtual void attach_server_session(HttpServerSession *ssession, bool transaction_done = true);
 
-  virtual HttpServerSession *
-  get_server_session() const
+  ProxySession * const
+  get_peer_session() const override
   {
     return bound_ss;
   }
@@ -243,7 +243,7 @@ protected:
   VIO *ka_vio = nullptr;
   VIO *slave_ka_vio = nullptr;
 
-  HttpServerSession *bound_ss = nullptr;
+  ProxySession *bound_ss = nullptr;
 
   int released_transactions = 0;
 

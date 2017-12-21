@@ -285,6 +285,7 @@ public:
 
   void add_cache_sm();
   bool is_private();
+  bool set_server_session_private(bool flag);
   bool is_redirect_required();
 
   /// Get the protocol stack for the inbound (client, user agent) connection.
@@ -576,7 +577,6 @@ public:
   LINK(HttpSM, debug_link);
 
 public:
-  bool set_server_session_private(bool private_session);
   bool
   is_dying() const
   {

@@ -203,14 +203,14 @@ public:
     }
   }
 
-  sockaddr const *
-  get_client_addr() override
+  virtual IpEndpoint const &
+  get_peer_addr() const override
   {
-    return client_vc ? client_vc->get_remote_addr() : &cached_client_addr.sa;
+    return client_vc ? client_vc->get_remote_endpoint() : cached_client_addr;
   }
 
   sockaddr const *
-  get_local_addr() override
+  get_local_addr() const override
   {
     return client_vc ? client_vc->get_local_addr() : &cached_local_addr.sa;
   }

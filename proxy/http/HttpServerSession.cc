@@ -77,12 +77,12 @@ HttpServerSession::new_connection(NetVConnection *new_vc)
   // per host
   ConnectionCount *connection_count = ConnectionCount::getInstance();
   // If the origin is in the count table, then we doing connection_limiting
-  if (connection_count->getCount(get_server_ip(), hostname_hash, sharing_match) >= 0) {
-    connection_count->incrementCount(get_server_ip(), hostname_hash, sharing_match);
+  if (connection_count->getCount(get_peer_addr(), hostname_hash, sharing_match) >= 0) {
+    connection_count->incrementCount(get_peer_addr(), hostname_hash, sharing_match);
     ip_port_text_buffer addrbuf;
     Debug("http_ss", "[%" PRId64 "] new connection, ip: %s, count: %u", con_id,
-          ats_ip_nptop(&get_server_ip().sa, addrbuf, sizeof(addrbuf)),
-          connection_count->getCount(get_server_ip(), hostname_hash, sharing_match));
+          ats_ip_nptop(get_peer_addr(), addrbuf, sizeof(addrbuf)),
+          connection_count->getCount(get_peer_addr(), hostname_hash, sharing_match));
   }
 #ifdef LAZY_BUF_ALLOC
   read_buffer = new_empty_MIOBuffer(HTTP_SERVER_RESP_HDR_BUFFER_INDEX);
@@ -118,12 +118,12 @@ HttpServerSession::do_io_close(int alerrno)
   // Check to see if we are limiting the number of connections
   // per host
   ConnectionCount *connection_count = ConnectionCount::getInstance();
-  if (connection_count->getCount(get_server_ip(), hostname_hash, sharing_match) >= 0) {
-    connection_count->incrementCount(get_server_ip(), hostname_hash, sharing_match, -1);
+  if (connection_count->getCount(get_peer_addr(), hostname_hash, sharing_match) >= 0) {
+    connection_count->incrementCount(get_peer_addr(), hostname_hash, sharing_match, -1);
     ip_port_text_buffer addrbuf;
     Debug("http_ss", "[%" PRId64 "] connection closed, ip: %s, count: %u", con_id,
-          ats_ip_nptop(&get_server_ip().sa, addrbuf, sizeof(addrbuf)),
-          connection_count->getCount(get_server_ip(), hostname_hash, sharing_match));
+          ats_ip_nptop(get_peer_addr(), addrbuf, sizeof(addrbuf)),
+          connection_count->getCount(get_peer_addr(), hostname_hash, sharing_match));
   } 
 
   if (net_vc) {

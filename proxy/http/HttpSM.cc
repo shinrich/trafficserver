@@ -3212,7 +3212,7 @@ HttpSM::tunnel_handler_ua(int event, HttpTunnelConsumer *c)
     c->write_success          = true;
     t_state.client_info.abort = HttpTransact::DIDNOT_ABORT;
     if (t_state.client_info.keep_alive == HTTP_KEEPALIVE) {
-      if (t_state.www_auth_content != HttpTransact::CACHE_AUTH_SERVE || ua_txn->get_server_session()) {
+      if (t_state.www_auth_content != HttpTransact::CACHE_AUTH_SERVE || ua_txn->get_peer_session()) {
         // successful keep-alive
         close_connection = false;
       }
@@ -4761,7 +4761,7 @@ HttpSM::do_http_server_open(bool raw)
 
   // If there is already an attached server session mark it as private.
   if (server_session != nullptr && will_be_private_ss) {
-    set_server_session_private(true);
+    server_session->set_private();
   }
 
   if (raw == false && TS_SERVER_SESSION_SHARING_MATCH_NONE != t_state.txn_conf->server_session_sharing_match &&
@@ -4795,14 +4795,14 @@ HttpSM::do_http_server_open(bool raw)
   // session when we already have an attached server session.
   else if ((TS_SERVER_SESSION_SHARING_MATCH_NONE == t_state.txn_conf->server_session_sharing_match || is_private()) &&
            (ua_txn != nullptr)) {
-    HttpServerSession *existing_ss = ua_txn->get_server_session();
+    HttpServerSession *existing_ss = dynamic_cast<HttpServerSession*>(ua_txn->get_peer_session());
 
     if (existing_ss) {
       // [amc] Not sure if this is the best option, but we don't get here unless session sharing is disabled
       // so there's no point in further checking on the match or pool values. But why check anything? The
       // client has already exchanged a request with this specific origin server and has sent another one
       // shouldn't we just automatically keep the association?
-      if (ats_ip_addr_port_eq(&existing_ss->get_server_ip().sa, &t_state.current.server->dst_addr.sa)) {
+      if (ats_ip_addr_port_eq(existing_ss->get_peer_addr(), &t_state.current.server->dst_addr.sa)) {
         ua_txn->attach_server_session(nullptr);
         existing_ss->state = HS_ACTIVE;
         this->attach_server_session(existing_ss);
@@ -4822,7 +4822,7 @@ HttpSM::do_http_server_open(bool raw)
   // to get a new one.
   // ua_txn is null when t_state.req_flavor == REQ_FLAVOR_SCHEDULED_UPDATE
   else if (ua_txn != nullptr) {
-    HttpServerSession *existing_ss = ua_txn->get_server_session();
+    HttpServerSession *existing_ss = dynamic_cast<HttpServerSession*>(ua_txn->get_peer_session());
     if (existing_ss) {
       existing_ss->get_netvc()->set_inactivity_timeout(HRTIME_SECONDS(t_state.txn_conf->keep_alive_no_activity_timeout_out));
       existing_ss->release();
@@ -5912,7 +5912,7 @@ HttpSM::attach_server_session(HttpServerSession *s)
 
   if (plugin_tunnel_type != HTTP_NO_PLUGIN_TUNNEL || will_be_private_ss) {
     SMDebug("http_ss", "Setting server session to private");
-    set_server_session_private(true);
+    server_session->set_private();
   }
 }
 
@@ -7886,14 +7886,14 @@ HttpSM::get_http_schedule(int event, void * /* data ATS_UNUSED */)
   return 0;
 }
 
-bool
-HttpSM::set_server_session_private(bool private_session)
+bool 
+HttpSM::set_server_session_private(bool flag)
 {
-  if (server_session != nullptr) {
-    server_session->private_session = private_session;
-    return true;
+  if (server_session)
+  {
+    server_session->set_private();
   }
-  return false;
+  return server_session != nullptr;
 }
 
 inline bool
@@ -7901,11 +7901,11 @@ HttpSM::is_private()
 {
   bool res = false;
   if (server_session) {
-    res = server_session->private_session;
+    res = server_session->is_private();
   } else if (ua_txn) {
-    HttpServerSession *ss = ua_txn->get_server_session();
+    HttpServerSession *ss = dynamic_cast<HttpServerSession*>(ua_txn->get_server_session());
     if (ss) {
-      res = ss->private_session;
+      res = ss->is_private();
     } else if (will_be_private_ss) {
       res = will_be_private_ss;
     }

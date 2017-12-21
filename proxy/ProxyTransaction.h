@@ -126,6 +126,12 @@ public:
     }
   }
 
+  virtual ProxySession * const
+  get_peer_session()
+  {
+    return parent ? parent->get_peer_session() : nullptr;
+  }
+
   /// DNS resolution preferences.
   HostResStyle
   get_host_res_style() const

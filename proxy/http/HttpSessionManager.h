@@ -83,7 +83,7 @@ protected:
     static Key
     key(Value const *value)
     {
-      return &value->get_server_ip().sa;
+      return value->get_peer_addr();
     }
     static bool
     equal(Key lhs, Key rhs)

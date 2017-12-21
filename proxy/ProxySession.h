@@ -212,19 +212,25 @@ public:
     return vc ? vc->protocol_contains(tag_prefix) : nullptr;
   }
 
+  virtual ProxySession * const
+  get_peer_session() const
+  {
+    return nullptr;
+  }
+
   void set_session_active();
   void clear_session_active();
 
   static int64_t next_connection_id();
 
-  virtual sockaddr const *
-  get_client_addr()
+  virtual IpEndpoint const &
+  get_peer_addr() const
   {
     NetVConnection *netvc = get_netvc();
-    return netvc ? netvc->get_remote_addr() : nullptr;
+    return netvc->get_remote_endpoint();
   }
   virtual sockaddr const *
-  get_local_addr()
+  get_local_addr() const
   {
     NetVConnection *netvc = get_netvc();
     return netvc ? netvc->get_local_addr() : nullptr;

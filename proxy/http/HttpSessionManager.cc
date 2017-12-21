@@ -71,9 +71,9 @@ ServerSessionPool::match(HttpServerSession *ss, sockaddr const *addr, INK_MD5 co
   return TS_SERVER_SESSION_SHARING_MATCH_NONE != match_style && // if no matching allowed, fail immediately.
          // The hostname matches if we're not checking it or it (and the port!) is a match.
          (TS_SERVER_SESSION_SHARING_MATCH_IP == match_style ||
-          (ats_ip_port_cast(addr) == ats_ip_port_cast(ss->get_server_ip()) && ss->hostname_hash == hostname_hash)) &&
+          (ats_ip_port_cast(addr) == ats_ip_port_cast(ss->get_peer_addr()) && ss->hostname_hash == hostname_hash)) &&
          // The IP address matches if we're not checking it or it is a match.
-         (TS_SERVER_SESSION_SHARING_MATCH_HOST == match_style || ats_ip_addr_port_eq(ss->get_server_ip(), addr));
+         (TS_SERVER_SESSION_SHARING_MATCH_HOST == match_style || ats_ip_addr_port_eq(ss->get_peer_addr(), addr));
 }
 
 bool
@@ -102,7 +102,7 @@ ServerSessionPool::acquireSession(sockaddr const *addr, INK_MD5 const &hostname_
     HostHashTable::Location loc = m_host_pool.find(hostname_hash);
     in_port_t port              = ats_ip_port_cast(addr);
     while (loc) { // scan for matching port.
-      if (port == ats_ip_port_cast(loc->get_server_ip()) && validate_sni(sm, loc->get_netvc())) {
+      if (port == ats_ip_port_cast(loc->get_peer_addr()) && validate_sni(sm, loc->get_netvc())) {
         break;
       }
       ++loc;
@@ -195,7 +195,7 @@ ServerSessionPool::eventHandler(int event, void *data)
       // keeping the connection alive will not keep us above the # of max connections
       // to the origin and we are below the min number of keep alive connections to this
       // origin, then reset the timeouts on our end and do not close the connection
-      int connection_count = ConnectionCount::getInstance()->getCount(s->get_server_ip(), s->hostname_hash, s->sharing_match);
+      int connection_count = ConnectionCount::getInstance()->getCount(s->get_peer_addr(), s->hostname_hash, s->sharing_match);
       if ((event == VC_EVENT_INACTIVITY_TIMEOUT || event == VC_EVENT_ACTIVE_TIMEOUT) && s->state == HS_KA_SHARED && connection_count >= 0) {
         bool connection_count_below_min = connection_count <= http_config_params->origin_min_keep_alive_connections;
 

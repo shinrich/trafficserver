@@ -252,7 +252,7 @@ Http1ClientSession::do_io_close(int alerrno)
   // If we have an attached server session, release
   //   it back to our shared pool
   if (bound_ss) {
-    bound_ss->release();
+    dynamic_cast<HttpServerSession*>(bound_ss)->release();
     bound_ss     = nullptr;
     slave_ka_vio = nullptr;
   }
@@ -291,8 +291,6 @@ Http1ClientSession::do_io_close(int alerrno)
     state = HS_CLOSED;
     HttpSsnDebug("[%" PRId64 "] session closed", con_id);
     HTTP_SUM_DYN_STAT(http_transactions_per_client_con, transact_count);
-    HTTP_DECREMENT_DYN_STAT(http_current_client_connections_stat);
-    conn_decrease = false;
     if (net_vc) {
       net_vc->do_io_close();
       net_vc = nullptr;
@@ -359,7 +357,7 @@ Http1ClientSession::state_slave_keep_alive(int event, void *data)
   case VC_EVENT_READ_READY:
   case VC_EVENT_EOS:
     // The server session closed or something is amiss
-    bound_ss->do_io_close();
+    dynamic_cast<HttpServerSession*>(bound_ss)->do_io_close();
     bound_ss     = nullptr;
     slave_ka_vio = nullptr;
     break;
@@ -367,7 +365,7 @@ Http1ClientSession::state_slave_keep_alive(int event, void *data)
   case VC_EVENT_ACTIVE_TIMEOUT:
   case VC_EVENT_INACTIVITY_TIMEOUT:
     // Timeout - place the session on the shared pool
-    bound_ss->release();
+    dynamic_cast<HttpServerSession*>(bound_ss)->release();
     bound_ss     = nullptr;
     slave_ka_vio = nullptr;
     break;
