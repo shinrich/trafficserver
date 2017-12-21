@@ -29,6 +29,7 @@
 #include "HttpTransact.h"
 #include "HttpTransactHeaders.h"
 #include "HttpSM.h"
+#include "HttpServerSession.h"
 #include "HttpCacheSM.h" //Added to get the scope of HttpCacheSM object - YTS Team, yamsat
 #include "HttpDebugNames.h"
 #include <ctime>

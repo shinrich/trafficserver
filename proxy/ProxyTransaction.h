@@ -1,6 +1,6 @@
 /** @file
 
-  ProxyClientTransaction - Base class for protocol client transactions.
+  ProxyTransaction - Base class for protocol client transactions.
 
   @section license License
 
@@ -24,15 +24,15 @@
 #ifndef __PROXY_CLIENT_TRANSACTION_H__
 #define __PROXY_CLIENT_TRANSACTION_H__
 
-#include "ProxyClientSession.h"
+#include "ProxySession.h"
 #include <ts/string_view.h>
 
 class HttpSM;
 class HttpServerSession;
-class ProxyClientTransaction : public VConnection
+class ProxyTransaction : public VConnection
 {
 public:
-  ProxyClientTransaction();
+  ProxyTransaction();
 
   // do_io methods implemented by subclasses
 
@@ -191,14 +191,14 @@ public:
 
   virtual void transaction_done() = 0;
 
-  ProxyClientSession *
+  ProxySession *
   get_parent()
   {
     return parent;
   }
 
   virtual void
-  set_parent(ProxyClientSession *new_parent)
+  set_parent(ProxySession *new_parent)
   {
     parent         = new_parent;
     host_res_style = parent->host_res_style;
@@ -257,7 +257,7 @@ public:
   virtual int get_transaction_id() const = 0;
 
 protected:
-  ProxyClientSession *parent;
+  ProxySession *parent;
   HttpSM *current_reader;
   IOBufferReader *sm_reader;
 

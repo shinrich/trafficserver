@@ -39,7 +39,7 @@
 #include "HttpTransact.h"
 #include "HttpTunnel.h"
 #include "InkAPIInternal.h"
-#include "../ProxyClientTransaction.h"
+#include "../ProxyTransaction.h"
 #include "HdrUtils.h"
 #include <ts/string_view.h>
 #include <ts/History.h>
@@ -209,7 +209,7 @@ public:
 
   void init();
 
-  void attach_client_session(ProxyClientTransaction *client_vc_arg, IOBufferReader *buffer_reader);
+  void attach_client_session(ProxyTransaction *client_vc_arg, IOBufferReader *buffer_reader);
 
   // Called by httpSessionManager so that we can reset
   //  the session timeouts and initiate a read while
@@ -331,7 +331,7 @@ protected:
   void remove_ua_entry();
 
 public:
-  ProxyClientTransaction *ua_txn   = nullptr;
+  ProxyTransaction *ua_txn   = nullptr;
   BackgroundFill_t background_fill = BACKGROUND_FILL_NONE;
   // AuthHttpAdapter authAdapter;
   void set_http_schedule(Continuation *);
@@ -399,7 +399,6 @@ protected:
   int state_auth_callback(int event, void *data);
   int state_add_to_list(int event, void *data);
   int state_remove_from_list(int event, void *data);
-  int state_congestion_control_lookup(int event, void *data);
 
   // Y! ebalsa: remap handlers
   int state_remap_request(int event, void *data);
@@ -455,8 +454,6 @@ protected:
 #ifdef PROXY_DRAIN
   void do_drain_request_body();
 #endif
-
-  bool do_congestion_control_lookup();
 
   virtual void handle_api_return();
   void handle_server_setup_error(int event, void *data);

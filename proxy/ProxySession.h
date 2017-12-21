@@ -1,6 +1,6 @@
 /** @file
 
-  ProxyClientSession - Base class for protocol client sessions.
+  ProxySession - Base class for protocol client sessions.
 
   @section license License
 
@@ -29,8 +29,8 @@
 #include <ts/string_view.h>
 #include "P_Net.h"
 #include "InkAPIInternal.h"
-#include "http/HttpServerSession.h"
 
+class HttpServerSession;
 extern bool http_client_session_draining;
 
 // Emit a debug message conditional on whether this particular client session
@@ -38,13 +38,13 @@ extern bool http_client_session_draining;
 // member function.
 #define SsnDebug(ssn, tag, ...) SpecificDebug((ssn)->debug(), tag, __VA_ARGS__)
 
-class ProxyClientTransaction;
+class ProxyTransaction;
 struct AclRecord;
 
-class ProxyClientSession : public VConnection
+class ProxySession : public VConnection
 {
 public:
-  ProxyClientSession();
+  ProxySession();
 
   virtual void destroy() = 0;
   virtual void free();
@@ -53,6 +53,7 @@ public:
   virtual void new_connection(NetVConnection *new_vc, MIOBuffer *iobuf, IOBufferReader *reader, bool backdoor) = 0;
 
   virtual NetVConnection *get_netvc() const = 0;
+  virtual void set_netvc(NetVConnection *netvc) = 0;
   virtual void release_netvc()              = 0;
 
   virtual int get_transact_count() const = 0;
@@ -151,7 +152,7 @@ public:
   }
 
   // Indicate we are done with a transaction.
-  virtual void release(ProxyClientTransaction *trans) = 0;
+  virtual void release(ProxyTransaction *trans) = 0;
 
   int64_t
   connection_id() const
@@ -239,8 +240,8 @@ public:
   ink_hrtime ssn_last_txn_time = 0;
 
   // noncopyable
-  ProxyClientSession(ProxyClientSession &) = delete;
-  ProxyClientSession &operator=(const ProxyClientSession &) = delete;
+  ProxySession(ProxySession &) = delete;
+  ProxySession &operator=(const ProxySession &) = delete;
 
 protected:
   // XXX Consider using a bitwise flags variable for the following flags, so

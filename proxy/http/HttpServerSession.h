@@ -46,102 +46,43 @@
 
 #include "P_Net.h"
 
-#include "HttpConnectionCount.h"
 #include "HttpProxyAPIEnums.h"
+#include "Http1ClientSession.h"
 
 class HttpSM;
 class MIOBuffer;
 class IOBufferReader;
 
-enum HSS_State {
-  HSS_INIT,
-  HSS_ACTIVE,
-  HSS_KA_CLIENT_SLAVE,
-  HSS_KA_SHARED,
-};
 
-enum {
-  HTTP_SS_MAGIC_ALIVE = 0x0123FEED,
-  HTTP_SS_MAGIC_DEAD  = 0xDEADFEED,
-};
-
-class HttpServerSession : public VConnection
+class HttpServerSession : public Http1ClientSession
 {
 public:
   HttpServerSession()
-    : VConnection(NULL),
-      hostname_hash(),
-      con_id(0),
-      transact_count(0),
-      state(HSS_INIT),
+    : hostname_hash(),
       to_parent_proxy(false),
-      server_trans_stat(0),
       private_session(false),
-      sharing_match(TS_SERVER_SESSION_SHARING_MATCH_BOTH),
-      sharing_pool(TS_SERVER_SESSION_SHARING_POOL_GLOBAL),
-      enable_origin_connection_limiting(false),
-      connection_count(NULL),
-      read_buffer(NULL),
-      server_vc(NULL),
-      magic(HTTP_SS_MAGIC_DEAD),
-      buf_reader(NULL)
+      sharing_match(TS_SERVER_SESSION_SHARING_MATCH_BOTH)
   {
   }
 
   void destroy();
   void new_connection(NetVConnection *new_vc);
 
-  void
-  reset_read_buffer(void)
-  {
-    ink_assert(read_buffer->_writer);
-    ink_assert(buf_reader != NULL);
-    read_buffer->dealloc_all_readers();
-    read_buffer->_writer = NULL;
-    buf_reader           = read_buffer->alloc_reader();
-  }
-
-  IOBufferReader *
-  get_reader()
-  {
-    return buf_reader;
-  };
-
-  virtual VIO *do_io_read(Continuation *c, int64_t nbytes = INT64_MAX, MIOBuffer *buf = 0);
-
-  virtual VIO *do_io_write(Continuation *c = NULL, int64_t nbytes = INT64_MAX, IOBufferReader *buf = 0, bool owner = false);
-
-  virtual void do_io_close(int lerrno = -1);
-  virtual void do_io_shutdown(ShutdownHowTo_t howto);
-
-  virtual void reenable(VIO *vio);
+  void do_io_close(int lerrno = -1) override;
+  void do_io_shutdown(ShutdownHowTo_t howto) override;
 
   void release();
   void attach_hostname(const char *hostname);
-  NetVConnection *
-  get_netvc() const
-  {
-    return server_vc;
-  };
-  void
-  set_netvc(NetVConnection *new_vc)
-  {
-    server_vc = new_vc;
-  }
 
   // Keys for matching hostnames
   IpEndpoint const &
   get_server_ip() const
   {
-    ink_release_assert(server_vc != nullptr);
-    return server_vc->get_remote_endpoint();
+    ink_release_assert(net_vc != nullptr);
+    return net_vc->get_remote_endpoint();
   }
 
   INK_MD5 hostname_hash;
-
-  int64_t con_id;
-  int transact_count;
-  HSS_State state;
 
   // Used to determine whether the session is for parent proxy
   // it is session to orgin server
@@ -150,26 +91,15 @@ public:
   // proxy.process.http.current_parent_proxy_connections
   bool to_parent_proxy;
 
-  // Used to verify we are recording the server
-  //   transaction stat properly
-  int server_trans_stat;
-
   // Sessions become if authentication headers
   //  are sent over them
   bool private_session;
 
   // Copy of the owning SM's server session sharing settings
   TSServerSessionSharingMatchType sharing_match;
-  TSServerSessionSharingPoolType sharing_pool;
-  //  int share_session;
 
   LINK(HttpServerSession, ip_hash_link);
   LINK(HttpServerSession, host_hash_link);
-
-  // Keep track of connection limiting and a pointer to the
-  // singleton that keeps track of the connection counts.
-  bool enable_origin_connection_limiting;
-  ConnectionCount *connection_count;
 
   // The ServerSession owns the following buffer which use
   //   for parsing the headers.  The server session needs to
@@ -178,7 +108,7 @@ public:
   //   changing the buffer we are doing I/O on.  We can
   //   not change the buffer for I/O without issuing a
   //   an asyncronous cancel on NT
-  MIOBuffer *read_buffer;
+  //MIOBuffer *read_buffer;
 
   virtual int
   populate_protocol(ts::string_view *result, int size) const
@@ -196,11 +126,6 @@ public:
 
 private:
   HttpServerSession(HttpServerSession &);
-
-  NetVConnection *server_vc;
-  int magic;
-
-  IOBufferReader *buf_reader;
 };
 
 extern ClassAllocator<HttpServerSession> httpServerSessionAllocator;

@@ -24,14 +24,14 @@
 #ifndef __HTTP_CLIENT_TRANSACTION_H_
 #define __HTTP_CLIENT_TRANSACTION_H_
 
-#include "../ProxyClientTransaction.h"
+#include "../ProxyTransaction.h"
 
 class Continuation;
 
-class Http1ClientTransaction : public ProxyClientTransaction
+class Http1ClientTransaction : public ProxyTransaction
 {
 public:
-  typedef ProxyClientTransaction super;
+  typedef ProxyTransaction super;
 
   Http1ClientTransaction() : super(), outbound_port(0), outbound_transparent(false) {}
   // Implement VConnection interface.
@@ -94,7 +94,7 @@ public:
     return true;
   }
 
-  void set_parent(ProxyClientSession *new_parent) override;
+  void set_parent(ProxySession *new_parent) override;
 
   uint16_t
   get_outbound_port() const override

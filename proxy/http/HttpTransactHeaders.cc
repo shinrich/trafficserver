@@ -30,6 +30,7 @@
 
 #include "HttpTransact.h"
 #include "HttpTransactHeaders.h"
+#include "HttpServerSession.h"
 #include "HTTP.h"
 #include "HdrUtils.h"
 #include "HttpCompat.h"

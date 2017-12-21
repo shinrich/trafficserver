@@ -26,7 +26,7 @@
 
 #include "HTTP2.h"
 #include "Plugin.h"
-#include "ProxyClientSession.h"
+#include "ProxySession.h"
 #include "Http2ConnectionState.h"
 #include <ts/string_view.h>
 #include <ts/ink_inet.h>
@@ -153,15 +153,15 @@ private:
   IOBufferReader *ioreader;
 };
 
-class Http2ClientSession : public ProxyClientSession
+class Http2ClientSession : public ProxySession
 {
 public:
-  typedef ProxyClientSession super; ///< Parent type.
+  typedef ProxySession super; ///< Parent type.
   typedef int (Http2ClientSession::*SessionHandler)(int, void *);
 
   Http2ClientSession();
 
-  // Implement ProxyClientSession interface.
+  // Implement ProxySession interface.
   void start() override;
   void destroy() override;
   void free() override;
@@ -184,6 +184,12 @@ public:
   get_netvc() const override
   {
     return client_vc;
+  }
+
+  void
+  set_netvc(NetVConnection *new_vc) override
+  {
+    client_vc = new_vc;
   }
 
   void
@@ -230,7 +236,7 @@ public:
   }
 
   void
-  release(ProxyClientTransaction *trans) override
+  release(ProxyTransaction *trans) override
   {
   }
 

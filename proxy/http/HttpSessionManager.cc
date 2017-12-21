@@ -31,8 +31,9 @@
  ****************************************************************************/
 
 #include "HttpSessionManager.h"
-#include "../ProxyClientSession.h"
+#include "../ProxySession.h"
 #include "HttpServerSession.h"
+#include "HttpConnectionCount.h"
 #include "HttpSM.h"
 #include "HttpDebugNames.h"
 
@@ -136,7 +137,7 @@ ServerSessionPool::acquireSession(sockaddr const *addr, INK_MD5 const &hostname_
 void
 ServerSessionPool::releaseSession(HttpServerSession *ss)
 {
-  ss->state = HSS_KA_SHARED;
+  ss->state = HS_KA_SHARED;
   // Now we need to issue a read on the connection to detect
   //  if it closes on us.  We will get called back in the
   //  continuation for this bucket, ensuring we have the lock
@@ -155,7 +156,7 @@ ServerSessionPool::releaseSession(HttpServerSession *ss)
 
   Debug("http_ss", "[%" PRId64 "] [release session] "
                    "session placed into shared pool",
-        ss->con_id);
+        ss->connection_id());
 }
 
 //   Called from the NetProcessor to let us know that a
@@ -194,15 +195,14 @@ ServerSessionPool::eventHandler(int event, void *data)
       // keeping the connection alive will not keep us above the # of max connections
       // to the origin and we are below the min number of keep alive connections to this
       // origin, then reset the timeouts on our end and do not close the connection
-      if ((event == VC_EVENT_INACTIVITY_TIMEOUT || event == VC_EVENT_ACTIVE_TIMEOUT) && s->state == HSS_KA_SHARED &&
-          s->enable_origin_connection_limiting) {
-        bool connection_count_below_min = s->connection_count->getCount(s->get_server_ip(), s->hostname_hash, s->sharing_match) <=
-                                          http_config_params->origin_min_keep_alive_connections;
+      int connection_count = ConnectionCount::getInstance()->getCount(s->get_server_ip(), s->hostname_hash, s->sharing_match);
+      if ((event == VC_EVENT_INACTIVITY_TIMEOUT || event == VC_EVENT_ACTIVE_TIMEOUT) && s->state == HS_KA_SHARED && connection_count >= 0) {
+        bool connection_count_below_min = connection_count <= http_config_params->origin_min_keep_alive_connections;
 
         if (connection_count_below_min) {
           Debug("http_ss", "[%" PRId64 "] [session_bucket] session received io notice [%s], "
                            "reseting timeout to maintain minimum number of connections",
-                s->con_id, HttpDebugNames::get_event_name(event));
+                s->connection_id(), HttpDebugNames::get_event_name(event));
           s->get_netvc()->set_inactivity_timeout(s->get_netvc()->get_inactivity_timeout());
           s->get_netvc()->set_active_timeout(s->get_netvc()->get_active_timeout());
           found = true;
@@ -212,9 +212,9 @@ ServerSessionPool::eventHandler(int event, void *data)
 
       // We've found our server session. Remove it from
       //   our lists and close it down
-      Debug("http_ss", "[%" PRId64 "] [session_pool] session %p received io notice [%s]", s->con_id, s,
+      Debug("http_ss", "[%" PRId64 "] [session_pool] session %p received io notice [%s]", s->connection_id(), s,
             HttpDebugNames::get_event_name(event));
-      ink_assert(s->state == HSS_KA_SHARED);
+      ink_assert(s->state == HS_KA_SHARED);
       // Out of the pool! Now!
       m_ip_pool.remove(lh);
       m_host_pool.remove(m_host_pool.find(s));
@@ -264,7 +264,7 @@ HttpSessionManager::purge_keepalives()
 
 HSMresult_t
 HttpSessionManager::acquire_session(Continuation * /* cont ATS_UNUSED */, sockaddr const *ip, const char *hostname,
-                                    ProxyClientTransaction *ua_txn, HttpSM *sm)
+                                    ProxyTransaction *ua_txn, HttpSM *sm)
 {
   HttpServerSession *to_return = nullptr;
   TSServerSessionSharingMatchType match_style =
@@ -286,8 +286,8 @@ HttpSessionManager::acquire_session(Continuation * /* cont ATS_UNUSED */, sockad
     //
     if (ServerSessionPool::match(to_return, ip, hostname_hash, match_style) &&
         ServerSessionPool::validate_sni(sm, to_return->get_netvc())) {
-      Debug("http_ss", "[%" PRId64 "] [acquire session] returning attached session ", to_return->con_id);
-      to_return->state = HSS_ACTIVE;
+      Debug("http_ss", "[%" PRId64 "] [acquire session] returning attached session ", to_return->connection_id());
+      to_return->state = HS_ACTIVE;
       sm->attach_server_session(to_return);
       return HSM_DONE;
     }
@@ -295,7 +295,7 @@ HttpSessionManager::acquire_session(Continuation * /* cont ATS_UNUSED */, sockad
     //   then continue looking for one from the shared pool
     Debug("http_ss", "[%" PRId64 "] [acquire session] "
                      "session not a match, returning to shared pool",
-          to_return->con_id);
+          to_return->connection_id());
     to_return->release();
     to_return = nullptr;
   }
@@ -348,8 +348,8 @@ HttpSessionManager::acquire_session(Continuation * /* cont ATS_UNUSED */, sockad
   }
 
   if (to_return) {
-    Debug("http_ss", "[%" PRId64 "] [acquire session] return session from shared pool", to_return->con_id);
-    to_return->state = HSS_ACTIVE;
+    Debug("http_ss", "[%" PRId64 "] [acquire session] return session from shared pool", to_return->connection_id());
+    to_return->state = HS_ACTIVE;
     // the attach_server_session will issue the do_io_read under the sm lock
     sm->attach_server_session(to_return);
     retval = HSM_DONE;
@@ -361,8 +361,9 @@ HSMresult_t
 HttpSessionManager::release_session(HttpServerSession *to_release)
 {
   EThread *ethread = this_ethread();
+  HttpConfigParams *http_config_params = HttpConfig::acquire();
   ServerSessionPool *pool =
-    TS_SERVER_SESSION_SHARING_POOL_THREAD == to_release->sharing_pool ? ethread->server_session_pool : m_g_pool;
+    static_cast<TSServerSessionSharingPoolType>(http_config_params->server_session_sharing_pool) == TS_SERVER_SESSION_SHARING_POOL_THREAD ? ethread->server_session_pool : m_g_pool;
   bool released_p = true;
 
   // The per thread lock looks like it should not be needed but if it's not locked the close checking I/O op will crash.
@@ -370,7 +371,7 @@ HttpSessionManager::release_session(HttpServerSession *to_release)
   if (lock.is_locked()) {
     pool->releaseSession(to_release);
   } else {
-    Debug("http_ss", "[%" PRId64 "] [release session] could not release session due to lock contention", to_release->con_id);
+    Debug("http_ss", "[%" PRId64 "] [release session] could not release session due to lock contention", to_release->connection_id());
     released_p = false;
   }
 

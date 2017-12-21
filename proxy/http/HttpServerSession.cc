@@ -32,25 +32,26 @@
 #include "ts/Allocator.h"
 #include "HttpServerSession.h"
 #include "HttpSessionManager.h"
+#include "HttpConnectionCount.h"
 #include "HttpSM.h"
 
-static int64_t next_ss_id = (int64_t)0;
 ClassAllocator<HttpServerSession> httpServerSessionAllocator("httpServerSessionAllocator");
 
 void
 HttpServerSession::destroy()
 {
-  ink_release_assert(server_vc == nullptr);
+  ink_release_assert(net_vc == nullptr);
   ink_assert(read_buffer);
-  ink_assert(server_trans_stat == 0);
-  magic = HTTP_SS_MAGIC_DEAD;
+  ink_assert(transact_count == released_transactions);
+  magic = HTTP_SSN_MAGIC_DEAD;
   if (read_buffer) {
     free_MIOBuffer(read_buffer);
     read_buffer = nullptr;
   }
 
   mutex.clear();
-  if (TS_SERVER_SESSION_SHARING_POOL_THREAD == sharing_pool) {
+  HttpConfigParams *http_config_params = HttpConfig::acquire();
+  if (static_cast<TSServerSessionSharingPoolType>(http_config_params->server_session_sharing_pool) == TS_SERVER_SESSION_SHARING_POOL_THREAD) {
     THREAD_FREE(this, httpServerSessionAllocator, this_thread());
   } else {
     httpServerSessionAllocator.free(this);
@@ -61,23 +62,22 @@ void
 HttpServerSession::new_connection(NetVConnection *new_vc)
 {
   ink_assert(new_vc != nullptr);
-  server_vc = new_vc;
+  net_vc = new_vc;
 
   // Used to do e.g. mutex = new_vc->thread->mutex; when per-thread pools enabled
   mutex = new_vc->mutex;
 
   // Unique client session identifier.
-  con_id = ink_atomic_increment((int64_t *)(&next_ss_id), 1);
+  con_id = ProxySession::next_connection_id();
 
-  magic = HTTP_SS_MAGIC_ALIVE;
+  magic = HTTP_SSN_MAGIC_ALIVE;
   HTTP_SUM_GLOBAL_DYN_STAT(http_current_server_connections_stat, 1); // Update the true global stat
   HTTP_INCREMENT_DYN_STAT(http_total_server_connections_stat);
   // Check to see if we are limiting the number of connections
   // per host
-  if (enable_origin_connection_limiting == true) {
-    if (connection_count == nullptr) {
-      connection_count = ConnectionCount::getInstance();
-    }
+  ConnectionCount *connection_count = ConnectionCount::getInstance();
+  // If the origin is in the count table, then we doing connection_limiting
+  if (connection_count->getCount(get_server_ip(), hostname_hash, sharing_match) >= 0) {
     connection_count->incrementCount(get_server_ip(), hostname_hash, sharing_match);
     ip_port_text_buffer addrbuf;
     Debug("http_ss", "[%" PRId64 "] new connection, ip: %s, count: %u", con_id,
@@ -91,61 +91,45 @@ HttpServerSession::new_connection(NetVConnection *new_vc)
 #endif
   buf_reader = read_buffer->alloc_reader();
   Debug("http_ss", "[%" PRId64 "] session born, netvc %p", con_id, new_vc);
-  state = HSS_INIT;
+  state = HS_INIT;
 
   new_vc->set_tcp_congestion_control(SERVER_SIDE);
-}
-
-VIO *
-HttpServerSession::do_io_read(Continuation *c, int64_t nbytes, MIOBuffer *buf)
-{
-  return server_vc->do_io_read(c, nbytes, buf);
-}
-
-VIO *
-HttpServerSession::do_io_write(Continuation *c, int64_t nbytes, IOBufferReader *buf, bool owner)
-{
-  return server_vc->do_io_write(c, nbytes, buf, owner);
 }
 
 void
 HttpServerSession::do_io_shutdown(ShutdownHowTo_t howto)
 {
-  server_vc->do_io_shutdown(howto);
+  net_vc->do_io_shutdown(howto);
 }
 
 void
 HttpServerSession::do_io_close(int alerrno)
 {
-  if (state == HSS_ACTIVE) {
+  if (state == HS_ACTIVE) {
     HTTP_DECREMENT_DYN_STAT(http_current_server_transactions_stat);
-    this->server_trans_stat--;
+    this->release_transaction();
   }
 
-  Debug("http_ss", "[%" PRId64 "] session closing, netvc %p", con_id, server_vc);
+  Debug("http_ss", "[%" PRId64 "] session closing, netvc %p", con_id, net_vc);
 
   HTTP_SUM_GLOBAL_DYN_STAT(http_current_server_connections_stat, -1); // Make sure to work on the global stat
   HTTP_SUM_DYN_STAT(http_transactions_per_server_con, transact_count);
 
   // Check to see if we are limiting the number of connections
   // per host
-  if (enable_origin_connection_limiting == true) {
-    if (connection_count->getCount(get_server_ip(), hostname_hash, sharing_match) >= 0) {
-      connection_count->incrementCount(get_server_ip(), hostname_hash, sharing_match, -1);
-      ip_port_text_buffer addrbuf;
-      Debug("http_ss", "[%" PRId64 "] connection closed, ip: %s, count: %u", con_id,
-            ats_ip_nptop(&get_server_ip().sa, addrbuf, sizeof(addrbuf)),
-            connection_count->getCount(get_server_ip(), hostname_hash, sharing_match));
-    } else {
-      Error("[%" PRId64 "] number of connections should be greater than or equal to zero: %u", con_id,
-            connection_count->getCount(get_server_ip(), hostname_hash, sharing_match));
-    }
-  }
+  ConnectionCount *connection_count = ConnectionCount::getInstance();
+  if (connection_count->getCount(get_server_ip(), hostname_hash, sharing_match) >= 0) {
+    connection_count->incrementCount(get_server_ip(), hostname_hash, sharing_match, -1);
+    ip_port_text_buffer addrbuf;
+    Debug("http_ss", "[%" PRId64 "] connection closed, ip: %s, count: %u", con_id,
+          ats_ip_nptop(&get_server_ip().sa, addrbuf, sizeof(addrbuf)),
+          connection_count->getCount(get_server_ip(), hostname_hash, sharing_match));
+  } 
 
-  if (server_vc) {
-    server_vc->do_io_close(alerrno);
+  if (net_vc) {
+    net_vc->do_io_close(alerrno);
   }
-  server_vc = nullptr;
+  net_vc = nullptr;
 
   if (to_parent_proxy) {
     HTTP_DECREMENT_DYN_STAT(http_current_parent_proxy_connections_stat);
@@ -153,11 +137,6 @@ HttpServerSession::do_io_close(int alerrno)
   destroy();
 }
 
-void
-HttpServerSession::reenable(VIO *vio)
-{
-  server_vc->reenable(vio);
-}
 
 // void HttpServerSession::release()
 //
@@ -168,9 +147,9 @@ HttpServerSession::release()
 {
   Debug("http_ss", "Releasing session, private_session=%d, sharing_match=%d", private_session, sharing_match);
   // Set our state to KA for stat issues
-  state = HSS_KA_SHARED;
+  state = HS_KA_SHARED;
 
-  server_vc->control_flags.set_flags(0);
+  net_vc->control_flags.set_flags(0);
 
   // Private sessions are never released back to the shared pool
   if (private_session || TS_SERVER_SESSION_SHARING_MATCH_NONE == sharing_match) {
@@ -179,8 +158,8 @@ HttpServerSession::release()
   }
 
   // Make sure the vios for the current SM are cleared
-  server_vc->do_io_read(nullptr, 0, nullptr);
-  server_vc->do_io_write(nullptr, 0, nullptr);
+  net_vc->do_io_read(nullptr, 0, nullptr);
+  net_vc->do_io_write(nullptr, 0, nullptr);
 
   HSMresult_t r = httpSessionManager.release_session(this);
 

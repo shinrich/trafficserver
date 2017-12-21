@@ -22,13 +22,14 @@
 
  */
 
-#include "../ProxyClientTransaction.h"
+#include "../ProxyTransaction.h"
 #include "HttpSM.h"
 #include "HttpTransactHeaders.h"
 #include "ProxyConfig.h"
 #include "HttpServerSession.h"
 #include "HttpDebugNames.h"
 #include "HttpSessionManager.h"
+#include "HttpConnectionCount.h"
 #include "P_Cache.h"
 #include "P_Net.h"
 #include "StatPages.h"
@@ -427,7 +428,7 @@ HttpSM::start_sub_sm()
 }
 
 void
-HttpSM::attach_client_session(ProxyClientTransaction *client_vc, IOBufferReader *buffer_reader)
+HttpSM::attach_client_session(ProxyTransaction *client_vc, IOBufferReader *buffer_reader)
 {
   milestones[TS_MILESTONE_UA_BEGIN] = Thread::get_hrtime();
   ink_assert(client_vc != nullptr);
@@ -613,7 +614,7 @@ HttpSM::state_read_client_request_header(int event, void *data)
 
   // Reset the inactivity timeout if this is the first
   //   time we've been called.  The timeout had been set to
-  //   the accept timeout by the ProxyClientTransaction
+  //   the accept timeout by the ProxyTransaction
   //
   if ((ua_buffer_reader->read_avail() > 0) && (client_request_hdr_bytes == 0)) {
     milestones[TS_MILESTONE_UA_FIRST_READ] = Thread::get_hrtime();
@@ -1089,11 +1090,6 @@ HttpSM::state_raw_http_server_open(int event, void *data)
     return 0;
 
   case NET_EVENT_OPEN:
-
-    if (t_state.pCongestionEntry != nullptr) {
-      t_state.pCongestionEntry->connection_opened();
-      t_state.congestion_connection_opened = 1;
-    }
     // Record the VC in our table
     server_entry     = vc_table.new_entry();
     server_entry->vc = netvc = (NetVConnection *)data;
@@ -1745,8 +1741,8 @@ HttpSM::state_http_server_open(int event, void *data)
     session = (TS_SERVER_SESSION_SHARING_POOL_THREAD == t_state.http_config_param->server_session_sharing_pool) ?
                 THREAD_ALLOC_INIT(httpServerSessionAllocator, mutex->thread_holding) :
                 httpServerSessionAllocator.alloc();
-    session->sharing_pool  = static_cast<TSServerSessionSharingPoolType>(t_state.http_config_param->server_session_sharing_pool);
     session->sharing_match = static_cast<TSServerSessionSharingMatchType>(t_state.txn_conf->server_session_sharing_match);
+    session->attach_hostname(t_state.current.server->name);
     // If origin_max_connections or origin_min_keep_alive_connections is
     // set then we are metering the max and or min number
     // of connections per host.  Set enable_origin_connection_limiting
@@ -1754,15 +1750,11 @@ HttpSM::state_http_server_open(int event, void *data)
     // the connection count.
     if (t_state.txn_conf->origin_max_connections > 0 || t_state.http_config_param->origin_min_keep_alive_connections > 0) {
       SMDebug("http_ss", "[%" PRId64 "] max number of connections: %" PRIu64, sm_id, t_state.txn_conf->origin_max_connections);
-      session->enable_origin_connection_limiting = true;
+      // Put this origin in the tracking table
+      ConnectionCount::getInstance()->incrementCount(static_cast<NetVConnection *>(data)->get_remote_endpoint(), session->hostname_hash, session->sharing_match);
     }
-    /*UnixNetVConnection * vc = (UnixNetVConnection*)(ua_txn->client_vc);
-       UnixNetVConnection *server_vc = (UnixNetVConnection*)data;
-       printf("client fd is :%d , server fd is %d\n",vc->con.fd,
-       server_vc->con.fd); */
-    session->attach_hostname(t_state.current.server->name);
     session->new_connection(static_cast<NetVConnection *>(data));
-    session->state = HSS_ACTIVE;
+    session->state = HS_ACTIVE;
 
     attach_server_session(session);
     if (t_state.current.request_to == HttpTransact::PARENT_PROXY) {
@@ -1894,7 +1886,7 @@ HttpSM::state_read_server_response_header(int event, void *data)
   //  looking at is garbage on a keep-alive channel corrupted by the origin
   //  server
   if (state == PARSE_RESULT_DONE && t_state.hdr_info.server_response.version_get() == HTTPVersion(0, 9) &&
-      server_session->transact_count > 1) {
+      server_session->get_transact_count() > 1) {
     state = PARSE_RESULT_ERROR;
   }
   // Check to see if we are over the hdr size limit
@@ -3049,7 +3041,7 @@ HttpSM::tunnel_handler_server(int event, HttpTunnelProducer *p)
     }
   } else {
     server_session->attach_hostname(t_state.current.server->name);
-    server_session->server_trans_stat--;
+    server_session->release_transaction();
     HTTP_DECREMENT_DYN_STAT(http_current_server_transactions_stat);
 
     // If the option to attach the server session to the client session is set
@@ -4735,23 +4727,6 @@ HttpSM::do_http_server_open(bool raw)
     }
   }
 
-  // Congestion Check
-  if (t_state.pCongestionEntry != nullptr) {
-    if (t_state.pCongestionEntry->F_congested() &&
-        (!t_state.pCongestionEntry->proxy_retry(milestones[TS_MILESTONE_SERVER_CONNECT]))) {
-      t_state.congestion_congested_or_failed = 1;
-      t_state.pCongestionEntry->stat_inc_F();
-      CONGEST_INCREMENT_DYN_STAT(congested_on_F_stat);
-      handleEvent(CONGESTION_EVENT_CONGESTED_ON_F, nullptr);
-      return;
-    } else if (t_state.pCongestionEntry->M_congested(ink_hrtime_to_sec(milestones[TS_MILESTONE_SERVER_CONNECT]))) {
-      t_state.pCongestionEntry->stat_inc_M();
-      t_state.congestion_congested_or_failed = 1;
-      CONGEST_INCREMENT_DYN_STAT(congested_on_M_stat);
-      handleEvent(CONGESTION_EVENT_CONGESTED_ON_M, nullptr);
-      return;
-    }
-  }
   // If this is not a raw connection, we try to get a session from the
   //  shared session pool.  Raw connections are for SSLs tunnel and
   //  require a new connection
@@ -4829,7 +4804,7 @@ HttpSM::do_http_server_open(bool raw)
       // shouldn't we just automatically keep the association?
       if (ats_ip_addr_port_eq(&existing_ss->get_server_ip().sa, &t_state.current.server->dst_addr.sa)) {
         ua_txn->attach_server_session(nullptr);
-        existing_ss->state = HSS_ACTIVE;
+        existing_ss->state = HS_ACTIVE;
         this->attach_server_session(existing_ss);
         hsm_release_assert(server_session != nullptr);
         handle_http_server_open();
@@ -5259,7 +5234,7 @@ HttpSM::release_server_session(bool serve_from_cache)
                                                    t_state.www_auth_content != HttpTransact::CACHE_AUTH_NONE)) &&
       plugin_tunnel_type == HTTP_NO_PLUGIN_TUNNEL) {
     HTTP_DECREMENT_DYN_STAT(http_current_server_transactions_stat);
-    server_session->server_trans_stat--;
+    server_session->release_transaction();
     server_session->attach_hostname(t_state.current.server->name);
     if (t_state.www_auth_content == HttpTransact::CACHE_AUTH_NONE || serve_from_cache == false) {
       // Must explicitly set the keep_alive_no_activity time before doing the release
@@ -5370,13 +5345,6 @@ HttpSM::handle_http_server_open()
       vc->options.packet_tos             = t_state.txn_conf->sock_packet_tos_out;
       vc->options.clientVerificationFlag = t_state.txn_conf->ssl_client_verify_server;
       vc->apply_options();
-    }
-  }
-
-  if (t_state.pCongestionEntry != nullptr) {
-    if (t_state.congestion_connection_opened == 0) {
-      t_state.congestion_connection_opened = 1;
-      t_state.pCongestionEntry->connection_opened();
     }
   }
 
@@ -5830,9 +5798,12 @@ HttpSM::attach_server_session(HttpServerSession *s)
 {
   hsm_release_assert(server_session == nullptr);
   hsm_release_assert(server_entry == nullptr);
-  hsm_release_assert(s->state == HSS_ACTIVE);
+  hsm_release_assert(s->state == HS_ACTIVE);
   server_session        = s;
-  server_transact_count = server_session->transact_count++;
+  server_session->new_transaction();
+  // Stash aside for logging
+  server_transact_count = server_session->get_transact_count();
+
   // Propagate the per client IP debugging
   if (ua_txn) {
     s->get_netvc()->control_flags.set_flags(get_cont_flags().get_flags());
@@ -5845,7 +5816,6 @@ HttpSM::attach_server_session(HttpServerSession *s)
   server_session->mutex = this->mutex;
 
   HTTP_INCREMENT_DYN_STAT(http_current_server_transactions_stat);
-  ++s->server_trans_stat;
 
   // Record the VC in our table
   server_entry             = vc_table.new_entry();
@@ -6850,12 +6820,6 @@ HttpSM::kill_this()
       plugin_tunnel = nullptr;
     }
 
-    if (t_state.pCongestionEntry != nullptr) {
-      if (t_state.congestion_congested_or_failed != 1) {
-        t_state.pCongestionEntry->go_alive();
-      }
-    }
-
     ink_assert(pending_action == nullptr);
     ink_release_assert(vc_table.is_table_clear() == true);
     ink_release_assert(tunnel.is_tunnel_active() == false);
@@ -7334,13 +7298,6 @@ HttpSM::set_next_state()
   }
 
   case HttpTransact::SM_ACTION_ORIGIN_SERVER_OPEN: {
-    if (congestionControlEnabled && (t_state.congest_saved_next_action == HttpTransact::SM_ACTION_UNDEFINED)) {
-      t_state.congest_saved_next_action = HttpTransact::SM_ACTION_ORIGIN_SERVER_OPEN;
-      HTTP_SM_SET_DEFAULT_HANDLER(&HttpSM::state_congestion_control_lookup);
-      if (!do_congestion_control_lookup()) {
-        break;
-      }
-    }
     HTTP_SM_SET_DEFAULT_HANDLER(&HttpSM::state_http_server_open);
 
     // We need to close the previous attempt
@@ -7530,14 +7487,6 @@ HttpSM::set_next_state()
   }
 
   case HttpTransact::SM_ACTION_ORIGIN_SERVER_RAW_OPEN: {
-    if (congestionControlEnabled && (t_state.congest_saved_next_action == HttpTransact::SM_ACTION_UNDEFINED)) {
-      t_state.congest_saved_next_action = HttpTransact::SM_ACTION_ORIGIN_SERVER_RAW_OPEN;
-      HTTP_SM_SET_DEFAULT_HANDLER(&HttpSM::state_congestion_control_lookup);
-      if (!do_congestion_control_lookup()) {
-        break;
-      }
-    }
-
     HTTP_SM_SET_DEFAULT_HANDLER(&HttpSM::state_raw_http_server_open);
 
     ink_assert(server_entry == nullptr);
@@ -7618,43 +7567,6 @@ HttpSM::set_next_state()
 void
 clear_http_handler_times()
 {
-}
-
-bool
-HttpSM::do_congestion_control_lookup()
-{
-  ink_assert(pending_action == nullptr);
-
-  Action *congestion_control_action_handle = get_congest_entry(this, &t_state.request_data, &t_state.pCongestionEntry);
-  if (congestion_control_action_handle != ACTION_RESULT_DONE) {
-    pending_action = congestion_control_action_handle;
-    return false;
-  }
-
-  return true;
-}
-
-int
-HttpSM::state_congestion_control_lookup(int event, void *data)
-{
-  STATE_ENTER(&HttpSM::state_congestion_control_lookup, event);
-  if (event == CONGESTION_EVENT_CONTROL_LOOKUP_DONE) {
-    pending_action                = nullptr;
-    t_state.next_action           = t_state.congest_saved_next_action;
-    t_state.transact_return_point = nullptr;
-    set_next_state();
-  } else {
-    if (pending_action != nullptr) {
-      pending_action->cancel();
-      pending_action = nullptr;
-    }
-    if (t_state.congest_saved_next_action == HttpTransact::SM_ACTION_ORIGIN_SERVER_OPEN) {
-      return state_http_server_open(event, data);
-    } else if (t_state.congest_saved_next_action == HttpTransact::SM_ACTION_ORIGIN_SERVER_RAW_OPEN) {
-      return state_raw_http_server_open(event, data);
-    }
-  }
-  return 0;
 }
 
 // YTS Team, yamsat Plugin

@@ -47,7 +47,7 @@ Http1ClientTransaction::release(IOBufferReader *r)
 }
 
 void
-Http1ClientTransaction::set_parent(ProxyClientSession *new_parent)
+Http1ClientTransaction::set_parent(ProxySession *new_parent)
 {
   parent                           = new_parent;
   Http1ClientSession *http1_parent = dynamic_cast<Http1ClientSession *>(new_parent);
