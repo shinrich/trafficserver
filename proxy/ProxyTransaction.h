@@ -37,6 +37,7 @@ public:
   // do_io methods implemented by subclasses
 
   virtual void new_transaction();
+  virtual void attach_transaction(HttpSM *attach_sm);
 
   virtual NetVConnection *
   get_netvc() const
@@ -48,7 +49,7 @@ public:
   virtual void set_inactivity_timeout(ink_hrtime timeout_in) = 0;
   virtual void cancel_inactivity_timeout()                   = 0;
 
-  virtual void attach_server_session(HttpServerSession *ssession, bool transaction_done = true);
+  virtual void attach_peer_session(ProxySession *session, bool transaction_done = true);
 
   // See if we need to schedule on the primary thread for the transaction or change the thread that is associated with the VC.
   // If we reschedule, the scheduled action is returned.  Otherwise, NULL is returned
@@ -261,6 +262,12 @@ public:
   // session.
   //
   virtual int get_transaction_id() const = 0;
+
+  IOBufferReader *
+  get_reader() const
+  {
+    return sm_reader;
+  } 
 
 protected:
   ProxySession *parent;

@@ -5506,7 +5506,7 @@ TSHttpTxnOutgoingAddrGet(TSHttpTxn txnp)
 
   HttpSM *sm = reinterpret_cast<HttpSM *>(txnp);
 
-  HttpServerSession *ssn = sm->get_server_session();
+  ProxyTransaction *ssn = sm->get_server_session();
   if (ssn == nullptr) {
     return nullptr;
   }
@@ -7333,7 +7333,7 @@ TSHttpTxnServerFdGet(TSHttpTxn txnp, int *fdp)
   HttpSM *sm = reinterpret_cast<HttpSM *>(txnp);
   *fdp       = -1;
 
-  HttpServerSession *ss = sm->get_server_session();
+  ProxyTransaction *ss = sm->get_server_session();
   if (ss == nullptr) {
     return TS_ERROR;
   }

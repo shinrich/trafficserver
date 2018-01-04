@@ -161,7 +161,7 @@ public:
   }
 
   virtual void
-  attach_server_session(HttpServerSession *ssession, bool transaction_done = true)
+  attach_peer_session(ProxySession *ssession, bool transaction_done = true)
   {
   }
 

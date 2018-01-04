@@ -59,7 +59,7 @@ HttpServerSession::destroy()
 }
 
 void
-HttpServerSession::new_connection(NetVConnection *new_vc)
+HttpServerSession::new_connection(NetVConnection *new_vc, MIOBuffer *iobuf, IOBufferReader *reader, bool backdoor) 
 {
   ink_assert(new_vc != nullptr);
   net_vc = new_vc;
@@ -90,6 +90,8 @@ HttpServerSession::new_connection(NetVConnection *new_vc)
   read_buffer = new_MIOBuffer(HTTP_SERVER_RESP_HDR_BUFFER_INDEX);
 #endif
   buf_reader = read_buffer->alloc_reader();
+  trans.set_reader(buf_reader);
+
   Debug("http_ss", "[%" PRId64 "] session born, netvc %p", con_id, new_vc);
   state = HS_INIT;
 

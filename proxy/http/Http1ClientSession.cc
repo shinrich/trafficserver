@@ -354,8 +354,9 @@ Http1ClientSession::release(ProxyTransaction *trans)
 }
 
 void
-Http1ClientSession::attach_server_session(HttpServerSession *ssession, bool transaction_done)
+Http1ClientSession::attach_peer_session(ProxySession *abstract_session, bool transaction_done)
 {
+  HttpServerSession *ssession = dynamic_cast<HttpServerSession*>(abstract_session);
   if (ssession) {
     ink_assert(bound_ss == nullptr);
     ssession->state = HS_KA_CLIENT_SLAVE;

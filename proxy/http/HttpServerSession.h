@@ -60,7 +60,7 @@ public:
   HttpServerSession() { }
 
   void destroy();
-  void new_connection(NetVConnection *new_vc);
+  void new_connection(NetVConnection *new_vc, MIOBuffer *iobuf, IOBufferReader *reader, bool backdoor) override;
 
   void do_io_close(int lerrno = -1) override;
   void do_io_shutdown(ShutdownHowTo_t howto) override;
@@ -89,6 +89,16 @@ public:
   is_private() const
   {
     return private_session;
+  }
+
+  void
+  attach_transaction(HttpSM *attach_sm)
+  {
+    // Initialize the basic transaction object
+    new_transaction();
+    state = HS_ACTIVE;
+    // Then wire it into the state machine as the server_txn
+    trans.attach_transaction(attach_sm);
   }
 
   // Copy of the owning SM's server session sharing settings

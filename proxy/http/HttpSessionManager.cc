@@ -278,7 +278,7 @@ HttpSessionManager::acquire_session(Continuation * /* cont ATS_UNUSED */, sockad
   //   to the user agent session
   to_return = ua_txn->get_server_session();
   if (to_return != nullptr) {
-    ua_txn->attach_server_session(nullptr);
+    ua_txn->attach_peer_session(nullptr);
 
     // Since the client session is reusing the same server session, it seems that the SNI should match
     // Will the client make requests to different hosts over the same SSL session? Though checking
@@ -287,8 +287,7 @@ HttpSessionManager::acquire_session(Continuation * /* cont ATS_UNUSED */, sockad
     if (ServerSessionPool::match(to_return, ip, hostname_hash, match_style) &&
         ServerSessionPool::validate_sni(sm, to_return->get_netvc())) {
       Debug("http_ss", "[%" PRId64 "] [acquire session] returning attached session ", to_return->connection_id());
-      to_return->state = HS_ACTIVE;
-      sm->attach_server_session(to_return);
+      to_return->attach_transaction(sm);
       return HSM_DONE;
     }
     // Release this session back to the main session pool and
@@ -349,9 +348,8 @@ HttpSessionManager::acquire_session(Continuation * /* cont ATS_UNUSED */, sockad
 
   if (to_return) {
     Debug("http_ss", "[%" PRId64 "] [acquire session] return session from shared pool", to_return->connection_id());
-    to_return->state = HS_ACTIVE;
     // the attach_server_session will issue the do_io_read under the sm lock
-    sm->attach_server_session(to_return);
+    to_return->attach_transaction(sm);
     retval = HSM_DONE;
   }
   return retval;

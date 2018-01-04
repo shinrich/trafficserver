@@ -214,14 +214,14 @@ public:
   // Called by httpSessionManager so that we can reset
   //  the session timeouts and initiate a read while
   //  holding the lock for the server session
-  void attach_server_session(HttpServerSession *s);
+  void attach_server_session(ProxyTransaction *s);
 
   // Used to read attributes of
   // the current active server session
-  HttpServerSession *
+  ProxyTransaction *
   get_server_session()
   {
-    return server_session;
+    return server_txn;
   }
 
   // Called by transact.  Updates are fire and forget
@@ -345,7 +345,7 @@ protected:
   IOBufferReader *ua_raw_buffer_reader = nullptr;
 
   HttpVCTableEntry *server_entry    = nullptr;
-  HttpServerSession *server_session = nullptr;
+  ProxyTransaction *server_txn = nullptr;
 
   /* Because we don't want to take a session from a shared pool if we know that it will be private,
    * but we cannot set it to private until we have an attached server session.

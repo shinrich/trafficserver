@@ -59,7 +59,7 @@ public:
 
   void start() override;
 
-  void new_connection(NetVConnection *new_vc, MIOBuffer *iobuf, IOBufferReader *reader, bool backdoor);
+  void new_connection(NetVConnection *new_vc, MIOBuffer *iobuf, IOBufferReader *reader, bool backdoor) override;
 
   // Indicate we are done with a transaction
   virtual void release(ProxyTransaction *trans);
@@ -88,7 +88,7 @@ public:
     return outbound_ip6;
   }
 
-  virtual void attach_server_session(HttpServerSession *ssession, bool transaction_done = true);
+  virtual void attach_peer_session(ProxySession *ssession, bool transaction_done = true);
 
   ProxySession * const
   get_peer_session() const override

@@ -75,7 +75,6 @@ public:
     this->release(&trans);
   }
 
-  void new_connection(NetVConnection *new_vc, MIOBuffer *iobuf, IOBufferReader *reader, bool backdoor);
   virtual void new_transaction();
 
   // Implement VConnection interface.
