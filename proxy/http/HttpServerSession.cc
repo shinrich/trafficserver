@@ -105,11 +105,6 @@ HttpServerSession::do_io_shutdown(ShutdownHowTo_t howto)
 void
 HttpServerSession::do_io_close(int alerrno)
 {
-  if (state == HS_ACTIVE) {
-    HTTP_DECREMENT_DYN_STAT(http_current_server_transactions_stat);
-    this->release_transaction();
-  }
-
   Debug("http_ss", "[%" PRId64 "] session closing, netvc %p", con_id, net_vc);
 
   HTTP_SUM_GLOBAL_DYN_STAT(http_current_server_connections_stat, -1); // Make sure to work on the global stat
@@ -133,6 +128,10 @@ HttpServerSession::do_io_close(int alerrno)
 
   if (to_parent_proxy) {
     HTTP_DECREMENT_DYN_STAT(http_current_parent_proxy_connections_stat);
+  }
+  if (state == HS_ACTIVE) {
+    HTTP_DECREMENT_DYN_STAT(http_current_server_transactions_stat);
+    this->release_transaction();
   }
   destroy();
 }

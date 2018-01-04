@@ -32,7 +32,6 @@
 
 #include <ts/ink_resolver.h>
 #include "Http1ClientSession.h"
-#include "Http1ClientTransaction.h"
 #include "HttpSM.h"
 #include "HttpDebugNames.h"
 #include "HttpServerSession.h"
@@ -58,59 +57,8 @@ ink_mutex debug_cs_list_mutex;
 ClassAllocator<Http1ClientSession> http1ClientSessionAllocator("http1ClientSessionAllocator");
 
 void
-Http1ClientSession::destroy()
-{
-  if (state != HS_CLOSED) {
-    return;
-  }
-  if (!in_destroy) {
-    in_destroy = true;
-
-    HttpSsnDebug("[%" PRId64 "] session destroy", con_id);
-    ink_release_assert(!net_vc);
-    ink_assert(read_buffer);
-    ink_release_assert(transact_count == released_transactions);
-    do_api_callout(TS_HTTP_SSN_CLOSE_HOOK);
-  } else {
-    Warning("http1: Attempt to double ssn close");
-  }
-}
-
-void
-Http1ClientSession::release_transaction()
-{
-  released_transactions++;
-  if (transact_count == released_transactions) {
-    destroy();
-  }
-}
-
-void
 Http1ClientSession::free()
 {
-  magic = HTTP_SSN_MAGIC_DEAD;
-  if (read_buffer) {
-    free_MIOBuffer(read_buffer);
-    read_buffer = nullptr;
-  }
-
-#ifdef USE_HTTP_DEBUG_LISTS
-  ink_mutex_acquire(&debug_cs_list_mutex);
-  debug_cs_list.remove(this);
-  ink_mutex_release(&debug_cs_list_mutex);
-#endif
-
-  if (conn_decrease) {
-    HTTP_DECREMENT_DYN_STAT(http_current_client_connections_stat);
-    conn_decrease = false;
-  }
-
-  // Clean up the write VIO in case of inactivity timeout
-  this->do_io_write(nullptr, 0, nullptr);
-
-  // Free the transaction resources
-  this->trans.super::destroy();
-
   super::free();
   THREAD_FREE(this, http1ClientSessionAllocator, this_thread());
 }
@@ -189,51 +137,6 @@ Http1ClientSession::new_connection(NetVConnection *new_vc, MIOBuffer *iobuf, IOB
   do_api_callout(TS_HTTP_SSN_START_HOOK);
   MUTEX_UNTAKE_LOCK(lmutex, ethis);
   lmutex.clear();
-}
-
-VIO *
-Http1ClientSession::do_io_read(Continuation *c, int64_t nbytes, MIOBuffer *buf)
-{
-  return net_vc->do_io_read(c, nbytes, buf);
-}
-
-VIO *
-Http1ClientSession::do_io_write(Continuation *c, int64_t nbytes, IOBufferReader *buf, bool owner)
-{
-  /* conditionally set the tcp initial congestion window
-     before our first write. */
-  HttpSsnDebug("tcp_init_cwnd_set %d", (int)tcp_init_cwnd_set);
-  if (!tcp_init_cwnd_set) {
-    tcp_init_cwnd_set = true;
-    set_tcp_init_cwnd();
-  }
-  if (net_vc) {
-    return net_vc->do_io_write(c, nbytes, buf, owner);
-  } else {
-    return nullptr;
-  }
-}
-
-void
-Http1ClientSession::set_tcp_init_cwnd()
-{
-  if (!trans.get_sm()) {
-    return;
-  }
-  int desired_tcp_init_cwnd = trans.get_sm()->t_state.txn_conf->server_tcp_init_cwnd;
-  HttpSsnDebug("desired TCP congestion window is %d", desired_tcp_init_cwnd);
-  if (desired_tcp_init_cwnd == 0) {
-    return;
-  }
-  if (get_netvc()->set_tcp_init_cwnd(desired_tcp_init_cwnd) != 0) {
-    HttpSsnDebug("set_tcp_init_cwnd(%d) failed", desired_tcp_init_cwnd);
-  }
-}
-
-void
-Http1ClientSession::do_io_shutdown(ShutdownHowTo_t howto)
-{
-  net_vc->do_io_shutdown(howto);
 }
 
 void
@@ -414,11 +317,6 @@ Http1ClientSession::state_keep_alive(int event, void *data)
 
   return 0;
 }
-void
-Http1ClientSession::reenable(VIO *vio)
-{
-  net_vc->reenable(vio);
-}
 
 // Called from the Http1ClientTransaction::release
 void
@@ -456,35 +354,13 @@ Http1ClientSession::release(ProxyTransaction *trans)
 }
 
 void
-Http1ClientSession::new_transaction()
-{
-  // If the client connection terminated during API callouts we're done.
-  if (nullptr == net_vc) {
-    this->do_io_close(); // calls the SSN_CLOSE hooks to match the SSN_START hooks.
-    return;
-  }
-
-  // Defensive programming, make sure nothing persists across
-  // connection re-use
-  half_close = false;
-
-  state = HS_ACTIVE;
-
-  trans.set_parent(this);
-  transact_count++;
-
-  net_vc->add_to_active_queue();
-  trans.new_transaction();
-}
-
-void
 Http1ClientSession::attach_server_session(HttpServerSession *ssession, bool transaction_done)
 {
   if (ssession) {
     ink_assert(bound_ss == nullptr);
     ssession->state = HS_KA_CLIENT_SLAVE;
     bound_ss        = ssession;
-    HttpSsnDebug("[%" PRId64 "] attaching server session [%" PRId64 "] as slave", con_id, ssession->con_id);
+    HttpSsnDebug("[%" PRId64 "] attaching server session [%" PRId64 "] as slave", con_id, ssession->connection_id());
     ink_assert(ssession->get_reader()->read_avail() == 0);
     ink_assert(ssession->get_netvc() != this->get_netvc());
 
@@ -515,4 +391,11 @@ Http1ClientSession::attach_server_session(HttpServerSession *ssession, bool tran
     bound_ss     = nullptr;
     slave_ka_vio = nullptr;
   }
+}
+
+void
+Http1ClientSession::start()
+{
+  // Troll for data to get a new transaction
+  this->release(&trans);
 }

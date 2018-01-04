@@ -1,6 +1,6 @@
 /** @file
 
-  Http1ClientTransaction.h - The Transaction class for Http1*
+  Http1Transaction.h - The Transaction class for Http1*
 
   @section license License
 
@@ -28,12 +28,12 @@
 
 class Continuation;
 
-class Http1ClientTransaction : public ProxyTransaction
+class Http1Transaction : public ProxyTransaction
 {
 public:
   typedef ProxyTransaction super;
 
-  Http1ClientTransaction() : super(), outbound_port(0), outbound_transparent(false) {}
+  Http1Transaction() : super(), outbound_port(0), outbound_transparent(false) {}
   // Implement VConnection interface.
   VIO *
   do_io_read(Continuation *c, int64_t nbytes = INT64_MAX, MIOBuffer *buf = 0) override
@@ -54,7 +54,7 @@ public:
   }
 
   // Don't destroy your elements.  Rely on the Http1ClientSession to clean up the
-  // Http1ClientTransaction class as necessary.  The super::destroy() clears the
+  // Http1Transaction class as necessary.  The super::destroy() clears the
   // mutex, which Http1ClientSession owns.
   void
   destroy() override

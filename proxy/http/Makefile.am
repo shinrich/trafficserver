@@ -43,10 +43,12 @@ libhttp_a_SOURCES = \
   HttpBodyFactory.h \
   HttpCacheSM.cc \
   HttpCacheSM.h \
+  Http1Session.cc \
+  Http1Session.h \
   Http1ClientSession.cc \
   Http1ClientSession.h \
-  Http1ClientTransaction.cc \
-  Http1ClientTransaction.h \
+  Http1Transaction.cc \
+  Http1Transaction.h \
   HttpConfig.cc \
   HttpConfig.h \
   HttpConnectionCount.cc \

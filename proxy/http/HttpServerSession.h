@@ -47,14 +47,14 @@
 #include "P_Net.h"
 
 #include "HttpProxyAPIEnums.h"
-#include "Http1ClientSession.h"
+#include "Http1Session.h"
 
 class HttpSM;
 class MIOBuffer;
 class IOBufferReader;
 
 
-class HttpServerSession : public Http1ClientSession
+class HttpServerSession : public Http1Session
 {
 public:
   HttpServerSession() { }
@@ -67,6 +67,9 @@ public:
 
   void release();
   void attach_hostname(const char *hostname);
+  void release(ProxyTransaction *trans) override 
+  {
+  }
 
   INK_MD5 hostname_hash;
 

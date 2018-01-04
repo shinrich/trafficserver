@@ -1821,8 +1821,9 @@ HttpSM::state_read_server_response_header(int event, void *data)
 {
   STATE_ENTER(&HttpSM::state_read_server_response_header, event);
   ink_assert(server_entry->read_vio == (VIO *)data);
-  ink_assert(t_state.current.server->state == HttpTransact::STATE_UNDEFINED);
-  ink_assert(t_state.current.state == HttpTransact::STATE_UNDEFINED);
+  // Seems reasonable that the state could be INACTIVE_TIMEOUT
+  //ink_assert(t_state.current.server->state == HttpTransact::STATE_UNDEFINED);
+  //ink_assert(t_state.current.state == HttpTransact::STATE_UNDEFINED);
 
   int bytes_used = 0;
   VIO *vio       = (VIO *)data;

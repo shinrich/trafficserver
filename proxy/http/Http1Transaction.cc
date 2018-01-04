@@ -1,6 +1,6 @@
 /** @file
 
-  Http1ClientTransaction.cc - The Transaction class for Http1*
+  Http1Transaction.cc - The Transaction class for Http1*
 
   @section license License
 
@@ -21,12 +21,12 @@
   limitations under the License.
  */
 
-#include "Http1ClientTransaction.h"
+#include "Http1Transaction.h"
 #include "Http1ClientSession.h"
 #include "HttpSM.h"
 
 void
-Http1ClientTransaction::release(IOBufferReader *r)
+Http1Transaction::release(IOBufferReader *r)
 {
   // Must set this inactivity count here rather than in the session because the state machine
   // is not availble then
@@ -47,7 +47,7 @@ Http1ClientTransaction::release(IOBufferReader *r)
 }
 
 void
-Http1ClientTransaction::set_parent(ProxySession *new_parent)
+Http1Transaction::set_parent(ProxySession *new_parent)
 {
   parent                           = new_parent;
   Http1ClientSession *http1_parent = dynamic_cast<Http1ClientSession *>(new_parent);
@@ -61,9 +61,9 @@ Http1ClientTransaction::set_parent(ProxySession *new_parent)
 }
 
 void
-Http1ClientTransaction::transaction_done()
+Http1Transaction::transaction_done()
 {
   if (parent) {
-    static_cast<Http1ClientSession *>(parent)->release_transaction();
+    static_cast<Http1Session *>(parent)->release_transaction();
   }
 }
