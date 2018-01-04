@@ -109,8 +109,10 @@ ServerSessionPool::acquireSession(sockaddr const *addr, INK_MD5 const &hostname_
     }
     if (loc) {
       to_return = loc;
-      m_host_pool.remove(loc);
-      m_ip_pool.remove(m_ip_pool.find(loc));
+      if (!to_return->allow_concurrent_transactions()) {
+        m_host_pool.remove(loc);
+        m_ip_pool.remove(m_ip_pool.find(loc));
+      }
     }
   } else if (TS_SERVER_SESSION_SHARING_MATCH_NONE != match_style) { // matching is not disabled.
     IPHashTable::Location loc = m_ip_pool.find(addr);
@@ -127,8 +129,10 @@ ServerSessionPool::acquireSession(sockaddr const *addr, INK_MD5 const &hostname_
     }
     if (loc) {
       to_return = loc;
-      m_ip_pool.remove(loc);
-      m_host_pool.remove(m_host_pool.find(loc));
+      if (!to_return->allow_concurrent_transactions()) {
+        m_ip_pool.remove(loc);
+        m_host_pool.remove(m_host_pool.find(loc));
+      }
     }
   }
   return zret;
@@ -137,23 +141,11 @@ ServerSessionPool::acquireSession(sockaddr const *addr, INK_MD5 const &hostname_
 void
 ServerSessionPool::releaseSession(HttpServerSession *ss)
 {
-  ss->state = HS_KA_SHARED;
-  // Now we need to issue a read on the connection to detect
-  //  if it closes on us.  We will get called back in the
-  //  continuation for this bucket, ensuring we have the lock
-  //  to remove the connection from our lists
-  ss->do_io_read(this, INT64_MAX, ss->read_buffer);
-
-  // Transfer control of the write side as well
-  ss->do_io_write(this, 0, nullptr);
-
-  // we probably don't need the active timeout set, but will leave it for now
-  ss->get_netvc()->set_inactivity_timeout(ss->get_netvc()->get_inactivity_timeout());
-  ss->get_netvc()->set_active_timeout(ss->get_netvc()->get_active_timeout());
-  // put it in the pools.
-  m_ip_pool.insert(ss);
-  m_host_pool.insert(ss);
-
+  if (!ss->allow_concurrent_transactions()) {
+    // put it in the pools.
+    m_ip_pool.insert(ss);
+    m_host_pool.insert(ss);
+  }
   Debug("http_ss", "[%" PRId64 "] [release session] "
                    "session placed into shared pool",
         ss->connection_id());
@@ -203,8 +195,8 @@ ServerSessionPool::eventHandler(int event, void *data)
           Debug("http_ss", "[%" PRId64 "] [session_bucket] session received io notice [%s], "
                            "reseting timeout to maintain minimum number of connections",
                 s->connection_id(), HttpDebugNames::get_event_name(event));
-          s->get_netvc()->set_inactivity_timeout(s->get_netvc()->get_inactivity_timeout());
-          s->get_netvc()->set_active_timeout(s->get_netvc()->get_active_timeout());
+          s->set_inactivity_timeout(s->get_inactivity_timeout());
+          s->set_active_timeout(s->get_active_timeout());
           found = true;
           break;
         }
@@ -363,6 +355,8 @@ HttpSessionManager::release_session(HttpServerSession *to_release)
   ServerSessionPool *pool =
     static_cast<TSServerSessionSharingPoolType>(http_config_params->server_session_sharing_pool) == TS_SERVER_SESSION_SHARING_POOL_THREAD ? ethread->server_session_pool : m_g_pool;
   bool released_p = true;
+
+  to_release->set_pool(pool);
 
   // The per thread lock looks like it should not be needed but if it's not locked the close checking I/O op will crash.
   MUTEX_TRY_LOCK(lock, pool->mutex, ethread);

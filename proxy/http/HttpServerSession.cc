@@ -158,18 +158,31 @@ HttpServerSession::release()
     return;
   }
 
-  // Make sure the vios for the current SM are cleared
-  net_vc->do_io_read(nullptr, 0, nullptr);
-  net_vc->do_io_write(nullptr, 0, nullptr);
-
   HSMresult_t r = httpSessionManager.release_session(this);
 
   if (r == HSM_RETRY) {
     // Session could not be put in the session manager
     //  due to lock contention
     // FIX:  should retry instead of closing
+    // Make sure the vios for the current SM are cleared
+    net_vc->do_io_read(nullptr, 0, nullptr);
+    net_vc->do_io_write(nullptr, 0, nullptr);
     this->do_io_close();
   } else {
+    // Now we need to issue a read on the connection to detect
+    //  if it closes on us.  We will get called back in the
+    //  continuation for this bucket, ensuring we have the lock
+    //  to remove the connection from our lists
+    this->do_io_read(this->allocating_pool, INT64_MAX, this->read_buffer);
+
+    // Transfer control of the write side as well
+    this->do_io_write(this->allocating_pool, 0, nullptr);
+
+    // we probably don't need the active timeout set, but will leave it for now
+    this->set_inactivity_timeout(this->get_inactivity_timeout());
+    this->set_active_timeout(this->get_active_timeout());
+
+
     // The session was successfully put into the session
     //    manager and it will manage it
     // (Note: should never get HSM_NOT_FOUND here)

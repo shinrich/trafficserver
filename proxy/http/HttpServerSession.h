@@ -100,6 +100,18 @@ public:
     // Then wire it into the state machine as the server_txn
     trans.attach_transaction(attach_sm);
   }
+  
+  void
+  set_pool(ServerSessionPool *pool)
+  {
+     allocating_pool = pool;
+  }
+
+  bool
+  allow_concurrent_transactions() const
+  {
+    return false;
+  }
 
   // Copy of the owning SM's server session sharing settings
   TSServerSessionSharingMatchType sharing_match = TS_SERVER_SESSION_SHARING_MATCH_BOTH;
@@ -113,6 +125,8 @@ private:
   // Sessions become if authentication headers
   //  are sent over them
   bool private_session = false;
+
+  ServerSessionPool *allocating_pool = nullptr;
 };
 
 extern ClassAllocator<HttpServerSession> httpServerSessionAllocator;
