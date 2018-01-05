@@ -400,3 +400,13 @@ Http1ClientSession::start()
   // Troll for data to get a new transaction
   this->release(&trans);
 }
+
+void
+Http1ClientSession::release_transaction()
+{
+  released_transactions++;
+  if (transact_count == released_transactions) {
+    destroy();
+  }
+}
+

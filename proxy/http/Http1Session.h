@@ -66,7 +66,7 @@ public:
   // Implement ProxySession interface.
   void destroy() override;
   void free() override;
-  void release_transaction();
+  virtual void release_transaction();
 
   void
   start() override

@@ -112,6 +112,8 @@ public:
     trans.new_transaction();
   }
 
+  void release_transaction() override;
+
 protected:
   Http1ClientSession(Http1ClientSession &);
 
