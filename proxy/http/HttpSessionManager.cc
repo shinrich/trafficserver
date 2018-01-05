@@ -373,12 +373,32 @@ HttpSessionManager::release_session(HttpServerSession *to_release)
 HttpServerSession *
 HttpSessionManager::make_session(NetVConnection *netvc, TSServerSessionSharingPoolType pool_type, TSServerSessionSharingMatchType match_type, const char *hostname, Ptr<ProxyMutex> mutex)
 {
-  HttpServerSession *session = (TS_SERVER_SESSION_SHARING_POOL_THREAD == pool_type) ?
+  // Figure out what protocol was negotiated
+  const unsigned char *proto = nullptr;
+  unsigned int proto_length = 0;
+  SSLNetVConnection *sslnetvc = dynamic_cast<SSLNetVConnection*>(netvc);
+  if (sslnetvc) {
+    SSL_get0_alpn_selected(sslnetvc->ssl, &proto, &proto_length);
+    if (proto) {
+      Debug("http_ss", "[make_session] SSL negotiated protocol %.*s", proto_length, proto);
+    } else {
+      Debug("http_ss", "[make_session] SSL default protocol");
+    }
+  } else {
+    Debug("http_ss", "[make_session] negotiated protocol HTTP not over SSL");
+  }
+
+  if (proto_length == 2 && memcmp(proto, "h2", 2)) {
+    Debug("http_ss", "Cannot yet create a H2 server session");
+    return nullptr;
+  } else {
+    HttpServerSession *session = (TS_SERVER_SESSION_SHARING_POOL_THREAD == pool_type) ?
               THREAD_ALLOC_INIT(httpServerSessionAllocator, mutex->thread_holding) :
               httpServerSessionAllocator.alloc();
-  session->sharing_match = match_type;
-  session->attach_hostname(hostname);
-  session->new_connection(netvc, NULL, NULL, false);
-  return session;
+    session->sharing_match = match_type;
+    session->attach_hostname(hostname);
+    session->new_connection(netvc, NULL, NULL, false);
+    return session;
+  }
 }
  

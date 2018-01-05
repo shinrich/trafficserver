@@ -63,9 +63,10 @@ ProxyTransaction::new_transaction()
 void
 ProxyTransaction::attach_transaction(HttpSM *attach_sm)
 {
-  ink_assert(current_reader == nullptr);
   current_reader = attach_sm;
-  current_reader->attach_server_session(this);
+  if (attach_sm) {
+    current_reader->attach_server_session(this);
+  }
 }
 
 void

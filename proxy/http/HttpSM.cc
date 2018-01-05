@@ -3055,6 +3055,7 @@ HttpSM::tunnel_handler_server(int event, HttpTunnelProducer *p)
     } else {
       // Release the session back into the shared session pool
       server_txn->set_inactivity_timeout(HRTIME_SECONDS(t_state.txn_conf->keep_alive_no_activity_timeout_out));
+      dynamic_cast<HttpServerSession*>(server_txn->get_parent())->release();
     }
   }
 

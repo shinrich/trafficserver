@@ -405,6 +405,7 @@ void
 Http1ClientSession::release_transaction()
 {
   released_transactions++;
+  trans.attach_transaction(nullptr);
   if (transact_count == released_transactions) {
     destroy();
   }

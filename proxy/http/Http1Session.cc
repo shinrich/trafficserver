@@ -69,6 +69,7 @@ void
 Http1Session::release_transaction()
 {
   released_transactions++;
+  trans.attach_transaction(nullptr);
   ink_assert(released_transactions <= transact_count);
 }
 

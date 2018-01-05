@@ -146,6 +146,9 @@ HttpServerSession::do_io_close(int alerrno)
 void
 HttpServerSession::release()
 {
+  if (transact_count != released_transactions) {
+    return; // Don't release until all outstanding requests are done
+  }
   Debug("http_ss", "Releasing session, private_session=%d, sharing_match=%d", private_session, sharing_match);
   // Set our state to KA for stat issues
   state = HS_KA_SHARED;
