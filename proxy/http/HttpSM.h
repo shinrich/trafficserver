@@ -219,7 +219,7 @@ public:
   // Used to read attributes of
   // the current active server session
   ProxyTransaction *
-  get_server_session()
+  get_server_txn()
   {
     return server_txn;
   }

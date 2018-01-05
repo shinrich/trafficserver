@@ -23,7 +23,7 @@
 
 /****************************************************************************
 
-   HttpServerSession.h
+   Http1ServerSession.h
 
    Description:
 
@@ -48,16 +48,17 @@
 
 #include "HttpProxyAPIEnums.h"
 #include "Http1Session.h"
+#include "PoolInterface.h"
 
 class HttpSM;
 class MIOBuffer;
 class IOBufferReader;
 
 
-class HttpServerSession : public Http1Session
+class Http1ServerSession : public PoolInterface, public Http1Session
 {
 public:
-  HttpServerSession() { }
+  Http1ServerSession() { }
 
   void destroy();
   void new_connection(NetVConnection *new_vc, MIOBuffer *iobuf, IOBufferReader *reader, bool backdoor) override;
@@ -65,77 +66,37 @@ public:
   void do_io_close(int lerrno = -1) override;
   void do_io_shutdown(ShutdownHowTo_t howto) override;
 
-  void release();
-  void attach_hostname(const char *hostname);
   void release(ProxyTransaction *trans) override 
   {
   }
 
-  INK_MD5 hostname_hash;
-
-  // Used to determine whether the session is for parent proxy
-  // it is session to orgin server
-  // We need to determine whether a closed connection was to
-  // close parent proxy to update the
-  // proxy.process.http.current_parent_proxy_connections
-  bool to_parent_proxy = false;
-
   void
-  set_private()
-  {
-    private_session = true;
-  }
-  bool
-  is_private() const
-  {
-    return private_session;
-  }
-
-  void
-  attach_transaction(HttpSM *attach_sm)
+  attach_transaction(HttpSM *attach_sm) override
   {
     // Initialize the basic transaction object
     new_transaction();
-    state = HS_ACTIVE;
     // Then wire it into the state machine as the server_txn
     trans.attach_transaction(attach_sm);
   }
-  
-  void
-  set_pool(ServerSessionPool *pool)
+
+  bool
+  is_shared() const override
   {
-     allocating_pool = pool;
+    return state == HS_KA_SHARED;
   }
 
   bool
-  allow_concurrent_transactions() const
+  is_active() const override
   {
-    return false;
+    return state == HS_ACTIVE;
   }
 
-  // Copy of the owning SM's server session sharing settings
-  TSServerSessionSharingMatchType sharing_match = TS_SERVER_SESSION_SHARING_MATCH_BOTH;
-
-  LINK(HttpServerSession, ip_hash_link);
-  LINK(HttpServerSession, host_hash_link);
-
+  void set_shared() override;
 private:
-  HttpServerSession(HttpServerSession &);
+  Http1ServerSession(Http1ServerSession &);
 
-  // Sessions become if authentication headers
-  //  are sent over them
-  bool private_session = false;
-
-  ServerSessionPool *allocating_pool = nullptr;
 };
 
-extern ClassAllocator<HttpServerSession> httpServerSessionAllocator;
+extern ClassAllocator<Http1ServerSession> httpServerSessionAllocator;
 
-inline void
-HttpServerSession::attach_hostname(const char *hostname)
-{
-  if (CRYPTO_HASH_ZERO == hostname_hash) {
-    ink_code_md5((unsigned char *)hostname, strlen(hostname), (unsigned char *)&hostname_hash);
-  }
-}
 #endif

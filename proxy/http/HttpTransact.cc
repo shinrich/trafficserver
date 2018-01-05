@@ -29,7 +29,6 @@
 #include "HttpTransact.h"
 #include "HttpTransactHeaders.h"
 #include "HttpSM.h"
-#include "HttpServerSession.h"
 #include "HttpCacheSM.h" //Added to get the scope of HttpCacheSM object - YTS Team, yamsat
 #include "HttpDebugNames.h"
 #include <ctime>
@@ -6278,7 +6277,7 @@ HttpTransact::is_request_retryable(State *s)
   // If there was no error establishing the connection (and we sent bytes)-- we cannot retry
   if (!HttpTransactHeaders::is_method_safe(s->method) &&
       (s->current.state != CONNECTION_ERROR && s->state_machine->server_request_hdr_bytes > 0 &&
-       s->state_machine->get_server_session()->get_netvc()->outstanding() != s->state_machine->server_request_hdr_bytes)) {
+       s->state_machine->get_server_txn()->get_netvc()->outstanding() != s->state_machine->server_request_hdr_bytes)) {
     return false;
   }
 

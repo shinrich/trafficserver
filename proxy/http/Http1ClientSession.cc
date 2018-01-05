@@ -32,9 +32,10 @@
 
 #include <ts/ink_resolver.h>
 #include "Http1ClientSession.h"
+#include "PoolInterface.h"
 #include "HttpSM.h"
 #include "HttpDebugNames.h"
-#include "HttpServerSession.h"
+#include "Http1ServerSession.h"
 #include "Plugin.h"
 
 #define HttpSsnDebug(fmt, ...) SsnDebug(this, "http_cs", fmt, __VA_ARGS__)
@@ -155,7 +156,7 @@ Http1ClientSession::do_io_close(int alerrno)
   // If we have an attached server session, release
   //   it back to our shared pool
   if (bound_ss) {
-    dynamic_cast<HttpServerSession*>(bound_ss)->release();
+    bound_ss->release();
     bound_ss     = nullptr;
     slave_ka_vio = nullptr;
   }
@@ -260,7 +261,7 @@ Http1ClientSession::state_slave_keep_alive(int event, void *data)
   case VC_EVENT_READ_READY:
   case VC_EVENT_EOS:
     // The server session closed or something is amiss
-    dynamic_cast<HttpServerSession*>(bound_ss)->do_io_close();
+    bound_ss->get_session()->do_io_close();
     bound_ss     = nullptr;
     slave_ka_vio = nullptr;
     break;
@@ -268,7 +269,7 @@ Http1ClientSession::state_slave_keep_alive(int event, void *data)
   case VC_EVENT_ACTIVE_TIMEOUT:
   case VC_EVENT_INACTIVITY_TIMEOUT:
     // Timeout - place the session on the shared pool
-    dynamic_cast<HttpServerSession*>(bound_ss)->release();
+    bound_ss->release();
     bound_ss     = nullptr;
     slave_ka_vio = nullptr;
     break;
@@ -354,13 +355,13 @@ Http1ClientSession::release(ProxyTransaction *trans)
 }
 
 void
-Http1ClientSession::attach_peer_session(ProxySession *abstract_session, bool transaction_done)
+Http1ClientSession::attach_peer_session(PoolInterface *abstract_session, bool transaction_done)
 {
-  HttpServerSession *ssession = dynamic_cast<HttpServerSession*>(abstract_session);
+  Http1ServerSession *ssession = dynamic_cast<Http1ServerSession*>(abstract_session->get_session());
   if (ssession) {
     ink_assert(bound_ss == nullptr);
     ssession->state = HS_KA_CLIENT_SLAVE;
-    bound_ss        = ssession;
+    bound_ss        = abstract_session;
     HttpSsnDebug("[%" PRId64 "] attaching server session [%" PRId64 "] as slave", con_id, ssession->connection_id());
     ink_assert(ssession->get_reader()->read_avail() == 0);
     ink_assert(ssession->get_netvc() != this->get_netvc());

@@ -35,7 +35,7 @@
 #include "HTTP.h"
 #include "ProxySession.h"
 #include "Http2ClientSession.h"
-#include "HttpServerSession.h"
+#include "PoolInterface.h"
 #include "HttpSM.h"
 #include "HttpConfig.h"
 #include "P_Net.h"
@@ -4590,7 +4590,7 @@ TSHttpSsnClientVConnGet(TSHttpSsn ssnp)
 TSVConn
 TSHttpSsnServerVConnGet(TSHttpSsn ssnp)
 {
-  HttpServerSession *ss = reinterpret_cast<HttpServerSession *>(ssnp);
+  ProxySession *ss = reinterpret_cast<ProxySession *>(ssnp);
   return reinterpret_cast<TSVConn>(ss->get_netvc());
 }
 
@@ -5506,7 +5506,7 @@ TSHttpTxnOutgoingAddrGet(TSHttpTxn txnp)
 
   HttpSM *sm = reinterpret_cast<HttpSM *>(txnp);
 
-  ProxyTransaction *ssn = sm->get_server_session();
+  ProxyTransaction *ssn = sm->get_server_txn();
   if (ssn == nullptr) {
     return nullptr;
   }
@@ -5624,7 +5624,7 @@ TSHttpTxnServerPacketMarkSet(TSHttpTxn txnp, int mark)
 
   // change the mark on an active server session
   if (nullptr != sm->ua_txn) {
-    HttpServerSession *ssn = sm->ua_txn->get_server_session();
+    ProxySession *ssn = sm->ua_txn->get_peer_session()->get_session();
     if (nullptr != ssn) {
       NetVConnection *vc = ssn->get_netvc();
       if (vc != nullptr) {
@@ -5666,7 +5666,7 @@ TSHttpTxnServerPacketTosSet(TSHttpTxn txnp, int tos)
 
   // change the tos on an active server session
   if (nullptr != sm->ua_txn) {
-    HttpServerSession *ssn = sm->ua_txn->get_server_session();
+    ProxySession *ssn = sm->ua_txn->get_peer_session()->get_session();
     if (nullptr != ssn) {
       NetVConnection *vc = ssn->get_netvc();
       if (vc != nullptr) {
@@ -5708,7 +5708,7 @@ TSHttpTxnServerPacketDscpSet(TSHttpTxn txnp, int dscp)
 
   // change the tos on an active server session
   if (nullptr != sm->ua_txn) {
-    HttpServerSession *ssn = sm->ua_txn->get_server_session();
+    ProxySession *ssn = sm->ua_txn->get_peer_session()->get_session();
     if (nullptr != ssn) {
       NetVConnection *vc = ssn->get_netvc();
       if (vc != nullptr) {
@@ -7333,7 +7333,7 @@ TSHttpTxnServerFdGet(TSHttpTxn txnp, int *fdp)
   HttpSM *sm = reinterpret_cast<HttpSM *>(txnp);
   *fdp       = -1;
 
-  ProxyTransaction *ss = sm->get_server_session();
+  ProxyTransaction *ss = sm->get_server_txn();
   if (ss == nullptr) {
     return TS_ERROR;
   }

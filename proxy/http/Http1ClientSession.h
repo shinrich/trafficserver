@@ -39,6 +39,7 @@
 #include "HttpConfig.h"
 #include "IPAllow.h"
 #include "Http1Session.h"
+#include "PoolInterface.h"
 
 #ifdef USE_HTTP_DEBUG_LISTS
 extern ink_mutex debug_cs_list_mutex;
@@ -88,9 +89,9 @@ public:
     return outbound_ip6;
   }
 
-  virtual void attach_peer_session(ProxySession *ssession, bool transaction_done = true);
+  virtual void attach_peer_session(PoolInterface *ssession, bool transaction_done = true);
 
-  ProxySession * const
+  PoolInterface * const
   get_peer_session() const override
   {
     return bound_ss;
@@ -126,7 +127,7 @@ protected:
   VIO *ka_vio = nullptr;
   VIO *slave_ka_vio = nullptr;
 
-  ProxySession *bound_ss = nullptr;
+  PoolInterface *bound_ss = nullptr;
 
 public:
   /// Local address for outbound connection.

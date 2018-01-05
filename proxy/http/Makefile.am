@@ -61,8 +61,10 @@ libhttp_a_SOURCES = \
   HttpProxyServerMain.h \
   HttpSM.cc \
   HttpSM.h \
-  HttpServerSession.cc \
-  HttpServerSession.h \
+  Http1ServerSession.cc \
+  Http1ServerSession.h \
+  PoolInterface.cc \
+  PoolInterface.h \
   HttpSessionManager.cc \
   HttpSessionManager.h \
   HttpTransact.cc \

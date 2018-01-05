@@ -22,7 +22,6 @@
  */
 
 #include "http/HttpSM.h"
-#include "http/HttpServerSession.h"
 #include "Plugin.h"
 
 #define HttpTxnDebug(fmt, ...) SsnDebug(this, "http_txn", fmt, __VA_ARGS__)

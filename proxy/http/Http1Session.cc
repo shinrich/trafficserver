@@ -35,7 +35,6 @@
 #include "Http1Transaction.h"
 #include "HttpSM.h"
 #include "HttpDebugNames.h"
-#include "HttpServerSession.h"
 #include "Plugin.h"
 
 #define HttpSsnDebug(fmt, ...) SsnDebug(this, "http_cs", fmt, __VA_ARGS__)

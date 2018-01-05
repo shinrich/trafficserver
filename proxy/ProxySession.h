@@ -30,7 +30,7 @@
 #include "P_Net.h"
 #include "InkAPIInternal.h"
 
-class HttpServerSession;
+class PoolInterface;
 extern bool http_client_session_draining;
 
 // Emit a debug message conditional on whether this particular client session
@@ -39,6 +39,7 @@ extern bool http_client_session_draining;
 #define SsnDebug(ssn, tag, ...) SpecificDebug((ssn)->debug(), tag, __VA_ARGS__)
 
 class ProxyTransaction;
+class HttpSM;
 struct AclRecord;
 
 class ProxySession : public VConnection
@@ -117,7 +118,7 @@ public:
     return this->api_hooks.has_hooks() || http_global_hooks->has_hooks();
   }
 
-  bool
+  virtual bool
   is_active() const
   {
     return m_active;
@@ -163,12 +164,6 @@ public:
   virtual void
   attach_peer_session(ProxySession *ssession, bool transaction_done = true)
   {
-  }
-
-  virtual HttpServerSession *
-  get_server_session() const
-  {
-    return NULL;
   }
 
   TSHttpHookID
@@ -235,7 +230,7 @@ public:
     return vc ? vc->protocol_contains(tag_prefix) : nullptr;
   }
 
-  virtual ProxySession * const
+  virtual PoolInterface * const
   get_peer_session() const
   {
     return nullptr;
@@ -259,6 +254,11 @@ public:
     return netvc ? netvc->get_local_addr() : nullptr;
   }
 
+  virtual void
+  attach_transaction(HttpSM *attach_sm)
+  {
+  }
+
   /// acl record - cache IpAllow::match() call
   const AclRecord *acl_record = nullptr;
 
@@ -271,6 +271,10 @@ public:
   // noncopyable
   ProxySession(ProxySession &) = delete;
   ProxySession &operator=(const ProxySession &) = delete;
+
+  virtual void set_shared() {}
+
+  virtual bool is_shared() const { return true; }
 
 protected:
   // XXX Consider using a bitwise flags variable for the following flags, so

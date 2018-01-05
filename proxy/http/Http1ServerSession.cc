@@ -23,22 +23,22 @@
 
 /****************************************************************************
 
-   HttpServerSession.cc
+   Http1ServerSession.cc
 
    Description:
 
  ****************************************************************************/
 #include "ts/ink_config.h"
 #include "ts/Allocator.h"
-#include "HttpServerSession.h"
+#include "Http1ServerSession.h"
 #include "HttpSessionManager.h"
 #include "HttpConnectionCount.h"
 #include "HttpSM.h"
 
-ClassAllocator<HttpServerSession> httpServerSessionAllocator("httpServerSessionAllocator");
+ClassAllocator<Http1ServerSession> httpServerSessionAllocator("httpServerSessionAllocator");
 
 void
-HttpServerSession::destroy()
+Http1ServerSession::destroy()
 {
   ink_release_assert(net_vc == nullptr);
   ink_assert(read_buffer);
@@ -59,7 +59,7 @@ HttpServerSession::destroy()
 }
 
 void
-HttpServerSession::new_connection(NetVConnection *new_vc, MIOBuffer *iobuf, IOBufferReader *reader, bool backdoor) 
+Http1ServerSession::new_connection(NetVConnection *new_vc, MIOBuffer *iobuf, IOBufferReader *reader, bool backdoor) 
 {
   ink_assert(new_vc != nullptr);
   net_vc = new_vc;
@@ -99,13 +99,13 @@ HttpServerSession::new_connection(NetVConnection *new_vc, MIOBuffer *iobuf, IOBu
 }
 
 void
-HttpServerSession::do_io_shutdown(ShutdownHowTo_t howto)
+Http1ServerSession::do_io_shutdown(ShutdownHowTo_t howto)
 {
   net_vc->do_io_shutdown(howto);
 }
 
 void
-HttpServerSession::do_io_close(int alerrno)
+Http1ServerSession::do_io_close(int alerrno)
 {
   Debug("http_ss", "[%" PRId64 "] session closing, netvc %p", con_id, net_vc);
 
@@ -138,57 +138,23 @@ HttpServerSession::do_io_close(int alerrno)
   destroy();
 }
 
-
-// void HttpServerSession::release()
-//
-//   Releases the session for K-A reuse
-//
 void
-HttpServerSession::release()
+Http1ServerSession::set_shared()
 {
-  if (transact_count != released_transactions) {
-    return; // Don't release until all outstanding requests are done
-  }
-  Debug("http_ss", "Releasing session, private_session=%d, sharing_match=%d", private_session, sharing_match);
   // Set our state to KA for stat issues
-  state = HS_KA_SHARED;
+  this->state = HS_KA_SHARED;
 
-  net_vc->control_flags.set_flags(0);
+  // Now we need to issue a read on the connection to detect
+  //  if it closes on us.  We will get called back in the
+  //  continuation for this bucket, ensuring we have the lock
+  //  to remove the connection from our lists
+  this->do_io_read(this->allocating_pool, INT64_MAX, this->read_buffer);
 
-  // Private sessions are never released back to the shared pool
-  if (private_session || TS_SERVER_SESSION_SHARING_MATCH_NONE == sharing_match) {
-    this->do_io_close();
-    return;
-  }
+  // Transfer control of the write side as well
+  this->do_io_write(this->allocating_pool, 0, nullptr);
 
-  HSMresult_t r = httpSessionManager.release_session(this);
-
-  if (r == HSM_RETRY) {
-    // Session could not be put in the session manager
-    //  due to lock contention
-    // FIX:  should retry instead of closing
-    // Make sure the vios for the current SM are cleared
-    net_vc->do_io_read(nullptr, 0, nullptr);
-    net_vc->do_io_write(nullptr, 0, nullptr);
-    this->do_io_close();
-  } else {
-    // Now we need to issue a read on the connection to detect
-    //  if it closes on us.  We will get called back in the
-    //  continuation for this bucket, ensuring we have the lock
-    //  to remove the connection from our lists
-    this->do_io_read(this->allocating_pool, INT64_MAX, this->read_buffer);
-
-    // Transfer control of the write side as well
-    this->do_io_write(this->allocating_pool, 0, nullptr);
-
-    // we probably don't need the active timeout set, but will leave it for now
-    this->set_inactivity_timeout(this->get_inactivity_timeout());
-    this->set_active_timeout(this->get_active_timeout());
-
-
-    // The session was successfully put into the session
-    //    manager and it will manage it
-    // (Note: should never get HSM_NOT_FOUND here)
-    ink_assert(r == HSM_DONE);
-  }
+  // we probably don't need the active timeout set, but will leave it for now
+  this->set_inactivity_timeout(this->get_inactivity_timeout());
+  this->set_active_timeout(this->get_active_timeout());
 }
+

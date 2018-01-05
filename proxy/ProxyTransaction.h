@@ -28,7 +28,6 @@
 #include <ts/string_view.h>
 
 class HttpSM;
-class HttpServerSession;
 class ProxyTransaction : public VConnection
 {
 public:
@@ -127,7 +126,7 @@ public:
     }
   }
 
-  virtual ProxySession * const
+  virtual PoolInterface * const
   get_peer_session()
   {
     return parent ? parent->get_peer_session() : nullptr;
@@ -213,12 +212,6 @@ public:
   virtual void
   set_h2c_upgrade_flag()
   {
-  }
-
-  HttpServerSession *
-  get_server_session() const
-  {
-    return parent ? parent->get_server_session() : NULL;
   }
 
   HttpSM *

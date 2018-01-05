@@ -26,7 +26,7 @@
 #include "HttpSM.h"
 #include "HttpTransactHeaders.h"
 #include "ProxyConfig.h"
-#include "HttpServerSession.h"
+#include "Http1ServerSession.h"
 #include "HttpDebugNames.h"
 #include "HttpSessionManager.h"
 #include "HttpConnectionCount.h"
@@ -1738,7 +1738,7 @@ HttpSM::state_http_server_open(int event, void *data)
   switch (event) {
   case NET_EVENT_OPEN:
   { 
-    HttpServerSession *session = HttpSessionManager::make_session(static_cast<NetVConnection *>(data), 
+    PoolInterface *session = HttpSessionManager::make_session(static_cast<NetVConnection *>(data), 
                                                                   static_cast<TSServerSessionSharingPoolType>(t_state.http_config_param->server_session_sharing_pool),
                                                                   static_cast<TSServerSessionSharingMatchType>(t_state.txn_conf->server_session_sharing_match), 
                                                                   t_state.current.server->name, mutex);
@@ -1753,7 +1753,7 @@ HttpSM::state_http_server_open(int event, void *data)
       // Put this origin in the tracking table
       ConnectionCount::getInstance()->incrementCount(static_cast<NetVConnection *>(data)->get_remote_endpoint(), session->hostname_hash, session->sharing_match);
     }
-    session->attach_transaction(this);
+    session->get_session()->attach_transaction(this);
 
     if (t_state.current.request_to == HttpTransact::PARENT_PROXY) {
       session->to_parent_proxy = true;
@@ -3040,7 +3040,7 @@ HttpSM::tunnel_handler_server(int event, HttpTunnelProducer *p)
       t_state.client_info.keep_alive = HTTP_NO_KEEPALIVE;
     }
   } else {
-    dynamic_cast<HttpServerSession*>(server_txn->get_parent())->attach_hostname(t_state.current.server->name);
+    dynamic_cast<PoolInterface*>(server_txn->get_parent())->attach_hostname(t_state.current.server->name);
     server_txn->transaction_done();
     HTTP_DECREMENT_DYN_STAT(http_current_server_transactions_stat);
 
@@ -3055,7 +3055,7 @@ HttpSM::tunnel_handler_server(int event, HttpTunnelProducer *p)
     } else {
       // Release the session back into the shared session pool
       server_txn->set_inactivity_timeout(HRTIME_SECONDS(t_state.txn_conf->keep_alive_no_activity_timeout_out));
-      dynamic_cast<HttpServerSession*>(server_txn->get_parent())->release();
+      dynamic_cast<PoolInterface*>(server_txn->get_parent())->release();
     }
   }
 
@@ -4761,7 +4761,7 @@ HttpSM::do_http_server_open(bool raw)
 
   // If there is already an attached server session mark it as private.
   if (server_txn != nullptr && will_be_private_ss) {
-    dynamic_cast<HttpServerSession*>(server_txn->get_parent())->set_private();
+    dynamic_cast<PoolInterface*>(server_txn->get_parent())->set_private();
   }
 
   if (raw == false && TS_SERVER_SESSION_SHARING_MATCH_NONE != t_state.txn_conf->server_session_sharing_match &&
@@ -4795,23 +4795,23 @@ HttpSM::do_http_server_open(bool raw)
   // session when we already have an attached server session.
   else if ((TS_SERVER_SESSION_SHARING_MATCH_NONE == t_state.txn_conf->server_session_sharing_match || is_private()) &&
            (ua_txn != nullptr)) {
-    HttpServerSession *existing_ss = dynamic_cast<HttpServerSession*>(ua_txn->get_peer_session());
+    PoolInterface *existing_ss = ua_txn->get_peer_session();
 
     if (existing_ss) {
       // [amc] Not sure if this is the best option, but we don't get here unless session sharing is disabled
       // so there's no point in further checking on the match or pool values. But why check anything? The
       // client has already exchanged a request with this specific origin server and has sent another one
       // shouldn't we just automatically keep the association?
-      if (ats_ip_addr_port_eq(existing_ss->get_peer_addr(), &t_state.current.server->dst_addr.sa)) {
+      if (ats_ip_addr_port_eq(existing_ss->get_session()->get_peer_addr(), &t_state.current.server->dst_addr.sa)) {
         ua_txn->attach_peer_session(nullptr);
-        existing_ss->attach_transaction(this);
+        existing_ss->get_session()->attach_transaction(this);
         hsm_release_assert(server_txn != nullptr);
         handle_http_server_open();
         return;
       } else {
         // As this is in the non-sharing configuration, we want to close
         // the existing connection and call connect_re to get a new one
-        existing_ss->get_netvc()->set_inactivity_timeout(HRTIME_SECONDS(t_state.txn_conf->keep_alive_no_activity_timeout_out));
+        existing_ss->get_session()->get_netvc()->set_inactivity_timeout(HRTIME_SECONDS(t_state.txn_conf->keep_alive_no_activity_timeout_out));
         existing_ss->release();
         ua_txn->attach_peer_session(nullptr);
       }
@@ -4821,9 +4821,9 @@ HttpSM::do_http_server_open(bool raw)
   // to get a new one.
   // ua_txn is null when t_state.req_flavor == REQ_FLAVOR_SCHEDULED_UPDATE
   else if (ua_txn != nullptr) {
-    HttpServerSession *existing_ss = dynamic_cast<HttpServerSession*>(ua_txn->get_peer_session());
+    PoolInterface *existing_ss = ua_txn->get_peer_session();
     if (existing_ss) {
-      existing_ss->get_netvc()->set_inactivity_timeout(HRTIME_SECONDS(t_state.txn_conf->keep_alive_no_activity_timeout_out));
+      existing_ss->get_session()->get_netvc()->set_inactivity_timeout(HRTIME_SECONDS(t_state.txn_conf->keep_alive_no_activity_timeout_out));
       existing_ss->release();
       ua_txn->attach_peer_session(nullptr);
     }
@@ -5234,11 +5234,11 @@ HttpSM::release_server_session(bool serve_from_cache)
       plugin_tunnel_type == HTTP_NO_PLUGIN_TUNNEL) {
     HTTP_DECREMENT_DYN_STAT(http_current_server_transactions_stat);
     server_txn-> transaction_done();
-    dynamic_cast<HttpServerSession*>(server_txn->get_parent())->attach_hostname(t_state.current.server->name);
+    dynamic_cast<PoolInterface*>(server_txn->get_parent())->attach_hostname(t_state.current.server->name);
     if (t_state.www_auth_content == HttpTransact::CACHE_AUTH_NONE || serve_from_cache == false) {
       // Must explicitly set the keep_alive_no_activity time before doing the release
       server_txn->set_inactivity_timeout(HRTIME_SECONDS(t_state.txn_conf->keep_alive_no_activity_timeout_out));
-      dynamic_cast<HttpServerSession*>(server_txn->get_parent())->release();
+      dynamic_cast<PoolInterface*>(server_txn->get_parent())->release();
     } else {
       // an authenticated server connection - attach to the local client
       // we are serving from cache for the current transaction
@@ -5797,7 +5797,7 @@ HttpSM::attach_server_session(ProxyTransaction *s)
 {
   hsm_release_assert(server_txn == nullptr);
   hsm_release_assert(server_entry == nullptr);
-  hsm_release_assert(dynamic_cast<HttpServerSession*>(s->get_parent())->state == HS_ACTIVE);
+  hsm_release_assert(s->get_parent()->is_active());
   server_txn        = s;
   // Stash aside for logging
   server_transact_count = server_txn->get_transact_count();
@@ -5910,7 +5910,7 @@ HttpSM::attach_server_session(ProxyTransaction *s)
 
   if (plugin_tunnel_type != HTTP_NO_PLUGIN_TUNNEL || will_be_private_ss) {
     SMDebug("http_ss", "Setting server session to private");
-    dynamic_cast<HttpServerSession*>(server_txn->get_parent())->set_private();
+    dynamic_cast<PoolInterface*>(server_txn->get_parent())->set_private();
   }
 }
 
@@ -6342,7 +6342,7 @@ HttpSM::server_transfer_init(MIOBuffer *buf, int hdr_size)
   }
 #ifdef LAZY_BUF_ALLOC
   // reset the server session buffer
-  dynamic_cast<HttpServerSession*>(server_txn->get_parent())->reset_read_buffer();
+  dynamic_cast<Http1ServerSession*>(server_txn->get_parent())->reset_read_buffer();
 #endif
   return nbytes;
 }
@@ -7889,7 +7889,7 @@ HttpSM::set_server_session_private(bool flag)
 {
   if (server_txn)
   {
-    dynamic_cast<HttpServerSession*>(server_txn->get_parent())->set_private();
+    dynamic_cast<PoolInterface*>(server_txn->get_parent())->set_private();
   }
   return server_txn != nullptr;
 }
@@ -7899,11 +7899,11 @@ HttpSM::is_private()
 {
   bool res = false;
   if (server_txn) {
-    res = dynamic_cast<HttpServerSession*>(server_txn->get_parent())->is_private();
+    res = dynamic_cast<PoolInterface *>(server_txn->get_parent())->is_private();
   } else if (ua_txn) {
-    HttpServerSession *ss = dynamic_cast<HttpServerSession*>(ua_txn->get_server_session());
+    PoolInterface *ss = ua_txn->get_peer_session();
     if (ss) {
-      res = dynamic_cast<HttpServerSession*>(ss)->is_private();
+      res = ss->is_private();
     } else if (will_be_private_ss) {
       res = will_be_private_ss;
     }
