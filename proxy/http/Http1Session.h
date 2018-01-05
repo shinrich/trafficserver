@@ -126,29 +126,8 @@ public:
     return transact_count;
   }
 
-  void
-  set_active_timeout(ink_hrtime timeout_in)
-  {
-    if (net_vc)
-      net_vc->set_active_timeout(timeout_in);
-  }
-
-  void
-  set_inactivity_timeout(ink_hrtime timeout_in)
-  {
-    if (net_vc)
-      net_vc->set_inactivity_timeout(timeout_in);
-  }
-
-  void
-  cancel_inactivity_timeout()
-  {
-    if (net_vc)
-      net_vc->cancel_inactivity_timeout();
-  }
-
-  virtual const char *
-  get_protocol_string() const
+  const char *
+  get_protocol_string() const override
   {
     return "http";
   }

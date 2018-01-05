@@ -90,7 +90,9 @@ if test "`traffic_ctl metric get ssntxnorder_verify.{0}.start | cut -d ' ' -f 2`
      echo yes;\
     else \
     echo no; \
-    fi;
+    fi;\
+traffic_ctl metric get ssntxnorder_verify.{0}.start; \
+traffic_ctl metric get ssntxnorder_verify.{0}.close; \
     '''
 
 # number of sessions/transactions opened and closed are equal

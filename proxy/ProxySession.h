@@ -177,19 +177,42 @@ public:
     return api_hookid;
   }
 
+  virtual ink_hrtime
+  get_inactivity_timeout() const
+  {
+    auto net_vc = this->get_netvc();
+    return net_vc ? net_vc->get_inactivity_timeout() : 0;
+  }
+
+  virtual ink_hrtime
+  get_active_timeout() const
+  {
+    auto net_vc = this->get_netvc();
+    return net_vc ? net_vc->get_active_timeout() : 0;
+  }
+
   virtual void
   set_active_timeout(ink_hrtime timeout_in)
   {
+    auto net_vc = this->get_netvc();
+    if (net_vc)
+      net_vc->set_active_timeout(timeout_in);
   }
 
   virtual void
   set_inactivity_timeout(ink_hrtime timeout_in)
   {
+    auto net_vc = this->get_netvc();
+    if (net_vc)
+      net_vc->set_inactivity_timeout(timeout_in);
   }
 
   virtual void
   cancel_inactivity_timeout()
   {
+    auto net_vc = this->get_netvc();
+    if (net_vc)
+      net_vc->cancel_inactivity_timeout();
   }
 
   bool

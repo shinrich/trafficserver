@@ -1734,15 +1734,15 @@ HttpSM::state_http_server_open(int event, void *data)
   // ink_assert(server_entry == NULL);
   pending_action                              = nullptr;
   milestones[TS_MILESTONE_SERVER_CONNECT_END] = Thread::get_hrtime();
-  HttpServerSession *session;
 
   switch (event) {
   case NET_EVENT_OPEN:
-    session = (TS_SERVER_SESSION_SHARING_POOL_THREAD == t_state.http_config_param->server_session_sharing_pool) ?
-                THREAD_ALLOC_INIT(httpServerSessionAllocator, mutex->thread_holding) :
-                httpServerSessionAllocator.alloc();
-    session->sharing_match = static_cast<TSServerSessionSharingMatchType>(t_state.txn_conf->server_session_sharing_match);
-    session->attach_hostname(t_state.current.server->name);
+  { 
+    HttpServerSession *session = HttpSessionManager::make_session(static_cast<NetVConnection *>(data), 
+                                                                  static_cast<TSServerSessionSharingPoolType>(t_state.http_config_param->server_session_sharing_pool),
+                                                                  static_cast<TSServerSessionSharingMatchType>(t_state.txn_conf->server_session_sharing_match), 
+                                                                  t_state.current.server->name, mutex);
+
     // If origin_max_connections or origin_min_keep_alive_connections is
     // set then we are metering the max and or min number
     // of connections per host.  Set enable_origin_connection_limiting
@@ -1753,7 +1753,6 @@ HttpSM::state_http_server_open(int event, void *data)
       // Put this origin in the tracking table
       ConnectionCount::getInstance()->incrementCount(static_cast<NetVConnection *>(data)->get_remote_endpoint(), session->hostname_hash, session->sharing_match);
     }
-    session->new_connection(static_cast<NetVConnection *>(data), NULL, NULL, false);
     session->attach_transaction(this);
 
     if (t_state.current.request_to == HttpTransact::PARENT_PROXY) {
@@ -1765,6 +1764,7 @@ HttpSM::state_http_server_open(int event, void *data)
       session->to_parent_proxy = false;
     }
     handle_http_server_open();
+  }
     return 0;
   case EVENT_INTERVAL: // Delayed call from another thread
     if (server_txn == nullptr) {

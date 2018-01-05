@@ -369,3 +369,16 @@ HttpSessionManager::release_session(HttpServerSession *to_release)
 
   return released_p ? HSM_DONE : HSM_RETRY;
 }
+
+HttpServerSession *
+HttpSessionManager::make_session(NetVConnection *netvc, TSServerSessionSharingPoolType pool_type, TSServerSessionSharingMatchType match_type, const char *hostname, Ptr<ProxyMutex> mutex)
+{
+  HttpServerSession *session = (TS_SERVER_SESSION_SHARING_POOL_THREAD == pool_type) ?
+              THREAD_ALLOC_INIT(httpServerSessionAllocator, mutex->thread_holding) :
+              httpServerSessionAllocator.alloc();
+  session->sharing_match = match_type;
+  session->attach_hostname(hostname);
+  session->new_connection(netvc, NULL, NULL, false);
+  return session;
+}
+ 

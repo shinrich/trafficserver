@@ -159,6 +159,8 @@ public:
   void init();
   int main_handler(int event, void *data);
 
+  static HttpServerSession *make_session(NetVConnection *netvc, TSServerSessionSharingPoolType pool_type, TSServerSessionSharingMatchType match_type, const char *hostname, Ptr<ProxyMutex> mutex);
+ 
 private:
   /// Global pool, used if not per thread pools.
   /// @internal We delay creating this because the session manager is created during global statics init.
