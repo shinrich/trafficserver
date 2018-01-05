@@ -79,6 +79,11 @@ produce_features(bool json)
   print_feature("BUILD_NUMBER", BUILD_NUMBER, json);
   print_feature("TS_HAS_LIBZ", TS_HAS_LIBZ, json);
   print_feature("TS_HAS_LZMA", TS_HAS_LZMA, json);
+#ifdef HAVE_BROTLI_ENCODE_H 
+  print_feature("TS_HAS_BROTLI", 1, json); 
+#else 
+  print_feature("TS_HAS_BROTLI", 0, json); 
+#endif 
   print_feature("TS_HAS_JEMALLOC", TS_HAS_JEMALLOC, json);
   print_feature("TS_HAS_TCMALLOC", TS_HAS_TCMALLOC, json);
   print_feature("TS_HAS_IN6_IS_ADDR_UNSPECIFIED", TS_HAS_IN6_IS_ADDR_UNSPECIFIED, json);

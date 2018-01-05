@@ -26,8 +26,12 @@ Test gzip plugin
 
 # Skip if plugins not present.
 #
-Test.SkipUnless(Condition.PluginExists('gzip.so'))
-Test.SkipUnless(Condition.PluginExists('conf_remap.so'))
+Test.SkipUnless(
+    Condition.PluginExists('gzip.so'),
+    Condition.PluginExists('conf_remap.so'),
+    Condition.HasATSFeature('TS_HAS_BROTLI')
+)
+
 
 server = Test.MakeOriginServer("server", options={'--load': '{}/gzip_observer.py'.format(Test.TestDirectory)})
 
@@ -49,10 +53,6 @@ for i in range(3):
     }
     server.addResponse("sessionfile.log", request_header, response_header)
 
-# Ask the OS if the port is ready for connect()
-#
-def CheckPort(Port):
-    return lambda: 0 == subprocess.call('netstat --listen --tcp -n | grep -q :{}'.format(Port), shell=True)
 
 Capture = " >> {0}/gzip_long.log 2>&1 ; printf '\n\n' >> {0}/gzip_long.log".format(Test.RunDirectory)
 
@@ -95,10 +95,10 @@ def oneTs(name, AeHdr1='gzip, deflate, sdch, br'):
 
         tr = Test.AddTestRun()
         if (waitForTs):
-            tr.Processes.Default.StartBefore(ts, ready=CheckPort(ts.Variables.port))
+            tr.Processes.Default.StartBefore(ts, ready=When.PortOpen(ts.Variables.port))
         waitForTs = False
         if (waitForServer):
-            tr.Processes.Default.StartBefore(server, ready=CheckPort(server.Variables.Port))
+            tr.Processes.Default.StartBefore(server, ready=When.PortOpen(server.Variables.Port))
         waitForServer = False
         tr.Processes.Default.ReturnCode = 0
         tr.Processes.Default.Command = curl(i, AeHdr1)
@@ -114,6 +114,7 @@ def oneTs(name, AeHdr1='gzip, deflate, sdch, br'):
         tr = Test.AddTestRun()
         tr.Processes.Default.ReturnCode = 0
         tr.Processes.Default.Command = curl(i, "deflate")
+
 
 waitForServer = True
 
