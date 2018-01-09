@@ -30,6 +30,8 @@
 #define TEST_TIME_SECOND 60
 #define TEST_THREADS 2
 
+int cmd_disable_freelist_more                  = 0;
+
 int
 main(int /* argc ATS_UNUSED */, const char * /* argv ATS_UNUSED */ [])
 {
