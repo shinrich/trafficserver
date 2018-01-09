@@ -89,6 +89,7 @@ net_accept(NetAccept *na, void *ep, bool blockable)
     vc->action_     = *na->action_;
     vc->set_is_transparent(na->opt.f_inbound_transparent);
     vc->set_context(NET_VCONNECTION_IN);
+    vc->control_flags.set_flag(ContFlags::DEBUG_OVERRIDE, diags->test_override_ip(con.addr));
     SET_CONTINUATION_HANDLER(vc, (NetVConnHandler)&UnixNetVConnection::acceptEvent);
 
     if (e->ethread->is_event_type(na->opt.etype))
@@ -279,6 +280,7 @@ NetAccept::do_blocking_accept(EThread *t)
     vc->options.packet_tos  = opt.packet_tos;
     vc->options.ip_family   = opt.ip_family;
     vc->apply_options();
+    vc->control_flags.set_flag(ContFlags::DEBUG_OVERRIDE, diags->test_override_ip(con.addr));
     vc->set_context(NET_VCONNECTION_IN);
     vc->accept_object = this;
     SET_CONTINUATION_HANDLER(vc, (NetVConnHandler)&UnixNetVConnection::acceptEvent);
@@ -424,6 +426,7 @@ NetAccept::acceptFastEvent(int event, void *ep)
     vc->options.packet_tos  = opt.packet_tos;
     vc->options.ip_family   = opt.ip_family;
     vc->apply_options();
+    vc->control_flags.set_flag(ContFlags::DEBUG_OVERRIDE, diags->test_override_ip(con.addr));
     vc->set_context(NET_VCONNECTION_IN);
     SET_CONTINUATION_HANDLER(vc, (NetVConnHandler)&UnixNetVConnection::mainEvent);
 
