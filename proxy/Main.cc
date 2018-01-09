@@ -195,6 +195,8 @@ static const ArgumentDescription argument_descriptions[] = {
   {"cluster_port", 'P', "Cluster Port Number", "I", &cluster_port_number, "PROXY_CLUSTER_PORT", nullptr},
   {"dprintf_level", 'o', "Debug output level", "I", &cmd_line_dprintf_level, "PROXY_DPRINTF_LEVEL", nullptr},
   {"disable_freelist", 'f', "Disable the freelist memory allocator", "T", &cmd_disable_freelist, "PROXY_DPRINTF_LEVEL", nullptr},
+  {"disable_fl_more", 'F', "Disable the freelist memory allocator in ProxyAllocator", "T", &cmd_disable_freelist_more,
+   "PROXY_DPRINTF_LEVEL", nullptr},
 
 #if TS_HAS_TESTS
   {"regression", 'R', "Regression Level (quick:1..long:3)", "I", &regression_level, "PROXY_REGRESSION", nullptr},
