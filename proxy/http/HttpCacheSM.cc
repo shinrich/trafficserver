@@ -340,9 +340,9 @@ HttpCacheSM::open_write(const HttpCacheKey *key, URL *url, HTTPHdr *request, Cac
   }
 
   Action *action_handle =
-    cacheProcessor.open_write(this, 0, key, master_sm->t_state.cache_control.cluster_cache_local, request,
-                              // INKqa11166
-                              allow_multiple ? (CacheHTTPInfo *)CACHE_ALLOW_MULTIPLE_WRITES : old_info, pin_in_cache);
+    cacheProcessor.open_write(this, 0, key, master_sm->t_state.cache_control.cluster_cache_local, request, // INKqa11166
+                              allow_multiple ? (CacheHTTPInfo *)CACHE_ALLOW_MULTIPLE_WRITES : old_info,
+                              master_sm->t_state.txn_conf->cacheWrite, pin_in_cache);
 
   if (action_handle != ACTION_RESULT_DONE) {
     pending_action = action_handle;

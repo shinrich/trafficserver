@@ -54,8 +54,6 @@ for i in range(3):
     server.addResponse("sessionfile.log", request_header, response_header)
 
 
-Capture = " >> {0}/gzip_long.log 2>&1 ; printf '\n\n' >> {0}/gzip_long.log".format(Test.RunDirectory)
-
 def oneTs(name, AeHdr1='gzip, deflate, sdch, br'):
     global waitForServer
 
@@ -88,7 +86,8 @@ def oneTs(name, AeHdr1='gzip, deflate, sdch, br'):
         return (
             "curl --verbose --proxy http://127.0.0.1:{}".format(ts.Variables.port) +
             " --header 'X-Ats-Gzip-Test: {}/{}/{}'".format(name, idx, encodingList) +
-            " --header 'Accept-Encoding: {0}' 'http://ae-{1}/obj{1}'".format(encodingList, idx) + Capture
+            " --header 'Accept-Encoding: {0}' 'http://ae-{1}/obj{1}'".format(encodingList, idx) +
+            " >> {0}/gzip_long.log 2>&1 ; printf '\n\n' >> {0}/gzip_long.log".format(Test.RunDirectory)
         )
 
     for i in range(3):
@@ -125,7 +124,7 @@ oneTs("ts3", "deflate")
 tr = Test.AddTestRun()
 tr.Processes.Default.ReturnCode = 0
 tr.Processes.Default.Command = (
-    "tr -d '\\r' < {1}/gzip_long.log | grep --text -f {0}/grep.lst > {1}/gzip_short.log"
+    r"tr -d '\r' < {1}/gzip_long.log | sed 's/\(..*\)\([<>]\)/\1\n\2/' | grep --text -f {0}/grep.lst > {1}/gzip_short.log"
 ).format( Test.TestDirectory, Test.RunDirectory)
 f = tr.Disk.File("gzip_short.log")
 f.Content = "gzip.gold"

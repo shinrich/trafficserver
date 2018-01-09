@@ -191,8 +191,12 @@ CacheVC::handleWrite(int event, Event * /* e ATS_UNUSED */)
 #ifdef CACHE_AGG_FAIL_RATE
   agg_error = agg_error || ((uint32_t)mutex->thread_holding->generator.random() < (uint32_t)(UINT_MAX * CACHE_AGG_FAIL_RATE));
 #endif
-  bool max_doc_error = (cache_config_max_doc_size && (cache_config_max_doc_size < vio.ndone ||
-                                                      (vio.nbytes != INT64_MAX && (cache_config_max_doc_size < vio.nbytes))));
+  int max_doc_size = writeConfig.max_doc_size;
+  if (cache_config_read_while_writer and max_doc_size) {
+    max_doc_size = 0;
+    DDebug("cache_write", "max_doc_size forced to zero because cache_config_read_while_writer enabled");
+  }
+  bool max_doc_error = (max_doc_size && (max_doc_size < vio.ndone || (vio.nbytes != INT64_MAX && (max_doc_size < vio.nbytes))));
 
   if (agg_error || max_doc_error) {
     CACHE_INCREMENT_DYN_STAT(cache_write_backlog_failure_stat);
@@ -1572,8 +1576,8 @@ CacheVC::openWriteStartBegin(int /* event ATS_UNUSED */, Event * /* e ATS_UNUSED
 
 // main entry point for writing of of non-http documents
 Action *
-Cache::open_write(Continuation *cont, const CacheKey *key, CacheFragType frag_type, int options, time_t apin_in_cache,
-                  const char *hostname, int host_len)
+Cache::open_write(Continuation *cont, const CacheKey *key, const CacheWriteConfig &cwc, CacheFragType frag_type, int options,
+                  time_t apin_in_cache, const char *hostname, int host_len)
 {
   if (!CacheProcessor::IsCacheReady(frag_type)) {
     cont->handleEvent(CACHE_EVENT_OPEN_WRITE_FAILED, (void *)-ECACHE_NOT_READY);
@@ -1593,6 +1597,7 @@ Cache::open_write(Continuation *cont, const CacheKey *key, CacheFragType frag_ty
   CACHE_INCREMENT_DYN_STAT(c->base_stat + CACHE_STAT_ACTIVE);
   c->first_key = c->key = *key;
   c->frag_type          = frag_type;
+  c->writeConfig        = cwc;
   /*
      The transition from single fragment document to a multi-fragment document
      would cause a problem if the key and the first_key collide. In case of
@@ -1640,7 +1645,7 @@ Cache::open_write(Continuation *cont, const CacheKey *key, CacheFragType frag_ty
 #ifdef HTTP_CACHE
 // main entry point for writing of http documents
 Action *
-Cache::open_write(Continuation *cont, const CacheKey *key, CacheHTTPInfo *info, time_t apin_in_cache,
+Cache::open_write(Continuation *cont, const CacheKey *key, const CacheWriteConfig &cwc, CacheHTTPInfo *info, time_t apin_in_cache,
                   const CacheKey * /* key1 ATS_UNUSED */, CacheFragType type, const char *hostname, int host_len)
 {
   if (!CacheProcessor::IsCacheReady(type)) {
@@ -1655,6 +1660,7 @@ Cache::open_write(Continuation *cont, const CacheKey *key, CacheHTTPInfo *info, 
   ProxyMutex *mutex = cont->mutex.get();
   c->vio.op         = VIO::WRITE;
   c->first_key      = *key;
+  c->writeConfig    = cwc;
   /*
      The transition from single fragment document to a multi-fragment document
      would cause a problem if the key and the first_key collide. In case of
@@ -1772,3 +1778,5 @@ Lcallreturn:
 }
 
 #endif
+
+const CacheWriteConfig *CacheWriteConfig::default_;

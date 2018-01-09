@@ -1226,8 +1226,8 @@ cache_op_ClusterFunction(ClusterHandler *ch, void *data, int len)
     }
 
     Cache *call_cache = caches[c->frag_type];
-    Action *a =
-      call_cache->open_write(c, &key, c->frag_type, !!(c->cfl_flags & CFL_OVERWRITE_ON_WRITE), c->pin_in_cache, hostname, host_len);
+    Action *a         = call_cache->open_write(c, &key, /* DUMMY */ CacheWriteConfig(), c->frag_type,
+                                       !!(c->cfl_flags & CFL_OVERWRITE_ON_WRITE), c->pin_in_cache, hostname, host_len);
     if (a != ACTION_RESULT_DONE) {
       c->cache_action = a;
     }
@@ -1294,7 +1294,8 @@ cache_op_ClusterFunction(ClusterHandler *ch, void *data, int len)
     }
 
     Cache *call_cache = caches[c->frag_type];
-    Action *a         = call_cache->open_write(c, &key, ci, c->pin_in_cache, nullptr, c->frag_type, hostname, moi_len);
+    Action *a         = call_cache->open_write(c, &key, /* DUMMY */ CacheWriteConfig(), ci, c->pin_in_cache, nullptr, c->frag_type,
+                                       hostname, moi_len);
     if (a != ACTION_RESULT_DONE) {
       c->cache_action = a;
     }
@@ -1512,7 +1513,7 @@ CacheContinuation::setupReadWriteVC(int event, VConnection *vc)
       CacheKey key(url_md5);
 
       Cache *call_cache = caches[frag_type];
-      Action *a         = call_cache->open_write(this, &key, nullptr, pin_in_cache, nullptr, frag_type,
+      Action *a = call_cache->open_write(this, &key, /* DUMMY */ CacheWriteConfig(), nullptr, pin_in_cache, nullptr, frag_type,
                                          ic_hostname ? ic_hostname->data() : nullptr, ic_hostname_len);
       if (a != ACTION_RESULT_DONE) {
         cache_action = a;

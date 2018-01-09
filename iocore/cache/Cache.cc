@@ -65,7 +65,6 @@ int cache_config_http_max_alts                 = 3;
 int cache_config_dir_sync_frequency            = 60;
 int cache_config_permit_pinning                = 0;
 int cache_config_select_alternate              = 1;
-int cache_config_max_doc_size                  = 0;
 int cache_config_min_average_object_size       = ESTIMATED_OBJECT_SIZE;
 int64_t cache_config_ram_cache_cutoff          = AGG_SIZE;
 int cache_config_max_disk_errors               = 5;
@@ -282,11 +281,6 @@ validate_rww(int new_value)
     if (http_bg_fill > 0.0) {
       Note("to enable reading while writing a document, %s should be 0.0: read while writing disabled",
            "proxy.config.http.background_fill_completed_threshold");
-      return 0;
-    }
-    if (cache_config_max_doc_size > 0) {
-      Note("to enable reading while writing a document, %s should be 0: read while writing disabled",
-           "proxy.config.cache.max_doc_size");
       return 0;
     }
     return new_value;
@@ -1144,18 +1138,19 @@ CacheProcessor::open_read(Continuation *cont, const CacheKey *key, bool cluster_
 }
 
 inkcoreapi Action *
-CacheProcessor::open_write(Continuation *cont, CacheKey *key, bool cluster_cache_local ATS_UNUSED, CacheFragType frag_type,
-                           int expected_size ATS_UNUSED, int options, time_t pin_in_cache, char *hostname, int host_len)
+CacheProcessor::open_write(Continuation *cont, CacheKey *key, bool cluster_cache_local ATS_UNUSED, const CacheWriteConfig &cwc,
+                           CacheFragType frag_type, int expected_size ATS_UNUSED, int options, time_t pin_in_cache, char *hostname,
+                           int host_len)
 {
 #ifdef CLUSTER_CACHE
   if (cache_clustering_enabled > 0 && !cluster_cache_local) {
     ClusterMachine *m = cluster_machine_at_depth(cache_hash(*key));
     if (m)
-      return Cluster_write(cont, expected_size, (MIOBuffer *)nullptr, m, key, frag_type, options, pin_in_cache, CACHE_OPEN_WRITE,
-                           (CacheHTTPHdr *)nullptr, (CacheHTTPInfo *)nullptr, hostname, host_len);
+      return Cluster_write(cont, expected_size, (MIOBuffer *)nullptr, m, key, cwc, frag_type, options, pin_in_cache,
+                           CACHE_OPEN_WRITE, (CacheHTTPHdr *)nullptr, (CacheHTTPInfo *)nullptr, hostname, host_len);
   }
 #endif
-  return caches[frag_type]->open_write(cont, key, frag_type, options, pin_in_cache, hostname, host_len);
+  return caches[frag_type]->open_write(cont, key, cwc, frag_type, options, pin_in_cache, hostname, host_len);
 }
 
 Action *
@@ -3249,10 +3244,6 @@ ink_cache_init(ModuleVersion v)
   REC_EstablishStaticConfigInt32(cache_config_select_alternate, "proxy.config.cache.select_alternate");
   Debug("cache_init", "proxy.config.cache.select_alternate = %d", cache_config_select_alternate);
 
-  REC_EstablishStaticConfigInt32(cache_config_max_doc_size, "proxy.config.cache.max_doc_size");
-  Debug("cache_init", "proxy.config.cache.max_doc_size = %d = %dMb", cache_config_max_doc_size,
-        cache_config_max_doc_size / (1024 * 1024));
-
   REC_EstablishStaticConfigInt32(cache_config_mutex_retry_delay, "proxy.config.cache.mutex_retry_delay");
   Debug("cache_init", "proxy.config.cache.mutex_retry_delay = %dms", cache_config_mutex_retry_delay);
 
@@ -3326,7 +3317,8 @@ CacheProcessor::open_read(Continuation *cont, const HttpCacheKey *key, bool clus
 //----------------------------------------------------------------------------
 Action *
 CacheProcessor::open_write(Continuation *cont, int expected_size, const HttpCacheKey *key, bool cluster_cache_local,
-                           CacheHTTPHdr *request, CacheHTTPInfo *old_info, time_t pin_in_cache, CacheFragType type)
+                           CacheHTTPHdr *request, CacheHTTPInfo *old_info, const CacheWriteConfig &cwc, time_t pin_in_cache,
+                           CacheFragType type)
 {
 #ifdef CLUSTER_CACHE
   if (cache_clustering_enabled > 0 && !cluster_cache_local) {
@@ -3334,12 +3326,13 @@ CacheProcessor::open_write(Continuation *cont, int expected_size, const HttpCach
 
     if (m) {
       // Do remote open_write()
-      return Cluster_write(cont, expected_size, (MIOBuffer *)nullptr, m, &key->hash, type, false, pin_in_cache,
+      return Cluster_write(cont, expected_size, (MIOBuffer *)nullptr, m, &key->hash, cwc, type, false, pin_in_cache,
                            CACHE_OPEN_WRITE_LONG, request, old_info, key->hostname, key->hostlen);
     }
   }
 #endif
-  return caches[type]->open_write(cont, &key->hash, old_info, pin_in_cache, nullptr /* key1 */, type, key->hostname, key->hostlen);
+  return caches[type]->open_write(cont, &key->hash, cwc, old_info, pin_in_cache, nullptr /* key1 */, type, key->hostname,
+                                  key->hostlen);
 }
 
 //----------------------------------------------------------------------------

@@ -1114,6 +1114,8 @@ HttpConfig::startup()
   HttpEstablishStaticConfigByte(c.oride.cache_range_lookup, "proxy.config.http.cache.range.lookup");
   HttpEstablishStaticConfigByte(c.oride.cache_range_write, "proxy.config.http.cache.range.write");
 
+  HttpEstablishStaticConfigLongLong(c.oride.cacheWrite.max_doc_size, "proxy.config.cache.max_doc_size");
+
   HttpEstablishStaticConfigStringAlloc(c.connect_ports_string, "proxy.config.http.connect_ports");
 
   HttpEstablishStaticConfigLongLong(c.oride.request_hdr_max_size, "proxy.config.http.request_header_max_size");
@@ -1421,6 +1423,8 @@ HttpConfig::reconfigure()
   params->oride.cache_range_lookup     = INT_TO_BOOL(m_master.oride.cache_range_lookup);
   params->oride.cache_range_write      = INT_TO_BOOL(m_master.oride.cache_range_write);
 
+  params->oride.cacheWrite.max_doc_size = m_master.oride.cacheWrite.max_doc_size;
+
   params->connect_ports_string = ats_strdup(m_master.connect_ports_string);
   params->connect_ports        = parse_ports_list(params->connect_ports_string);
 
@@ -1620,3 +1624,14 @@ HttpConfig::cluster_delta_cb(void * /* opaque_token ATS_UNUSED */, char *data_ra
 }
 
 volatile int32_t icp_dynamic_enabled;
+
+namespace
+{
+// Dummy variable.  Its initializer has side effects which are best done in namespace-scope static initialization.
+//
+bool initialized ATS_UNUSED = ([]() -> bool {
+  CacheWriteConfig::setDefault(&HttpConfig::m_master.oride.cacheWrite);
+  return true;
+})();
+
+} // end anonymous namespace

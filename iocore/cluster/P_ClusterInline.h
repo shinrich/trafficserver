@@ -152,9 +152,9 @@ err_exit:
 }
 
 inline Action *
-Cluster_write(Continuation *cont, int expected_size, MIOBuffer *buf, ClusterMachine *m, const CacheKey *url_md5, CacheFragType ft,
-              int options, time_t pin_in_cache, int opcode, CacheHTTPHdr *request, CacheHTTPInfo *old_info, const char *hostname,
-              int hostlen)
+Cluster_write(Continuation *cont, int expected_size, MIOBuffer *buf, ClusterMachine *m, const CacheKey *url_md5,
+              const CacheWriteConfig &cwc, CacheFragType ft, int options, time_t pin_in_cache, int opcode, CacheHTTPHdr *request,
+              CacheHTTPInfo *old_info, const char *hostname, int hostlen)
 {
   (void)request;
   if (clusterProcessor.disable_remote_cluster_ops(m)) {

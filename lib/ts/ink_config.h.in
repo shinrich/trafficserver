@@ -102,6 +102,10 @@
 #define TS_MAX_API_STATS @max_api_stats@
 
 #define SPLIT_DNS 1
+
+// HTTP_CACHE has been deleted in Open Source 8.x .  Newer code in OATS 7.x simply assumes that this is enabled, so it cannot and
+// must not be turned off.
+//
 #define HTTP_CACHE 1
 
 /* Defaults for user / group */

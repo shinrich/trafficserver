@@ -49,6 +49,7 @@
 #include "ts/BufferWriter.h"
 #include "HttpProxyAPIEnums.h"
 #include "ProxyConfig.h"
+#include "I_Cache.h"
 #include "P_RecProcess.h"
 #include "ts/Vec.h"
 
@@ -588,6 +589,8 @@ struct OverridableHttpConfigParams {
   MgmtByte cache_required_headers;
   MgmtByte cache_range_lookup;
   MgmtByte cache_range_write;
+
+  CacheWriteConfig cacheWrite;
 
   MgmtByte insert_request_via_string;
   MgmtByte insert_response_via_string;

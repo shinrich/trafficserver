@@ -204,7 +204,6 @@ extern int cache_config_dir_sync_frequency;
 extern int cache_config_http_max_alts;
 extern int cache_config_permit_pinning;
 extern int cache_config_select_alternate;
-extern int cache_config_max_doc_size;
 extern int cache_config_min_average_object_size;
 extern int cache_config_agg_write_backlog;
 extern int cache_config_enable_checksum;
@@ -449,6 +448,7 @@ struct CacheVC : public CacheVConnection {
 #ifdef HTTP_CACHE
   CacheLookupHttpConfig *params;
 #endif
+  CacheWriteConfig writeConfig;
   int header_len;        // for communicating with agg_copy
   int frag_len;          // for communicating with agg_copy
   uint32_t write_len;    // for communicating with agg_copy
@@ -981,8 +981,8 @@ struct Cache {
 
   Action *lookup(Continuation *cont, const CacheKey *key, CacheFragType type, const char *hostname, int host_len);
   inkcoreapi Action *open_read(Continuation *cont, const CacheKey *key, CacheFragType type, const char *hostname, int len);
-  inkcoreapi Action *open_write(Continuation *cont, const CacheKey *key, CacheFragType frag_type, int options = 0,
-                                time_t pin_in_cache = (time_t)0, const char *hostname = 0, int host_len = 0);
+  inkcoreapi Action *open_write(Continuation *cont, const CacheKey *key, const CacheWriteConfig &cwc, CacheFragType frag_type,
+                                int options = 0, time_t pin_in_cache = (time_t)0, const char *hostname = 0, int host_len = 0);
   inkcoreapi Action *remove(Continuation *cont, const CacheKey *key, CacheFragType type = CACHE_FRAG_TYPE_HTTP,
                             const char *hostname = 0, int host_len = 0);
   Action *scan(Continuation *cont, const char *hostname = 0, int host_len = 0, int KB_per_second = 2500);
@@ -990,9 +990,9 @@ struct Cache {
 #ifdef HTTP_CACHE
   Action *open_read(Continuation *cont, const CacheKey *key, CacheHTTPHdr *request, CacheLookupHttpConfig *params,
                     CacheFragType type, const char *hostname, int host_len);
-  Action *open_write(Continuation *cont, const CacheKey *key, CacheHTTPInfo *old_info, time_t pin_in_cache = (time_t)0,
-                     const CacheKey *key1 = nullptr, CacheFragType type = CACHE_FRAG_TYPE_HTTP, const char *hostname = 0,
-                     int host_len = 0);
+  Action *open_write(Continuation *cont, const CacheKey *key, const CacheWriteConfig &cwc, CacheHTTPInfo *old_info,
+                     time_t pin_in_cache = (time_t)0, const CacheKey *key1 = nullptr, CacheFragType type = CACHE_FRAG_TYPE_HTTP,
+                     const char *hostname = 0, int host_len = 0);
   static void generate_key(INK_MD5 *md5, CacheURL *url);
   static void generate_key(HttpCacheKey *md5, CacheURL *url, cache_generation_t generation = -1);
 #endif

@@ -6927,8 +6927,8 @@ TSCacheWrite(TSCont contp, TSCacheKey key)
   CacheInfo *info = (CacheInfo *)key;
   Continuation *i = (INKContInternal *)contp;
 
-  return (TSAction)cacheProcessor.open_write(i, &info->cache_key, true, info->frag_type, 0, false, info->pin_in_cache,
-                                             info->hostname, info->len);
+  return (TSAction)cacheProcessor.open_write(i, &info->cache_key, true, HttpConfig::m_master.oride.cacheWrite, info->frag_type, 0,
+                                             false, info->pin_in_cache, info->hostname, info->len);
 }
 
 TSAction
@@ -8089,6 +8089,10 @@ _conf_to_memberp(TSOverridableConfigKey conf, OverridableHttpConfigParams *overr
   case TS_CONFIG_HTTP_CACHE_RANGE_WRITE:
     ret = &overridableHttpConfig->cache_range_write;
     break;
+  case TS_CONFIG_HTTP_CACHE_MAX_DOC_SIZE:
+    typ = OVERRIDABLE_TYPE_INT;
+    ret = &overridableHttpConfig->cacheWrite.max_doc_size;
+    break;
   case TS_CONFIG_HTTP_POST_CHECK_CONTENT_LENGTH_ENABLED:
     ret = &overridableHttpConfig->post_check_content_length_enabled;
     break;
@@ -8454,6 +8458,8 @@ TSHttpTxnConfigFind(const char *name, int length, TSOverridableConfigKey *conf, 
   case 31:
     if (!strncmp(name, "proxy.config.http.chunking.size", length)) {
       cnf = TS_CONFIG_HTTP_CHUNKING_SIZE;
+    } else if (!strncmp(name, "proxy.config.cache.max_doc_size", length)) {
+      cnf = TS_CONFIG_HTTP_CACHE_MAX_DOC_SIZE;
     }
     break;
 

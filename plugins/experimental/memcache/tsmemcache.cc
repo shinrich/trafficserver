@@ -480,7 +480,7 @@ int
 MC::set_item()
 {
   MD5Context().hash_immediate(cache_key, (void *)key, (int)header.nkey);
-  pending_action = cacheProcessor.open_write(this, &cache_key, true, CACHE_FRAG_TYPE_NONE, header.nbytes,
+  pending_action = cacheProcessor.open_write(this, &cache_key, true, CacheWriteConfig(), CACHE_FRAG_TYPE_NONE, header.nbytes,
                                              CACHE_WRITE_OPT_OVERWRITE | TSMEMCACHE_WRITE_SYNC);
   return EVENT_CONT;
 }

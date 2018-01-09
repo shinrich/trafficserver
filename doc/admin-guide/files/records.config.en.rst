@@ -2021,6 +2021,8 @@ Cache Control
    but avoids a problem where a client can forcefully invalidate a cached object.
 
 .. ts:cv:: CONFIG proxy.config.cache.max_doc_size INT 0
+   :reloadable:
+   :overridable:
 
    Specifies the maximum object size that will be cached. ``0`` is unlimited.
 

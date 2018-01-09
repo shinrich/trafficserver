@@ -7602,7 +7602,8 @@ const char *SDK_Overridable_Configs[TS_CONFIG_LAST_ENTRY] = {"proxy.config.url_r
                                                              "proxy.config.http.parent_proxy.connect_attempts_timeout",
                                                              "proxy.config.ssl.client.verify.server",
                                                              "proxy.config.http.normalize_ae",
-                                                             "proxy.config.http.insert_forwarded"};
+                                                             "proxy.config.http.insert_forwarded",
+                                                             "proxy.config.cache.max_doc_size"};
 
 REGRESSION_TEST(SDK_API_OVERRIDABLE_CONFIGS)(RegressionTest *test, int /* atype ATS_UNUSED */, int *pstatus)
 {

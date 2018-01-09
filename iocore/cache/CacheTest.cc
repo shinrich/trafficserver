@@ -305,7 +305,8 @@ EXCLUSIVE_REGRESSION_TEST(cache)(RegressionTest *t, int /* atype ATS_UNUSED */, 
 
   EThread *thread = this_ethread();
 
-  CACHE_SM(t, write_test, { cacheProcessor.open_write(this, &key, false, CACHE_FRAG_TYPE_NONE, 100, CACHE_WRITE_OPT_SYNC); });
+  CACHE_SM(t, write_test,
+           { cacheProcessor.open_write(this, &key, false, CacheWriteConfig(), CACHE_FRAG_TYPE_NONE, 100, CACHE_WRITE_OPT_SYNC); });
   write_test.expect_initial_event = CACHE_EVENT_OPEN_WRITE;
   write_test.expect_event         = VC_EVENT_WRITE_COMPLETE;
   write_test.nbytes               = 100;
@@ -337,14 +338,15 @@ EXCLUSIVE_REGRESSION_TEST(cache)(RegressionTest *t, int /* atype ATS_UNUSED */, 
   remove_fail_test.expect_event = CACHE_EVENT_REMOVE_FAILED;
   rand_CacheKey(&remove_fail_test.key, thread->mutex);
 
-  CACHE_SM(
-    t, replace_write_test,
-    { cacheProcessor.open_write(this, &key, false, CACHE_FRAG_TYPE_NONE, 100, CACHE_WRITE_OPT_SYNC); } int open_write_callout() {
-      header.serial = 10;
-      cache_vc->set_header(&header, sizeof(header));
-      cvio = cache_vc->do_io_write(this, nbytes, buffer_reader);
-      return 1;
-    });
+  CACHE_SM(t, replace_write_test,
+           {
+             cacheProcessor.open_write(this, &key, false, CacheWriteConfig(), CACHE_FRAG_TYPE_NONE, 100, CACHE_WRITE_OPT_SYNC);
+           } int open_write_callout() {
+             header.serial = 10;
+             cache_vc->set_header(&header, sizeof(header));
+             cvio = cache_vc->do_io_write(this, nbytes, buffer_reader);
+             return 1;
+           });
   replace_write_test.expect_initial_event = CACHE_EVENT_OPEN_WRITE;
   replace_write_test.expect_event         = VC_EVENT_WRITE_COMPLETE;
   replace_write_test.nbytes               = 100;
@@ -352,7 +354,8 @@ EXCLUSIVE_REGRESSION_TEST(cache)(RegressionTest *t, int /* atype ATS_UNUSED */, 
 
   CACHE_SM(t, replace_test,
            {
-             cacheProcessor.open_write(this, &key, false, CACHE_FRAG_TYPE_NONE, 100, CACHE_WRITE_OPT_OVERWRITE_SYNC);
+             cacheProcessor.open_write(this, &key, false, CacheWriteConfig(), CACHE_FRAG_TYPE_NONE, 100,
+                                       CACHE_WRITE_OPT_OVERWRITE_SYNC);
            } int open_write_callout() {
              CacheTestHeader *h = nullptr;
              int hlen           = 0;
@@ -387,7 +390,8 @@ EXCLUSIVE_REGRESSION_TEST(cache)(RegressionTest *t, int /* atype ATS_UNUSED */, 
   replace_read_test.key                  = replace_test.key;
   replace_read_test.content_salt         = 1;
 
-  CACHE_SM(t, large_write_test, { cacheProcessor.open_write(this, &key, false, CACHE_FRAG_TYPE_NONE, 100, CACHE_WRITE_OPT_SYNC); });
+  CACHE_SM(t, large_write_test,
+           { cacheProcessor.open_write(this, &key, false, CacheWriteConfig(), CACHE_FRAG_TYPE_NONE, 100, CACHE_WRITE_OPT_SYNC); });
   large_write_test.expect_initial_event = CACHE_EVENT_OPEN_WRITE;
   large_write_test.expect_event         = VC_EVENT_WRITE_COMPLETE;
   large_write_test.nbytes               = 10000000;

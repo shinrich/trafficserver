@@ -25,6 +25,7 @@
 #define _I_CACHE_H__
 
 #include "ts/ink_platform.h"
+#include "ts/apidefs.h"
 #include "I_EventSystem.h"
 #include "I_AIO.h"
 #include "I_CacheDefs.h"
@@ -64,6 +65,32 @@ typedef URL CacheURL;
 typedef HTTPInfo CacheHTTPInfo;
 #endif
 
+class CacheWriteConfig
+{
+public:
+  TSMgmtInt max_doc_size;
+
+  // This can be called during const intitialization (because default_ is zero-initialized).
+  //
+  static void
+  setDefault(const CacheWriteConfig *d)
+  {
+    default_ = d;
+  }
+
+  CacheWriteConfig()
+  {
+    if (default_) {
+      *this = *default_;
+    } else {
+      max_doc_size = 0;
+    }
+  }
+
+private:
+  static const CacheWriteConfig *default_;
+};
+
 struct CacheProcessor : public Processor {
   CacheProcessor()
     : min_stripe_version(CACHE_DB_MAJOR_VERSION, CACHE_DB_MINOR_VERSION),
@@ -84,7 +111,7 @@ struct CacheProcessor : public Processor {
                             CacheFragType frag_type = CACHE_FRAG_TYPE_NONE, const char *hostname = 0, int host_len = 0);
   inkcoreapi Action *open_read(Continuation *cont, const CacheKey *key, bool cluster_cache_local,
                                CacheFragType frag_type = CACHE_FRAG_TYPE_NONE, const char *hostname = 0, int host_len = 0);
-  inkcoreapi Action *open_write(Continuation *cont, CacheKey *key, bool cluster_cache_local,
+  inkcoreapi Action *open_write(Continuation *cont, CacheKey *key, bool cluster_cache_local, const CacheWriteConfig &cwc,
                                 CacheFragType frag_type = CACHE_FRAG_TYPE_NONE, int expected_size = CACHE_EXPECTED_SIZE,
                                 int options = 0, time_t pin_in_cache = (time_t)0, char *hostname = 0, int host_len = 0);
   inkcoreapi Action *remove(Continuation *cont, const CacheKey *key, bool cluster_cache_local,
@@ -97,7 +124,7 @@ struct CacheProcessor : public Processor {
                                CacheLookupHttpConfig *params, time_t pin_in_cache = (time_t)0,
                                CacheFragType frag_type = CACHE_FRAG_TYPE_HTTP);
   Action *open_write(Continuation *cont, int expected_size, const HttpCacheKey *key, bool cluster_cache_local,
-                     CacheHTTPHdr *request, CacheHTTPInfo *old_info, time_t pin_in_cache = (time_t)0,
+                     CacheHTTPHdr *request, CacheHTTPInfo *old_info, const CacheWriteConfig &cwc, time_t pin_in_cache = (time_t)0,
                      CacheFragType frag_type = CACHE_FRAG_TYPE_HTTP);
   Action *remove(Continuation *cont, const HttpCacheKey *key, bool cluster_cache_local,
                  CacheFragType frag_type = CACHE_FRAG_TYPE_HTTP);
