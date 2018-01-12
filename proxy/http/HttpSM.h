@@ -56,7 +56,6 @@
  * IMPORTANT NOTE: enable/disable LAZY_BUF_ALLOC in HttpServerSession.h
  * as well.
  */
-#define LAZY_BUF_ALLOC
 
 #define HTTP_API_CONTINUE (INK_API_EVENT_EVENTS_START + 0)
 #define HTTP_API_ERROR (INK_API_EVENT_EVENTS_START + 1)

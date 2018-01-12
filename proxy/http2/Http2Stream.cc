@@ -181,6 +181,7 @@ Http2Stream::change_state(uint8_t type, uint8_t flags)
       if (recv_end_stream) {
         _state = Http2StreamState::HTTP2_STREAM_STATE_HALF_CLOSED_REMOTE;
       } else if (send_end_stream) {
+        write_event = send_tracked_event(write_event, VC_EVENT_WRITE_COMPLETE, &write_vio);
         _state = Http2StreamState::HTTP2_STREAM_STATE_HALF_CLOSED_LOCAL;
       } else {
         _state = Http2StreamState::HTTP2_STREAM_STATE_OPEN;
@@ -189,6 +190,7 @@ Http2Stream::change_state(uint8_t type, uint8_t flags)
       if (recv_end_stream) {
         _state = Http2StreamState::HTTP2_STREAM_STATE_HALF_CLOSED_REMOTE;
       } else if (send_end_stream) {
+        write_event = send_tracked_event(write_event, VC_EVENT_WRITE_COMPLETE, &write_vio);
         _state = Http2StreamState::HTTP2_STREAM_STATE_HALF_CLOSED_LOCAL;
       } else {
         _state = Http2StreamState::HTTP2_STREAM_STATE_OPEN;
@@ -207,6 +209,7 @@ Http2Stream::change_state(uint8_t type, uint8_t flags)
       if (recv_end_stream) {
         _state = Http2StreamState::HTTP2_STREAM_STATE_HALF_CLOSED_REMOTE;
       } else if (send_end_stream) {
+        write_event = send_tracked_event(write_event, VC_EVENT_WRITE_COMPLETE, &write_vio);
         _state = Http2StreamState::HTTP2_STREAM_STATE_HALF_CLOSED_LOCAL;
       } else {
         // Do not change state

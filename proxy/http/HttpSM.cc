@@ -5451,7 +5451,7 @@ HttpSM::handle_server_setup_error(int event, void *data)
         ink_assert(server_entry->vc_type == HTTP_SERVER_VC);
         vc_table.cleanup_entry(server_entry);
         server_entry   = nullptr;
-        server_session = nullptr;
+        server_txn = nullptr;
       }
     } else {
       t_state.current.state = HttpTransact::INACTIVE_TIMEOUT;
@@ -6340,10 +6340,6 @@ HttpSM::server_transfer_init(MIOBuffer *buf, int hdr_size)
   if (server_response_pre_read_bytes == to_copy && server_buffer_reader->read_avail() > 0) {
     t_state.current.server->keep_alive = HTTP_NO_KEEPALIVE;
   }
-#ifdef LAZY_BUF_ALLOC
-  // reset the server session buffer
-  dynamic_cast<Http1ServerSession*>(server_txn->get_parent())->reset_read_buffer();
-#endif
   return nbytes;
 }
 
