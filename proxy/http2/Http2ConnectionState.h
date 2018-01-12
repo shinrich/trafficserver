@@ -29,7 +29,7 @@
 #include "Http2Stream.h"
 #include "Http2DependencyTree.h"
 
-class Http2ClientSession;
+class Http2Session;
 
 enum class Http2SendDataFrameResult {
   NO_ERROR = 0,
@@ -115,7 +115,7 @@ class Http2ConnectionState : public Continuation
 public:
   Http2ConnectionState() : stream_list() { SET_HANDLER(&Http2ConnectionState::main_event_handler); }
 
-  Http2ClientSession *ua_session   = nullptr;
+  Http2Session *session   = nullptr;
   HpackHandle *local_hpack_handle  = nullptr;
   HpackHandle *remote_hpack_handle = nullptr;
   DependencyTree *dependency_tree  = nullptr;
@@ -151,7 +151,7 @@ public:
     ats_free(continued_buffer.iov_base);
 
     delete dependency_tree;
-    this->ua_session = nullptr;
+    this->session = nullptr;
   }
 
   // Event handlers
@@ -159,7 +159,7 @@ public:
   int state_closed(int, void *);
 
   // Stream control interfaces
-  Http2Stream *create_stream(Http2StreamId new_id, Http2Error &error);
+  Http2Stream *create_stream(Http2StreamId new_id, Http2Error &error, bool initiating_connection = false);
   Http2Stream *find_stream(Http2StreamId id) const;
   void restart_streams();
   bool delete_stream(Http2Stream *stream);
@@ -235,7 +235,7 @@ public:
   bool
   is_state_closed() const
   {
-    return ua_session == nullptr || fini_received;
+    return session == nullptr || fini_received;
   }
 
   bool
@@ -266,6 +266,14 @@ public:
     shutdown_state = state;
   }
 
+  void start_streams() {
+    Http2Stream *s = stream_list.head;
+    for (; s; s = static_cast<Http2Stream*>(s->link.next)) {
+      send_headers_frame(s);
+      send_data_frames(s);
+    }
+  }
+
   // noncopyable
   Http2ConnectionState(const Http2ConnectionState &) = delete;
   Http2ConnectionState &operator=(const Http2ConnectionState &) = delete;
@@ -280,7 +288,7 @@ private:
   //   If given Stream Identifier is not found in stream_list and it is greater
   //   than latest_streamid_in, the state of Stream is IDLE.
   Queue<Http2Stream> stream_list;
-  Http2StreamId latest_streamid_in  = 0;
+  Http2StreamId latest_streamid_in  = 1;
   Http2StreamId latest_streamid_out = 0;
   int stream_requests               = 0;
 

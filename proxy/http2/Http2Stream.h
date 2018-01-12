@@ -45,19 +45,25 @@ public:
   }
 
   void
-  init(Http2StreamId sid, ssize_t initial_rwnd)
+  init(Http2StreamId sid, ssize_t initial_rwnd, bool initiating_connection)
   {
     _id               = sid;
     _start_time       = Thread::get_hrtime();
     _thread           = this_ethread();
     this->client_rwnd = initial_rwnd;
+    this->initiating_flag = initiating_connection;
     HTTP2_INCREMENT_THREAD_DYN_STAT(HTTP2_STAT_CURRENT_CLIENT_STREAM_COUNT, _thread);
     HTTP2_INCREMENT_THREAD_DYN_STAT(HTTP2_STAT_TOTAL_CLIENT_STREAM_COUNT, _thread);
     sm_reader = request_reader = request_buffer.alloc_reader();
     http_parser_init(&http_parser);
     // FIXME: Are you sure? every "stream" needs request_header?
-    _req_header.create(HTTP_TYPE_REQUEST);
-    response_header.create(HTTP_TYPE_RESPONSE);
+    if (initiating_flag) { // Flip the sense of the expected headers.  Fix naming later
+      _req_header.create(HTTP_TYPE_RESPONSE);
+      response_header.create(HTTP_TYPE_REQUEST);
+    } else {
+      _req_header.create(HTTP_TYPE_REQUEST);
+      response_header.create(HTTP_TYPE_RESPONSE);
+    }
   }
 
   ~Http2Stream() { this->destroy(); }
@@ -103,6 +109,12 @@ public:
   }
 
   bool change_state(uint8_t type, uint8_t flags);
+  void attach_transaction(HttpSM *attach_sm) override
+  {
+    super::attach_transaction(attach_sm);
+    // We are now effectively open and ready for business
+    _state = Http2StreamState::HTTP2_STREAM_STATE_IDLE;
+  }
 
   void
   set_id(Http2StreamId sid)
@@ -178,7 +190,7 @@ public:
   bool send_end_stream = false;
 
   bool sent_request_header       = false;
-  bool response_header_done      = false;
+  bool parsing_header_done      = false;
   bool request_sent              = false;
   bool is_first_transaction_flag = false;
 
@@ -221,7 +233,8 @@ public:
   {
     return _state == Http2StreamState::HTTP2_STREAM_STATE_OPEN ||
            _state == Http2StreamState::HTTP2_STREAM_STATE_HALF_CLOSED_REMOTE ||
-           _state == Http2StreamState::HTTP2_STREAM_STATE_RESERVED_LOCAL;
+           _state == Http2StreamState::HTTP2_STREAM_STATE_RESERVED_LOCAL ||
+           (initiating_flag && _state == Http2StreamState::HTTP2_STREAM_STATE_IDLE);
   }
 
   bool
@@ -234,6 +247,18 @@ public:
   is_first_transaction() const override
   {
     return is_first_transaction_flag;
+  }
+
+  bool
+  is_initiating_connection() const
+  {
+    return initiating_flag;
+  }
+
+  void
+  set_initiating_connection()
+  {
+    initiating_flag = true;
   }
 
 private:
@@ -256,6 +281,7 @@ private:
   bool trailing_header = false;
   bool body_done       = false;
   bool chunked         = false;
+  bool initiating_flag = false;
 
   // A brief disucssion of similar flags and state variables:  _state, closed, terminate_stream
   //

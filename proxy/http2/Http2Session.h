@@ -1,6 +1,6 @@
 /** @file
 
-  Http2ClientSession.
+  Http2Session.h
 
   @section license License
 
@@ -21,8 +21,8 @@
   limitations under the License.
  */
 
-#ifndef __HTTP2_CLIENT_SESSION_H__
-#define __HTTP2_CLIENT_SESSION_H__
+#ifndef __HTTP2_SESSION_H__
+#define __HTTP2_SESSION_H__
 
 #include "HTTP2.h"
 #include "Plugin.h"
@@ -32,8 +32,8 @@
 #include <ts/ink_inet.h>
 
 // Name                       Edata                 Description
-// HTTP2_SESSION_EVENT_INIT   Http2ClientSession *  HTTP/2 session is born
-// HTTP2_SESSION_EVENT_FINI   Http2ClientSession *  HTTP/2 session is ended
+// HTTP2_SESSION_EVENT_INIT   Http2Session *  HTTP/2 session is born
+// HTTP2_SESSION_EVENT_FINI   Http2Session *  HTTP/2 session is ended
 // HTTP2_SESSION_EVENT_RECV   Http2Frame *          Received a frame
 // HTTP2_SESSION_EVENT_XMIT   Http2Frame *          Send this frame
 
@@ -153,19 +153,23 @@ private:
   IOBufferReader *ioreader;
 };
 
-class Http2ClientSession : public ProxySession
+class Http2Session : public ProxySession
 {
 public:
   typedef ProxySession super; ///< Parent type.
-  typedef int (Http2ClientSession::*SessionHandler)(int, void *);
+  typedef int (Http2Session::*SessionHandler)(int, void *);
 
-  Http2ClientSession();
+  Http2Session();
 
   // Implement ProxySession interface.
   void start() override;
   void destroy() override;
   void free() override;
   void new_connection(NetVConnection *new_vc, MIOBuffer *iobuf, IOBufferReader *reader, bool backdoor) override;
+
+  virtual void update() {}
+
+  virtual bool is_setup() const { return true; }
 
   bool
   ready_to_free() const
@@ -325,14 +329,15 @@ public:
   }
 
   // noncopyable
-  Http2ClientSession(Http2ClientSession &) = delete;
-  Http2ClientSession &operator=(const Http2ClientSession &) = delete;
-
-private:
-  int main_event_handler(int, void *);
+  Http2Session(Http2Session &) = delete;
+  Http2Session &operator=(const Http2Session &) = delete;
 
   int state_read_connection_preface(int, void *);
+  int main_event_handler(int, void *);
   int state_start_frame_read(int, void *);
+
+protected:
+
   int do_start_frame_read(Http2ErrorCode &ret_error);
   int state_complete_frame_read(int, void *);
   int do_complete_frame_read();
@@ -365,7 +370,5 @@ private:
   InkHashTable *h2_pushed_urls = nullptr;
   uint32_t h2_pushed_urls_size = 0;
 };
-
-extern ClassAllocator<Http2ClientSession> http2ClientSessionAllocator;
 
 #endif // __HTTP2_CLIENT_SESSION_H__

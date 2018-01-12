@@ -254,9 +254,7 @@ public:
     return netvc ? netvc->get_local_addr() : nullptr;
   }
 
-  virtual void
-  attach_transaction(HttpSM *attach_sm)
-  {
+  virtual void attach_transaction(HttpSM *attach_sm)  {
   }
 
   /// acl record - cache IpAllow::match() call

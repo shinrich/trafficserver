@@ -37,6 +37,7 @@
 #include "HttpSM.h"
 #include "HttpDebugNames.h"
 #include "Http1ServerSession.h"
+#include "../http2/Http2ServerSession.h"
 
 // Initialize a thread to handle HTTP session management
 void
@@ -390,13 +391,13 @@ HttpSessionManager::make_session(NetVConnection *netvc, TSServerSessionSharingPo
   }
 
   PoolInterface *retval = nullptr;
-  if (proto_length == 2 && memcmp(proto, "h2", 2)) {
-    /*Http2ServerSession *session = (TS_SERVER_SESSION_SHARING_POOL_THREAD == pool_type) ?
+  if (proto_length == 2 && memcmp(proto, "h2", 2) == 0) {
+    Http2ServerSession *session = (TS_SERVER_SESSION_SHARING_POOL_THREAD == pool_type) ?
               THREAD_ALLOC_INIT(http2ServerSessionAllocator, mutex->thread_holding) :
               http2ServerSessionAllocator.alloc();
     session->new_connection(netvc, NULL, NULL, false);
-    retval = session; */
-    Debug("http_ss", "Http2 Server session not ready yet");
+    retval = session; 
+    //Debug("http_ss", "Http2 Server session not ready yet");
   } else {
     Http1ServerSession *session = (TS_SERVER_SESSION_SHARING_POOL_THREAD == pool_type) ?
               THREAD_ALLOC_INIT(httpServerSessionAllocator, mutex->thread_holding) :

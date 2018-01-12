@@ -1,6 +1,6 @@
 /** @file
 
-  Http2ClientSession.
+  Http2Session.cc
 
   @section license License
 
@@ -21,7 +21,7 @@
   limitations under the License.
  */
 
-#include "Http2ClientSession.h"
+#include "Http2Session.h"
 #include "HttpDebugNames.h"
 #include "ts/ink_base64.h"
 
@@ -38,7 +38,6 @@
     this->session_handler = (handler);     \
   } while (0)
 
-ClassAllocator<Http2ClientSession> http2ClientSessionAllocator("http2ClientSessionAllocator");
 
 // memcpy the requested bytes from the IOBufferReader, returning how many were
 // actually copied.
@@ -58,12 +57,12 @@ send_connection_event(Continuation *cont, int event, void *edata)
   return cont->handleEvent(event, edata);
 }
 
-Http2ClientSession::Http2ClientSession()
+Http2Session::Http2Session()
 {
 }
 
 void
-Http2ClientSession::destroy()
+Http2Session::destroy()
 {
   if (!in_destroy) {
     in_destroy = true;
@@ -74,7 +73,7 @@ Http2ClientSession::destroy()
 }
 
 void
-Http2ClientSession::free()
+Http2Session::free()
 {
   if (h2_pushed_urls) {
     this->h2_pushed_urls = ink_hash_table_destroy(this->h2_pushed_urls);
@@ -130,18 +129,19 @@ Http2ClientSession::free()
 
   free_MIOBuffer(this->read_buffer);
   free_MIOBuffer(this->write_buffer);
-  THREAD_FREE(this, http2ClientSessionAllocator, this_ethread());
+  // The specific free is handled by the concrete child class
+  //THREAD_FREE(this, http2ClientSessionAllocator, this_ethread());
 }
 
 void
-Http2ClientSession::start()
+Http2Session::start()
 {
   VIO *read_vio;
 
   SCOPED_MUTEX_LOCK(lock, this->mutex, this_ethread());
 
-  SET_HANDLER(&Http2ClientSession::main_event_handler);
-  HTTP2_SET_SESSION_HANDLER(&Http2ClientSession::state_read_connection_preface);
+  SET_HANDLER(&Http2Session::main_event_handler);
+  HTTP2_SET_SESSION_HANDLER(&Http2Session::state_read_connection_preface);
 
   read_vio  = this->do_io_read(this, INT64_MAX, this->read_buffer);
   write_vio = this->do_io_write(this, INT64_MAX, this->sm_writer);
@@ -158,7 +158,7 @@ Http2ClientSession::start()
 }
 
 void
-Http2ClientSession::new_connection(NetVConnection *new_vc, MIOBuffer *iobuf, IOBufferReader *reader, bool backdoor)
+Http2Session::new_connection(NetVConnection *new_vc, MIOBuffer *iobuf, IOBufferReader *reader, bool backdoor)
 {
   ink_assert(new_vc->mutex->thread_holding == this_ethread());
   HTTP2_INCREMENT_THREAD_DYN_STAT(HTTP2_STAT_CURRENT_CLIENT_SESSION_COUNT, new_vc->mutex->thread_holding);
@@ -194,7 +194,7 @@ Http2ClientSession::new_connection(NetVConnection *new_vc, MIOBuffer *iobuf, IOB
 }
 
 void
-Http2ClientSession::set_upgrade_context(HTTPHdr *h)
+Http2Session::set_upgrade_context(HTTPHdr *h)
 {
   upgrade_context.req_header = new HTTPHdr();
   upgrade_context.req_header->copy(h);
@@ -233,19 +233,19 @@ Http2ClientSession::set_upgrade_context(HTTPHdr *h)
 }
 
 VIO *
-Http2ClientSession::do_io_read(Continuation *c, int64_t nbytes, MIOBuffer *buf)
+Http2Session::do_io_read(Continuation *c, int64_t nbytes, MIOBuffer *buf)
 {
   return this->client_vc->do_io_read(c, nbytes, buf);
 }
 
 VIO *
-Http2ClientSession::do_io_write(Continuation *c, int64_t nbytes, IOBufferReader *buf, bool owner)
+Http2Session::do_io_write(Continuation *c, int64_t nbytes, IOBufferReader *buf, bool owner)
 {
   return this->client_vc->do_io_write(c, nbytes, buf, owner);
 }
 
 void
-Http2ClientSession::do_io_shutdown(ShutdownHowTo_t howto)
+Http2Session::do_io_shutdown(ShutdownHowTo_t howto)
 {
   this->client_vc->do_io_shutdown(howto);
 }
@@ -255,7 +255,7 @@ Http2ClientSession::do_io_shutdown(ShutdownHowTo_t howto)
 // are scenarios where we would like to complete the outstanding streams.
 
 void
-Http2ClientSession::do_io_close(int alerrno)
+Http2Session::do_io_close(int alerrno)
 {
   Http2SsnDebug("session closed");
 
@@ -280,13 +280,13 @@ Http2ClientSession::do_io_close(int alerrno)
 }
 
 void
-Http2ClientSession::reenable(VIO *vio)
+Http2Session::reenable(VIO *vio)
 {
   this->client_vc->reenable(vio);
 }
 
 void
-Http2ClientSession::set_half_close_local_flag(bool flag)
+Http2Session::set_half_close_local_flag(bool flag)
 {
   if (!half_close_local && flag) {
     Http2SsnDebug("session half-close local");
@@ -295,7 +295,7 @@ Http2ClientSession::set_half_close_local_flag(bool flag)
 }
 
 int
-Http2ClientSession::main_event_handler(int event, void *edata)
+Http2Session::main_event_handler(int event, void *edata)
 {
   ink_assert(this->mutex->thread_holding == this_ethread());
   int retval;
@@ -364,11 +364,11 @@ Http2ClientSession::main_event_handler(int event, void *edata)
 }
 
 int
-Http2ClientSession::state_read_connection_preface(int event, void *edata)
+Http2Session::state_read_connection_preface(int event, void *edata)
 {
   VIO *vio = (VIO *)edata;
 
-  STATE_ENTER(&Http2ClientSession::state_read_connection_preface, event);
+  STATE_ENTER(&Http2Session::state_read_connection_preface, event);
   ink_assert(event == VC_EVENT_READ_COMPLETE || event == VC_EVENT_READ_READY);
 
   if (this->sm_reader->read_avail() >= (int64_t)HTTP2_CONNECTION_PREFACE_LEN) {
@@ -386,7 +386,7 @@ Http2ClientSession::state_read_connection_preface(int event, void *edata)
 
     Http2SsnDebug("received connection preface");
     this->sm_reader->consume(nbytes);
-    HTTP2_SET_SESSION_HANDLER(&Http2ClientSession::state_start_frame_read);
+    HTTP2_SET_SESSION_HANDLER(&Http2Session::state_start_frame_read);
 
     client_vc->set_inactivity_timeout(HRTIME_SECONDS(Http2::no_activity_timeout_in));
     client_vc->set_active_timeout(HRTIME_SECONDS(Http2::active_timeout_in));
@@ -409,17 +409,17 @@ Http2ClientSession::state_read_connection_preface(int event, void *edata)
 }
 
 int
-Http2ClientSession::state_start_frame_read(int event, void *edata)
+Http2Session::state_start_frame_read(int event, void *edata)
 {
   VIO *vio = (VIO *)edata;
 
-  STATE_ENTER(&Http2ClientSession::state_start_frame_read, event);
+  STATE_ENTER(&Http2Session::state_start_frame_read, event);
   ink_assert(event == VC_EVENT_READ_COMPLETE || event == VC_EVENT_READ_READY);
   return state_process_frame_read(event, vio, false);
 }
 
 int
-Http2ClientSession::do_start_frame_read(Http2ErrorCode &ret_error)
+Http2Session::do_start_frame_read(Http2ErrorCode &ret_error)
 {
   ret_error = Http2ErrorCode::HTTP2_ERROR_NO_ERROR;
   ink_release_assert(this->sm_reader->read_avail() >= (int64_t)HTTP2_FRAME_HEADER_LEN);
@@ -464,10 +464,10 @@ Http2ClientSession::do_start_frame_read(Http2ErrorCode &ret_error)
 }
 
 int
-Http2ClientSession::state_complete_frame_read(int event, void *edata)
+Http2Session::state_complete_frame_read(int event, void *edata)
 {
   VIO *vio = (VIO *)edata;
-  STATE_ENTER(&Http2ClientSession::state_complete_frame_read, event);
+  STATE_ENTER(&Http2Session::state_complete_frame_read, event);
   ink_assert(event == VC_EVENT_READ_COMPLETE || event == VC_EVENT_READ_READY);
   if (this->sm_reader->read_avail() < this->current_hdr.length) {
     vio->reenable();
@@ -479,7 +479,7 @@ Http2ClientSession::state_complete_frame_read(int event, void *edata)
 }
 
 int
-Http2ClientSession::do_complete_frame_read()
+Http2Session::do_complete_frame_read()
 {
   // XXX parse the frame and handle it ...
   ink_release_assert(this->sm_reader->read_avail() >= this->current_hdr.length);
@@ -489,13 +489,13 @@ Http2ClientSession::do_complete_frame_read()
   this->sm_reader->consume(this->current_hdr.length);
 
   // Set the event handler if there is no more data to process a new frame
-  HTTP2_SET_SESSION_HANDLER(&Http2ClientSession::state_start_frame_read);
+  HTTP2_SET_SESSION_HANDLER(&Http2Session::state_start_frame_read);
 
   return 0;
 }
 
 int
-Http2ClientSession::state_process_frame_read(int event, VIO *vio, bool inside_frame)
+Http2Session::state_process_frame_read(int event, VIO *vio, bool inside_frame)
 {
   if (inside_frame) {
     do_complete_frame_read();
@@ -519,7 +519,7 @@ Http2ClientSession::state_process_frame_read(int event, VIO *vio, bool inside_fr
 
     // If there is no more data to finish the frame, set up the event handler and reenable
     if (this->sm_reader->read_avail() < this->current_hdr.length) {
-      HTTP2_SET_SESSION_HANDLER(&Http2ClientSession::state_complete_frame_read);
+      HTTP2_SET_SESSION_HANDLER(&Http2Session::state_complete_frame_read);
       break;
     }
     do_complete_frame_read();

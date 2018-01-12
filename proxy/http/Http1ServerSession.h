@@ -70,8 +70,7 @@ public:
   {
   }
 
-  void
-  attach_transaction(HttpSM *attach_sm) override
+  void attach_transaction(HttpSM *attach_sm) override
   {
     // Initialize the basic transaction object
     new_transaction();

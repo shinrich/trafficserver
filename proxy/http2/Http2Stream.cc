@@ -137,7 +137,7 @@ Http2ErrorCode
 Http2Stream::decode_header_blocks(HpackHandle &hpack_handle, uint32_t maximum_table_size)
 {
   return http2_decode_header_blocks(&_req_header, (const uint8_t *)header_blocks, header_blocks_length, nullptr, hpack_handle,
-                                    trailing_header, maximum_table_size);
+                                    trailing_header, maximum_table_size, this->is_initiating_connection());
 }
 
 void
@@ -240,8 +240,8 @@ Http2Stream::change_state(uint8_t type, uint8_t flags)
       _state = Http2StreamState::HTTP2_STREAM_STATE_CLOSED;
     } else {
       // Error, set state closed
-      _state = Http2StreamState::HTTP2_STREAM_STATE_CLOSED;
-      return false;
+      //_state = Http2StreamState::HTTP2_STREAM_STATE_CLOSED;
+      //return false;
     }
     break;
 
@@ -253,8 +253,8 @@ Http2Stream::change_state(uint8_t type, uint8_t flags)
       return true;
     } else {
       // Error, set state closed
-      _state = Http2StreamState::HTTP2_STREAM_STATE_CLOSED;
-      return false;
+      //_state = Http2StreamState::HTTP2_STREAM_STATE_CLOSED;
+      //return false;
     }
     break;
 
@@ -566,7 +566,7 @@ Http2Stream::update_write_request(IOBufferReader *buf_reader, int64_t write_len,
   int64_t response_buffer_size    = response_reader->read_avail();
   Http2StreamDebug("write_vio.nbytes=%" PRId64 ", write_vio.ndone=%" PRId64 ", buf_reader.read_avail=%" PRId64
                    ", total_added=%" PRId64 ", response_buffer=%" PRId64,
-                   write_vio.nbytes, write_vio.ndone, buf_reader->read_avail(), total_added, response_buffer_size);
+                   write_vio.nbytes, write_vio.ndone, buf_reader ? buf_reader->read_avail() : 0, total_added, response_buffer_size);
 
   bool is_done = false;
   this->response_process_data(is_done);
@@ -574,39 +574,50 @@ Http2Stream::update_write_request(IOBufferReader *buf_reader, int64_t write_len,
     int send_event = (write_vio.ntodo() == response_buffer_size || is_done) ? VC_EVENT_WRITE_COMPLETE : VC_EVENT_WRITE_READY;
 
     // Process the new data
-    if (!this->response_header_done) {
-      // Still parsing the response_header
+    if (!this->parsing_header_done) {
+      // Still parsing the request or response header
       int bytes_used = 0;
-      int state      = this->response_header.parse_resp(&http_parser, this->response_reader, &bytes_used, false);
+      int state;
+      if (this->is_initiating_connection()) {
+        state      = this->response_header.parse_req(&http_parser, this->response_reader, &bytes_used, false);
+      } else {
+        state      = this->response_header.parse_resp(&http_parser, this->response_reader, &bytes_used, false);
+      }
       // HTTPHdr::parse_resp() consumed the response_reader in above
       write_vio.ndone += this->response_header.length_get();
 
       switch (state) {
       case PARSE_RESULT_DONE: {
-        this->response_header_done = true;
+        this->parsing_header_done = true;
 
-        // Schedule session shutdown if response header has "Connection: close"
-        MIMEField *field = this->response_header.field_find(MIME_FIELD_CONNECTION, MIME_LEN_CONNECTION);
-        if (field) {
-          int len;
-          const char *value = field->value_get(&len);
-          if (memcmp(HTTP_VALUE_CLOSE, value, HTTP_LEN_CLOSE) == 0) {
-            SCOPED_MUTEX_LOCK(lock, this->mutex, this_ethread());
-            if (parent->connection_state.get_shutdown_state() == HTTP2_SHUTDOWN_NONE) {
-              parent->connection_state.set_shutdown_state(HTTP2_SHUTDOWN_NOT_INITIATED);
+        if (!this->is_initiating_connection()) {
+          // Schedule session shutdown if response header has "Connection: close"
+          MIMEField *field = this->response_header.field_find(MIME_FIELD_CONNECTION, MIME_LEN_CONNECTION);
+          if (field) {
+            int len;
+            const char *value = field->value_get(&len);
+            if (memcmp(HTTP_VALUE_CLOSE, value, HTTP_LEN_CLOSE) == 0) {
+              SCOPED_MUTEX_LOCK(lock, this->mutex, this_ethread());
+              if (parent->connection_state.get_shutdown_state() == HTTP2_SHUTDOWN_NONE) {
+                parent->connection_state.set_shutdown_state(HTTP2_SHUTDOWN_NOT_INITIATED);
+              }
             }
           }
         }
 
-        // Send the response header back
-        parent->connection_state.send_headers_frame(this);
-
-        // See if the response is chunked.  Set up the dechunking logic if it is
+        // See if the request or response is chunked.  Set up the dechunking logic if it is
         // Make sure to check if the chunk is complete and signal appropriately
         this->response_initialize_data_handling(is_done);
         if (is_done) {
           send_event = VC_EVENT_WRITE_COMPLETE;
         }
+
+        if (this->is_initiating_connection() && send_event == VC_EVENT_WRITE_COMPLETE) {
+          this->mark_body_done();
+        }
+
+        // Send the response header back
+        parent->connection_state.send_headers_frame(this);
 
         // If there is additional data, send it along in a data frame.  Or if this was header only
         // make sure to send the end of stream
@@ -622,7 +633,7 @@ Http2Stream::update_write_request(IOBufferReader *buf_reader, int64_t write_len,
             } else { // Called from do_io_write.  Might still be setting up state.  Send an event to let the dust settle
               write_event = send_tracked_event(write_event, send_event, &write_vio);
             }
-          } else {
+          } else if (!this->is_initiating_connection()) {
             this->mark_body_done();
             // Send the data frame
             send_response_body();
