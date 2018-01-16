@@ -24,7 +24,8 @@ import argparse
 if __name__ == '__main__':
 
     parser = argparse.ArgumentParser()
-    parser.add_argument("-type", action='store', dest='replay_type', help="Replay type: ssl/random/h2")
+    parser.add_argument("-type", action='store', dest='replay_type',
+                        help="Replay type: ssl/random/h2/nossl/mixed (at least 2 processes needed for mixed)")
     parser.add_argument("-log_dir", type=str, help="directory of JSON replay files")
     parser.add_argument("-v", dest="verbose", help="verify response status code", action="store_true")
 
