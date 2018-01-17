@@ -912,11 +912,6 @@ SSLNetVConnection::free(EThread *t)
   }
 }
 
-static unsigned char client_alpn_protos[] = {
-  2, 'h', '2',
-  8, 'h', 't', 't', 'p', '/', '1', '.', '1'
-};
-unsigned int client_alpn_protos_length = sizeof(client_alpn_protos);
 int
 SSLNetVConnection::sslStartHandShake(int event, int &err)
 {
@@ -1034,8 +1029,10 @@ SSLNetVConnection::sslStartHandShake(int event, int &err)
       }
       SSL_set_verify(this->ssl, clientVerify ? SSL_VERIFY_PEER : SSL_VERIFY_NONE, verify_callback);
 
-      // Set the ALPN protocols we are requesting.  Currently, hard coded
-      SSL_set_alpn_protos(this->ssl, client_alpn_protos, client_alpn_protos_length);
+      if (params->client_alpn_protocols) {
+        // Set the ALPN protocols we are requesting.  
+        SSL_set_alpn_protos(this->ssl, params->client_alpn_protocols, params->client_alpn_protocols_length);
+      }
 
 #if TS_USE_TLS_SNI
       if (this->options.sni_servername) {

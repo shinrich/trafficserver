@@ -219,6 +219,27 @@ SSLConfigParams::initialize()
   }
 #endif
 
+  // Read in the protocol string for ALPN to origin
+  char *clientALPNProtocols;
+  REC_ReadConfigStringAlloc(clientALPNProtocols, "proxy.config.ssl.client.alpn_protocols");
+  // Assume the protocols are space delimited
+  if (clientALPNProtocols) {
+    client_alpn_protocols = static_cast<unsigned char *>(ats_malloc(strlen(clientALPNProtocols))); 
+    SimpleTokenizer proto_tok("", ',');
+    proto_tok.setString(clientALPNProtocols);
+    int index = 0;
+    while (proto_tok.getNumTokensRemaining() > 0) {
+      const char *proto = proto_tok.getNext();
+      client_alpn_protocols[index++] = strlen(proto);
+      memcpy(client_alpn_protocols + index, proto, strlen(proto));
+      index += strlen(proto);
+    }
+    client_alpn_protocols_length = index;
+  } else {
+    client_alpn_protocols = nullptr;
+    client_alpn_protocols_length = 0;
+  }
+
 #ifdef SSL_OP_CIPHER_SERVER_PREFERENCE
   REC_ReadConfigInteger(options, "proxy.config.ssl.server.honor_cipher_order");
   if (options) {

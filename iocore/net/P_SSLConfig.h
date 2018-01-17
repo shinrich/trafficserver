@@ -87,6 +87,8 @@ struct SSLConfigParams : public ConfigInfo {
   int client_verify_depth;
   long ssl_ctx_options;
   long ssl_client_ctx_protocols;
+  unsigned char *client_alpn_protocols;
+  long client_alpn_protocols_length;
 
   static int ssl_maxrecord;
   static bool ssl_allow_client_renegotiation;
