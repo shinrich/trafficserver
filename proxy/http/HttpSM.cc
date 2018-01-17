@@ -1819,7 +1819,10 @@ int
 HttpSM::state_read_server_response_header(int event, void *data)
 {
   STATE_ENTER(&HttpSM::state_read_server_response_header, event);
-  ink_assert(server_entry->read_vio == (VIO *)data);
+/*  if (server_entry->read_vio != (VIO *)data) {
+    // Should be done with the write vio now
+    return 0;
+  } */
   // Seems reasonable that the state could be INACTIVE_TIMEOUT
   //ink_assert(t_state.current.server->state == HttpTransact::STATE_UNDEFINED);
   //ink_assert(t_state.current.state == HttpTransact::STATE_UNDEFINED);
@@ -1852,6 +1855,9 @@ HttpSM::state_read_server_response_header(int event, void *data)
   case VC_EVENT_ACTIVE_TIMEOUT:
     // Error handling function
     handle_server_setup_error(event, data);
+    return 0;
+  case VC_EVENT_WRITE_COMPLETE:
+    // Effectively a no-op at this point.
     return 0;
   }
 
