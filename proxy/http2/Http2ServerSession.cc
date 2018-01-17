@@ -22,6 +22,7 @@
  */
 
 #include "Http2ServerSession.h"
+#include "../http/HttpSessionManager.h"
 
 ClassAllocator<Http2ServerSession> http2ServerSessionAllocator("http2ServerSessionAllocator");
 
@@ -42,6 +43,7 @@ Http2ServerSession::attach_transaction(HttpSM *attach_sm)
 {
   // In == client side
   Http2StreamId stream_id = connection_state.get_latest_stream_id_in() + 2;
+  this->set_session_active();
 
   // Create a new stream/transaction
   Http2Error error(Http2ErrorClass::HTTP2_ERROR_CLASS_NONE);
@@ -119,5 +121,22 @@ Http2ServerSession::update()
   }
 }
 
+void
+Http2ServerSession::add_session()
+{
+  if (!allocating_pool) {
+    httpSessionManager.add_session(this);
+  }
+}
 
-
+void
+Http2ServerSession::do_io_close(int alerrno)
+{
+  // Remove us from the session_table
+  if (allocating_pool) {
+    allocating_pool->removeSession(this);
+    allocating_pool = nullptr;
+  }
+  
+  super::do_io_close(alerrno);
+}

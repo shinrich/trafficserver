@@ -94,6 +94,24 @@ ServerSessionPool::validate_sni(HttpSM *sm, NetVConnection *netvc)
   return ((sm->t_state.scheme != URL_WKSIDX_HTTPS) || !session_sni || strncasecmp(session_sni, req_host, len) == 0);
 }
 
+void
+ServerSessionPool::removeSession(PoolInterface *to_remove)
+{
+  EThread *ethread = this_ethread();
+  SCOPED_MUTEX_LOCK(lock, mutex.get(), ethread);
+  HostHashTable::Location loc = m_host_pool.find(to_remove);
+  HostHashTable::Location loc2 = m_host_pool.find(to_remove->hostname_hash);
+  if (!loc) {
+    Debug("http_ss", "Failed to find location in host list");
+    if (loc2) {
+      Debug("http_ss", "Found location for %p as hostname hash", to_remove);
+    }
+  } else {
+    m_host_pool.remove(loc);
+    m_ip_pool.remove(m_ip_pool.find(to_remove));
+  }
+}
+
 HSMresult_t
 ServerSessionPool::acquireSession(sockaddr const *addr, INK_MD5 const &hostname_hash, TSServerSessionSharingMatchType match_style,
                                   HttpSM *sm, PoolInterface *&to_return)
@@ -149,6 +167,17 @@ ServerSessionPool::releaseSession(PoolInterface *ss)
     m_host_pool.insert(ss);
   }
   Debug("http_ss", "[%" PRId64 "] [release session] "
+                   "session placed into shared pool",
+        ss->get_session()->connection_id());
+}
+
+void
+ServerSessionPool::addSession(PoolInterface *ss)
+{
+  // put it in the pools.
+  m_ip_pool.insert(ss);
+  m_host_pool.insert(ss);
+  Debug("http_ss", "[%" PRId64 "] [add session] "
                    "session placed into shared pool",
         ss->get_session()->connection_id());
 }
@@ -372,6 +401,28 @@ HttpSessionManager::release_session(PoolInterface *to_release)
   return released_p ? HSM_DONE : HSM_RETRY;
 }
 
+HSMresult_t
+HttpSessionManager::add_session(PoolInterface *to_add)
+{
+  EThread *ethread = this_ethread();
+  HttpConfigParams *http_config_params = HttpConfig::acquire();
+  ServerSessionPool *pool =
+    static_cast<TSServerSessionSharingPoolType>(http_config_params->server_session_sharing_pool) == TS_SERVER_SESSION_SHARING_POOL_THREAD ? ethread->server_session_pool : m_g_pool;
+  bool added_p = true;
+
+  // The per thread lock looks like it should not be needed but if it's not locked the close checking I/O op will crash.
+  MUTEX_TRY_LOCK(lock, pool->mutex, ethread);
+  if (lock.is_locked()) {
+    pool->addSession(to_add);
+    to_add->set_pool(pool);
+  } else {
+    Debug("http_ss", "[%" PRId64 "] [add session] could not add session due to lock contention", to_add->get_session()->connection_id());
+    added_p = false;
+  }
+
+  return added_p ? HSM_DONE : HSM_RETRY;
+}
+
 PoolInterface *
 HttpSessionManager::make_session(NetVConnection *netvc, TSServerSessionSharingPoolType pool_type, TSServerSessionSharingMatchType match_type, const char *hostname, Ptr<ProxyMutex> mutex)
 {
@@ -407,6 +458,7 @@ HttpSessionManager::make_session(NetVConnection *netvc, TSServerSessionSharingPo
   }
   retval->sharing_match = match_type;
   retval->attach_hostname(hostname);
+  retval->add_session();
   return retval;
 }
  

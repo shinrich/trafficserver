@@ -5547,14 +5547,18 @@ HttpTransact::initialize_state_variables_from_response(State *s, HTTPHdr *incomi
   s->cache_info.directives.does_server_permit_storing =
     HttpTransactHeaders::does_server_allow_response_to_be_stored(&s->hdr_info.server_response);
 
+  // In the H2 case (!ignore_keep_alive), we should always close the stream
+  if (s->txn_conf->keep_alive_enabled_out && (s->state_machine->get_server_txn() && s->state_machine->get_server_txn()->ignore_keep_alive())) {
+    s->current.server->keep_alive = HTTP_NO_KEEPALIVE;
+  }
+
+
   /*
    * A stupid moronic broken pathetic excuse
    *   for a server may send us a keep alive response even
    *   if we sent "Connection: close"  We need check the response
    *   header regardless of what we sent to the server
    */
-  s->current.server->keep_alive = s->hdr_info.server_response.keep_alive_get();
-
   // Don't allow an upgrade request to Keep Alive
   if (s->is_upgrade_request) {
     s->current.server->keep_alive = HTTP_NO_KEEPALIVE;

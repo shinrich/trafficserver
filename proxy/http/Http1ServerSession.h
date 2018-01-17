@@ -90,6 +90,11 @@ public:
   }
 
   void set_shared() override;
+
+  // Add the session to the Session Manager up front
+  // Do nothing in the Http/1 case
+  void add_session() override {}
+
 private:
   Http1ServerSession(Http1ServerSession &);
 

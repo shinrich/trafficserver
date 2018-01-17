@@ -50,6 +50,7 @@ public:
     _id               = sid;
     _start_time       = Thread::get_hrtime();
     _thread           = this_ethread();
+    _state = Http2StreamState::HTTP2_STREAM_STATE_IDLE;
     this->client_rwnd = initial_rwnd;
     this->initiating_flag = initiating_connection;
     HTTP2_INCREMENT_THREAD_DYN_STAT(HTTP2_STAT_CURRENT_CLIENT_STREAM_COUNT, _thread);
@@ -169,9 +170,9 @@ public:
   virtual bool
   ignore_keep_alive() override
   {
-    // If we return true here, Connection header will always be "close".
-    // It should be handled as the same as HTTP/1.1
-    return false;
+    // The stream should always close.  The session will stick around until the appropriate GOAWAY frames are sent
+    // In the Http/1 case, we must watch the keep alive header to keep the session around appropriately
+    return true;
   }
 
   void send_response_body();

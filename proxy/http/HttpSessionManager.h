@@ -137,6 +137,8 @@ public:
   /** Release a session to to pool.
    */
   void releaseSession(PoolInterface *ss);
+  void addSession(PoolInterface *ss);
+  void removeSession(PoolInterface *to_remove);
 
   /// Close all sessions and then clear the table.
   void purge();
@@ -155,6 +157,7 @@ public:
   HSMresult_t acquire_session(Continuation *cont, sockaddr const *addr, const char *hostname, ProxyTransaction *ua_txn,
                               HttpSM *sm);
   HSMresult_t release_session(PoolInterface *to_release);
+  HSMresult_t add_session(PoolInterface *to_release);
   void purge_keepalives();
   void init();
   int main_handler(int event, void *data);

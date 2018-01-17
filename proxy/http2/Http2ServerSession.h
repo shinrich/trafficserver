@@ -51,6 +51,18 @@ public:
   Http2ServerSession(Http2ServerSession &) = delete;
   Http2ServerSession &operator=(const Http2ServerSession &) = delete;
 
+  // Add the session to the Session Manager up front
+  // Makes sense in the Http/2 case
+  void add_session() override;
+
+  bool
+  allow_concurrent_transactions() const override
+  {
+    return true;
+  }
+
+  void do_io_close(int lerrno = -1) override;
+
 private:
   bool setup = true;
 };

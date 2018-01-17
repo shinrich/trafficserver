@@ -63,7 +63,7 @@ public:
     return private_session;
   }
 
-  bool
+  virtual bool
   allow_concurrent_transactions() const
   {
     return false;
@@ -87,7 +87,9 @@ public:
   {
     return dynamic_cast<ProxySession *>(this);
   }
-
+  
+  // Add the session to the Session Manager up front if that is appropriate
+  virtual void add_session() = 0;
 
   LINK(PoolInterface, ip_hash_link);
   LINK(PoolInterface, host_hash_link);
