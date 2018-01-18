@@ -943,7 +943,7 @@ Http2ConnectionState::main_event_handler(int event, void *edata)
     // A server that is attempting to gracefully shut down a
     // connection SHOULD send an initial GOAWAY frame with the last stream
     // identifier set to 2^31-1 and a NO_ERROR code.
-    send_goaway_frame(INT32_MAX, Http2ErrorCode::HTTP2_ERROR_NO_ERROR);
+    //send_goaway_frame(INT32_MAX, Http2ErrorCode::HTTP2_ERROR_NO_ERROR);
     // After allowing time for any in-flight stream creation (at least one round-trip time),
     shutdown_cont_event = this_ethread()->schedule_in((Continuation *)this, HRTIME_SECONDS(2), HTTP2_SESSION_EVENT_SHUTDOWN_CONT);
   } break;
