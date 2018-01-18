@@ -112,16 +112,6 @@ Http2ServerSession::new_connection(NetVConnection *new_vc, MIOBuffer *iobuf, IOB
 }
 
 void
-Http2ServerSession::update()
-{
-  if (!setup) {
-    setup = true;
-    // Received the peers setting
-    connection_state.start_streams();
-  }
-}
-
-void
 Http2ServerSession::add_session()
 {
   if (!allocating_pool) {

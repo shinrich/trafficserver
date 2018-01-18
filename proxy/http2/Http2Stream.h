@@ -44,6 +44,9 @@ public:
     SET_HANDLER(&Http2Stream::main_event_handler);
   }
 
+  /**
+   * Initiaiting_connection is true if ATS is sending the request header and receivng the respones
+   */
   void
   init(Http2StreamId sid, ssize_t initial_rwnd, bool initiating_connection)
   {
@@ -55,15 +58,15 @@ public:
     this->initiating_flag = initiating_connection;
     HTTP2_INCREMENT_THREAD_DYN_STAT(HTTP2_STAT_CURRENT_CLIENT_STREAM_COUNT, _thread);
     HTTP2_INCREMENT_THREAD_DYN_STAT(HTTP2_STAT_TOTAL_CLIENT_STREAM_COUNT, _thread);
-    sm_reader = request_reader = request_buffer.alloc_reader();
+    sm_reader = recv_reader = recv_buffer.alloc_reader();
     http_parser_init(&http_parser);
-    // FIXME: Are you sure? every "stream" needs request_header?
+    // FIXME: Are you sure? every "stream" needs recv_header?
     if (initiating_flag) { // Flip the sense of the expected headers.  Fix naming later
-      _req_header.create(HTTP_TYPE_RESPONSE);
-      response_header.create(HTTP_TYPE_REQUEST);
+      _recv_header.create(HTTP_TYPE_RESPONSE);
+      _send_header.create(HTTP_TYPE_REQUEST);
     } else {
-      _req_header.create(HTTP_TYPE_REQUEST);
-      response_header.create(HTTP_TYPE_RESPONSE);
+      _recv_header.create(HTTP_TYPE_REQUEST);
+      _send_header.create(HTTP_TYPE_RESPONSE);
     }
   }
 
@@ -136,9 +139,9 @@ public:
   }
 
   void
-  set_request_headers(HTTPHdr &h2_headers)
+  set_recv_headers(HTTPHdr &h2_headers)
   {
-    _req_header.copy(&h2_headers);
+    _recv_header.copy(&h2_headers);
   }
 
   // Check entire DATA payload length if content-length: header is exist
@@ -151,12 +154,12 @@ public:
   bool
   payload_length_is_valid() const
   {
-    uint32_t content_length = _req_header.get_content_length();
+    uint32_t content_length = _recv_header.get_content_length();
     return content_length == 0 || content_length == data_length;
   }
 
   Http2ErrorCode decode_header_blocks(HpackHandle &hpack_handle, uint32_t maximum_table_size);
-  void send_request(Http2ConnectionState &cstate);
+  void recv_headers(Http2ConnectionState &cstate);
   VIO *do_io_read(Continuation *c, int64_t nbytes, MIOBuffer *buf) override;
   VIO *do_io_write(Continuation *c, int64_t nbytes, IOBufferReader *abuffer, bool owner = false) override;
   void do_io_close(int lerrno = -1) override;
@@ -175,7 +178,7 @@ public:
     return true;
   }
 
-  void send_response_body();
+  void send_body();
   void push_promise(URL &url, const MIMEField *accept_encoding);
 
   // Stream level window size
@@ -185,21 +188,23 @@ public:
   uint8_t *header_blocks        = nullptr;
   uint32_t header_blocks_length = 0;  // total length of header blocks (not include
                                       // Padding or other fields)
-  uint32_t request_header_length = 0; // total length of payload (include Padding
+  uint32_t recv_header_length = 0; // total length of payload (include Padding
                                       // and other fields)
   bool recv_end_stream = false;
   bool send_end_stream = false;
 
-  bool sent_request_header       = false;
   bool parsing_header_done      = false;
-  bool request_sent              = false;
   bool is_first_transaction_flag = false;
 
-  HTTPHdr response_header;
-  IOBufferReader *response_reader          = nullptr;
-  IOBufferReader *request_reader           = nullptr;
-  MIOBuffer request_buffer                 = CLIENT_CONNECTION_FIRST_READ_BUFFER_SIZE_INDEX;
+  MIOBuffer recv_buffer                 = CLIENT_CONNECTION_FIRST_READ_BUFFER_SIZE_INDEX; // Buffer to gather bytes read from peer
   Http2DependencyTree::Node *priority_node = nullptr;
+
+
+  HTTPHdr *
+  get_send_header()
+  {
+    return &_send_header;
+  }
 
   EThread *
   get_thread()
@@ -207,12 +212,7 @@ public:
     return _thread;
   }
 
-  IOBufferReader *response_get_data_reader() const;
-  bool
-  response_is_chunked() const
-  {
-    return chunked;
-  }
+  IOBufferReader *send_get_data_reader() const;
 
   void release(IOBufferReader *r) override;
 
@@ -230,7 +230,7 @@ public:
   void clear_timers();
   void clear_io_events();
   bool
-  is_client_state_writeable() const
+  is_state_writeable() const
   {
     return _state == Http2StreamState::HTTP2_STREAM_STATE_OPEN ||
            _state == Http2StreamState::HTTP2_STREAM_STATE_HALF_CLOSED_REMOTE ||
@@ -263,26 +263,29 @@ public:
   }
 
 private:
-  void response_initialize_data_handling(bool &is_done);
-  void response_process_data(bool &is_done);
-  bool response_is_data_available() const;
+  void initialize_data_handling(bool &is_done);
+  void process_data(bool &is_done);
+  bool send_is_data_available() const;
   Event *send_tracked_event(Event *event, int send_event, VIO *vio);
 
-  HTTPParser http_parser;
+  HTTPParser http_parser; // Header parsing engine
   ink_hrtime _start_time = 0;
   EThread *_thread       = nullptr;
   Http2StreamId _id;
   Http2StreamState _state = Http2StreamState::HTTP2_STREAM_STATE_IDLE;
 
-  MIOBuffer response_buffer;
-  HTTPHdr _req_header;
+  MIOBuffer send_buffer; // Buffer to gather bytes to send to peer
+  HTTPHdr _recv_header; // Structure to process the headers received from peer
+  HTTPHdr _send_header; // Structure to stage headers to send to peer
   VIO read_vio;
   VIO write_vio;
+  IOBufferReader *send_reader          = nullptr;
+  IOBufferReader *recv_reader           = nullptr;
 
   bool trailing_header = false;
   bool body_done       = false;
-  bool chunked         = false;
-  bool initiating_flag = false;
+  bool chunked         = false; // True if the data we are sending is chunked
+  bool initiating_flag = false; // True if the stream sends the request
 
   // A brief disucssion of similar flags and state variables:  _state, closed, terminate_stream
   //

@@ -39,14 +39,6 @@ public:
   void attach_transaction(HttpSM *attach_sm) override;
   void new_connection(NetVConnection *new_vc, MIOBuffer *iobuf, IOBufferReader *reader, bool backdoor) override;
 
-  bool
-  is_setup() const override
-  {
-    return setup;
-  }
-  
-  void update() override;
-
   // noncopyable
   Http2ServerSession(Http2ServerSession &) = delete;
   Http2ServerSession &operator=(const Http2ServerSession &) = delete;
@@ -63,8 +55,6 @@ public:
 
   void do_io_close(int lerrno = -1) override;
 
-private:
-  bool setup = true;
 };
 
 extern ClassAllocator<Http2ServerSession> http2ServerSessionAllocator;

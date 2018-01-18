@@ -159,7 +159,7 @@ rcv_data_frame(Http2ConnectionState &cstate, const Http2Frame &frame)
     if (nbytes + read_len > unpadded_length) {
       read_len -= nbytes + read_len - unpadded_length;
     }
-    nbytes += stream->request_buffer.write(myreader, read_len);
+    nbytes += stream->recv_buffer.write(myreader, read_len);
     myreader->consume(nbytes);
     // If there is an outstanding read, update the buffer
     stream->update_read_request(INT64_MAX, true);
@@ -230,8 +230,8 @@ rcv_headers_frame(Http2ConnectionState &cstate, const Http2Frame &frame)
 
 
   // keep track of how many bytes we get in the frame
-  stream->request_header_length += payload_length;
-  if (stream->request_header_length > Http2::max_request_header_size) {
+  stream->recv_header_length += payload_length;
+  if (stream->recv_header_length > Http2::max_request_header_size) {
     return Http2Error(Http2ErrorClass::HTTP2_ERROR_CLASS_STREAM, Http2ErrorCode::HTTP2_ERROR_PROTOCOL_ERROR,
                       "recv headers payload for headers greater than header length");
   }
@@ -342,10 +342,10 @@ rcv_headers_frame(Http2ConnectionState &cstate, const Http2Frame &frame)
     if (!stream->is_initiating_connection() && !empty_request) {
       stream->new_transaction();
       // Send request header to SM
-      stream->send_request(cstate);
+      stream->recv_headers(cstate);
     } else {
       // Propagate the response header
-      stream->send_request(cstate);
+      stream->recv_headers(cstate);
     }
   } else {
     // NOTE: Expect CONTINUATION Frame. Do NOT change state of stream or decode
@@ -726,7 +726,7 @@ rcv_window_update_frame(Http2ConnectionState &cstate, const Http2Frame &frame)
     ssize_t wnd = std::min(cstate.client_rwnd, stream->client_rwnd);
 
     if (!stream->is_closed() && stream->get_state() == Http2StreamState::HTTP2_STREAM_STATE_HALF_CLOSED_REMOTE && wnd > 0) {
-      stream->send_response_body();
+      stream->send_body();
     }
   }
 
@@ -781,8 +781,8 @@ rcv_continuation_frame(Http2ConnectionState &cstate, const Http2Frame &frame)
   }
 
   // keep track of how many bytes we get in the frame
-  stream->request_header_length += payload_length;
-  if (stream->request_header_length > Http2::max_request_header_size) {
+  stream->recv_header_length += payload_length;
+  if (stream->recv_header_length > Http2::max_request_header_size) {
     return Http2Error(Http2ErrorClass::HTTP2_ERROR_CLASS_CONNECTION, Http2ErrorCode::HTTP2_ERROR_PROTOCOL_ERROR,
                       "continuation payload for headers exceeded");
   }
@@ -821,7 +821,7 @@ rcv_continuation_frame(Http2ConnectionState &cstate, const Http2Frame &frame)
     // Set up the State Machine
     stream->new_transaction();
     // Send request header to SM
-    stream->send_request(cstate);
+    stream->recv_headers(cstate);
   } else {
     // NOTE: Expect another CONTINUATION Frame. Do nothing.
     Http2StreamDebug(cstate.session, stream_id, "No END_HEADERS flag, expecting CONTINUATION frame");
@@ -1090,19 +1090,19 @@ Http2ConnectionState::restart_streams()
     }
     s = static_cast<Http2Stream *>(end->link.next ? end->link.next : stream_list.head);
 
-    // Call send_response_body() for each streams
+    // Call send_body() for each streams
     while (s != end) {
       Http2Stream *next = static_cast<Http2Stream *>(s->link.next ? s->link.next : stream_list.head);
       if (!s->is_closed() && s->get_state() == Http2StreamState::HTTP2_STREAM_STATE_HALF_CLOSED_REMOTE &&
           std::min(this->client_rwnd, s->client_rwnd) > 0) {
-        s->send_response_body();
+        s->send_body();
       }
       ink_assert(s != next);
       s = next;
     }
     if (!s->is_closed() && s->get_state() == Http2StreamState::HTTP2_STREAM_STATE_HALF_CLOSED_REMOTE &&
         std::min(this->client_rwnd, s->client_rwnd) > 0) {
-      s->send_response_body();
+      s->send_body();
     }
 
     ++starting_point;
@@ -1286,7 +1286,7 @@ Http2ConnectionState::send_a_data_frame(Http2Stream *stream, size_t &payload_len
 
   uint8_t flags = 0x00;
   uint8_t payload_buffer[buf_len];
-  IOBufferReader *current_reader = stream->response_get_data_reader();
+  IOBufferReader *current_reader = stream->send_get_data_reader();
 
   SCOPED_MUTEX_LOCK(stream_lock, stream->mutex, this_ethread());
 
@@ -1367,17 +1367,14 @@ Http2ConnectionState::send_data_frames(Http2Stream *stream)
     return;
   }
 
-  /*if (!session->is_setup()) {
-    // Delay if the session is not yet fully up
-  } */
-
   size_t len                      = 0;
   Http2SendDataFrameResult result = Http2SendDataFrameResult::NO_ERROR;
   while (result == Http2SendDataFrameResult::NO_ERROR) {
     result = send_a_data_frame(stream, len);
 
-    if (result == Http2SendDataFrameResult::DONE) {
-      // Delete a stream immediately
+    if (result == Http2SendDataFrameResult::DONE && !stream->is_initiating_connection()) {
+      // Delete a stream immediately if this is the non-initiating side.  
+      // In that case, once we send all of the response, we are done.
       // TODO its should not be deleted for a several time to handling
       // RST_STREAM and WINDOW_UPDATE.
       // See 'closed' state written at [RFC 7540] 5.1.
@@ -1399,18 +1396,14 @@ Http2ConnectionState::send_headers_frame(Http2Stream *stream)
   uint64_t sent               = 0;
   uint8_t flags               = 0x00;
 
-/*  if (!session->is_setup()) {
-    // Delay if we haven't fully handshaked with our server
-    return;
-  } */
-  HTTPHdr *resp_header = &stream->response_header;
+  HTTPHdr *send_header = stream->get_send_header();
 
   Http2StreamDebug(session, stream->get_id(), "Send HEADERS frame");
 
   HTTPHdr h2_hdr;
-  http2_generate_h2_header_from_1_1(resp_header, &h2_hdr);
+  http2_generate_h2_header_from_1_1(send_header, &h2_hdr);
 
-  buf_len = resp_header->length_get() * 2; // Make it double just in case
+  buf_len = send_header->length_get() * 2; // Make it double just in case
   buf     = (uint8_t *)ats_malloc(buf_len);
   if (buf == nullptr) {
     h2_hdr.destroy();
@@ -1428,7 +1421,12 @@ Http2ConnectionState::send_headers_frame(Http2Stream *stream)
   if (header_blocks_size <= static_cast<uint32_t>(BUFFER_SIZE_FOR_INDEX(buffer_size_index[HTTP2_FRAME_TYPE_HEADERS]))) {
     payload_length = header_blocks_size;
     flags |= HTTP2_FLAGS_HEADERS_END_HEADERS;
-    if (stream->is_body_done() || (h2_hdr.presence(MIME_PRESENCE_CONTENT_LENGTH) && h2_hdr.get_content_length() == 0)) {
+    if (h2_hdr.presence(MIME_PRESENCE_CONTENT_LENGTH)) {
+      if (h2_hdr.get_content_length() == 0) {
+        flags |= HTTP2_FLAGS_HEADERS_END_STREAM;
+        stream->send_end_stream = true;
+      }
+    } else if (stream->is_body_done()) {
       flags |= HTTP2_FLAGS_HEADERS_END_STREAM;
       stream->send_end_stream = true;
     }
@@ -1593,9 +1591,9 @@ Http2ConnectionState::send_push_promise_frame(Http2Stream *stream, URL &url, con
     }
   }
   stream->change_state(HTTP2_FRAME_TYPE_PUSH_PROMISE, HTTP2_FLAGS_PUSH_PROMISE_END_HEADERS);
-  stream->set_request_headers(h2_hdr);
+  stream->set_recv_headers(h2_hdr);
   stream->new_transaction();
-  stream->send_request(*this);
+  stream->recv_headers(*this);
 
   h2_hdr.destroy();
 }

@@ -167,10 +167,6 @@ public:
   void free() override;
   void new_connection(NetVConnection *new_vc, MIOBuffer *iobuf, IOBufferReader *reader, bool backdoor) override;
 
-  virtual void update() {}
-
-  virtual bool is_setup() const { return true; }
-
   bool
   ready_to_free() const
   {
