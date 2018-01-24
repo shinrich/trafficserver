@@ -343,6 +343,9 @@ private:
   bool sslTrace                    = false;
   bool SNIMapping                  = false;
   int64_t redoWriteSize            = 0;
+#ifdef SSL_MODE_ASYNC
+  EventIO signalep;
+#endif
 };
 
 typedef int (SSLNetVConnection::*SSLNetVConnHandler)(int, void *);
