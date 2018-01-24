@@ -40,6 +40,7 @@
 #include <openssl/rand.h>
 #include <openssl/dh.h>
 #include <openssl/bn.h>
+#include <openssl/engine.h>
 #include <unistd.h>
 #include <termios.h>
 #include <vector>
@@ -884,6 +885,13 @@ SSLInitializeLibrary()
 
     SSL_load_error_strings();
     SSL_library_init();
+ 
+    ASYNC_init_thread(0,0);
+
+    ENGINE_load_dynamic();
+    ENGINE *e = ENGINE_by_id("async-test");
+    ENGINE_init(e);
+    ENGINE_set_default_RSA(e);
 
 #ifdef OPENSSL_FIPS
     // calling FIPS_mode_set() will force FIPS to POST (Power On Self Test)

@@ -37,6 +37,7 @@
 #include <climits>
 #include <string>
 #include <stdbool.h>
+#include <openssl/async.h>
 
 #if !TS_USE_SET_RBIO
 // Defined in SSLInternal.c, should probably make a separate include
@@ -1114,7 +1115,22 @@ SSLNetVConnection::sslServerHandShakeEvent(int &err)
     } // Still data in the BIO
   }
 
+  SSL_set_mode(ssl, SSL_MODE_ASYNC);
   ssl_error_t ssl_error = SSLAccept(ssl);
+  if (ssl_error == SSL_ERROR_WANT_ASYNC && this->signalep.type == 0) {
+    size_t numfds;
+    OSSL_ASYNC_FD waitfd;
+    // Set up the epoll entry for the signalling
+    if (SSL_get_all_async_fds(ssl, &waitfd, &numfds) && numfds > 0) {
+      PollDescriptor *pd = get_PollDescriptor(this_ethread());
+      this->signalep.start(pd, waitfd, this, EVENTIO_READ);
+      this->signalep.type = EVENTIO_READWRITE_VC;
+    }
+  } else if (ssl_error == SSL_ERROR_NONE || ssl_error == SSL_ERROR_SSL) {
+    // Clean up the epoll entry for signalling
+    SSL_clear_mode(ssl, SSL_MODE_ASYNC);
+    this->signalep.stop();
+  }
   bool trace            = getSSLTrace();
 
   if (ssl_error != SSL_ERROR_NONE) {
@@ -1233,6 +1249,10 @@ SSLNetVConnection::sslServerHandShakeEvent(int &err)
       return SSL_WAIT_FOR_HOOK;
     }
 #endif
+
+  case SSL_ERROR_WANT_ASYNC:
+    TraceIn(trace, get_remote_addr(), get_remote_port(), "SSL server handshake ERROR_WANT_ASYNC");
+    return EVENT_CONT;
 
   case SSL_ERROR_WANT_ACCEPT:
     TraceIn(trace, get_remote_addr(), get_remote_port(), "SSL server handshake ERROR_WANT_ACCEPT");
