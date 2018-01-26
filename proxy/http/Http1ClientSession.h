@@ -65,6 +65,12 @@ public:
   // Indicate we are done with a transaction
   virtual void release(ProxyTransaction *trans);
 
+  bool
+  is_chunked_encoding_supported() const override
+  {
+    return true;
+  }
+
   virtual bool
   is_outbound_transparent() const
   {
