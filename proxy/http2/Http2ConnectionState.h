@@ -72,6 +72,8 @@ public:
   {
     if (0 < id && id < HTTP2_SETTINGS_MAX) {
       return this->settings[indexof(id)];
+    } else if (id == HTTP2_SETTINGS_GRPC_ALLOW_TRUE_BINARY_METADATA) {
+      return 0;
     } else {
       ink_assert(!"Bad Settings Identifier");
     }
@@ -84,6 +86,8 @@ public:
   {
     if (0 < id && id < HTTP2_SETTINGS_MAX) {
       return this->settings[indexof(id)] = value;
+    } else if (id == HTTP2_SETTINGS_GRPC_ALLOW_TRUE_BINARY_METADATA) {
+      return 0;
     } else {
       ink_assert(!"Bad Settings Identifier");
     }

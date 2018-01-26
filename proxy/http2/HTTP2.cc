@@ -150,6 +150,11 @@ http2_settings_parameter_is_valid(const Http2SettingsParameter &param)
     UINT_MAX,              // HTTP2_SETTINGS_MAX_HEADER_LIST_SIZE
   };
 
+  // Just hardcoding the range requirements for this one
+  if (param.id == HTTP2_SETTINGS_GRPC_ALLOW_TRUE_BINARY_METADATA && param.value <= 1) {
+    return true;
+  }
+
   if (param.id == 0 || param.id >= HTTP2_SETTINGS_MAX) {
     return false;
   }
@@ -458,6 +463,11 @@ http2_convert_header_from_2_to_1_1(HTTPHdr *headers)
       http_hdr_method_set(headers->m_heap, headers->m_http, method, method_wks_idx, method_len, false);
     } else {
       return PARSE_RESULT_ERROR;
+    }
+
+    // If the method is POST, make sure there is a content length or a chunked transfer
+    field = headers->field_find(MIME_FIELD_COOKIE, MIME_LEN_COOKIE);
+    if (!field) {
     }
 
     // Combine Cookie headers ([RFC 7540] 8.1.2.5.)

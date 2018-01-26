@@ -224,8 +224,9 @@ enum Http2SettingsIdentifier {
   HTTP2_SETTINGS_INITIAL_WINDOW_SIZE    = 4,
   HTTP2_SETTINGS_MAX_FRAME_SIZE         = 5,
   HTTP2_SETTINGS_MAX_HEADER_LIST_SIZE   = 6,
+  HTTP2_SETTINGS_MAX,  // Really just the max of the "densely numbered" core id's
+  HTTP2_SETTINGS_GRPC_ALLOW_TRUE_BINARY_METADATA = 0xfe03,
 
-  HTTP2_SETTINGS_MAX
 };
 
 // [RFC 7540] 4.1. Frame Format

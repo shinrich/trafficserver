@@ -536,7 +536,7 @@ rcv_settings_frame(Http2ConnectionState &cstate, const Http2Frame &frame)
                           "recv settings bad initial window size");
       } else {
         return Http2Error(Http2ErrorClass::HTTP2_ERROR_CLASS_CONNECTION, Http2ErrorCode::HTTP2_ERROR_PROTOCOL_ERROR,
-                          "recv settings bad param");
+                          "recv settings bad param id");
       }
     }
 
