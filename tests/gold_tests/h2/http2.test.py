@@ -48,8 +48,15 @@ server.addResponse("sessionlog.json",
                    {"headers": "GET /bigfile HTTP/1.1\r\nHost: www.example.com\r\n\r\n", "timestamp": "1469733493.993", "body": ""},
                    {"headers": "HTTP/1.1 200 OK\r\nServer: microserver\r\nConnection: close\r\nCache-Control: max-age=3600\r\nContent-Length: 191414\r\n\r\n", "timestamp": "1469733493.993", "body": ""})
 
-server.addResponse("sessionlog.json",request_header2,response_header2)
-#add ssl materials like key, certificates for the server
+post_body = "12345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890"
+server.addResponse("sessionlog.jason",
+                   {"headers": "POST /postchunked HTTP/1.1\r\nHost: www.example.com\r\n\r\n", 
+                    "timestamp": "1469733493.993",
+                     "body": post_body},
+                   {"headers": "HTTP/1.1 200 OK\r\nServer: microserver\r\nConnection: close\r\nContent-Length: 10\r\n\r\n", "timestamp": "1469733493.993", "body": "0123456789"})
+
+server.addResponse("sessionlog.json", request_header2, response_header2)
+# add ssl materials like key, certificates for the server
 ts.addSSLfile("ssl/server.pem")
 ts.addSSLfile("ssl/server.key")
 
@@ -95,8 +102,15 @@ tr.Processes.Default.Streams.stdout="gold/bigfile.gold"
 tr.StillRunningAfter=server
 
 # Test Case 3: Chunked content
-tr=Test.AddTestRun()
-tr.Processes.Default.Command='python3 h2chunked.py -p {0}  -u /{1}'.format(ts.Variables.ssl_port,requestLocation)
-tr.Processes.Default.ReturnCode=0
-tr.Processes.Default.Streams.stdout="gold/chunked.gold"
-tr.StillRunningAfter=server
+tr = Test.AddTestRun()
+tr.Processes.Default.Command = 'python3 h2chunked.py -p {0}  -u /{1}'.format(ts.Variables.ssl_port, requestLocation)
+tr.Processes.Default.ReturnCode = 0
+tr.Processes.Default.Streams.stdout = "gold/chunked.gold"
+tr.StillRunningAfter = server
+
+# Test Case 4: Post with chunked body
+tr = Test.AddTestRun()
+tr.Processes.Default.Command = 'curl -s -k -H "Transfer-Encoding: chunked" -d "{0}" https://127.0.0.1:{1}/postchunked'.format( post_body, ts.Variables.ssl_port)
+tr.Processes.Default.ReturnCode = 0
+tr.Processes.Default.Streams.All = "gold/post_chunked.gold"
+tr.StillRunningAfter = server
