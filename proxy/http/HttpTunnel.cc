@@ -1001,7 +1001,7 @@ HttpTunnel::producer_run(HttpTunnelProducer *p)
       // (incorrectly) to INT64_MAX.  It needs to be set to 0 to prevent triggering another read.
       producer_n = 0;
     }
-  }
+  } 
 
   if (p->alive) {
     ink_assert(producer_n >= 0);
@@ -1047,7 +1047,6 @@ HttpTunnel::producer_handler_dechunked(int event, HttpTunnelProducer *p)
   case HTTP_TUNNEL_EVENT_PRECOMPLETE:
   case VC_EVENT_EOS:
     p->last_event = p->chunked_handler.last_server_event = event;
-    // TODO: Should we check the return code?
     if (p->chunked_handler.generate_chunked_content()) { // We are done, make sure the consumer is activated
       HttpTunnelConsumer *c;
       for (c = p->consumer_list.head; c; c = c->link.next) {
@@ -1157,6 +1156,15 @@ HttpTunnel::producer_handler(int event, HttpTunnelProducer *p)
   } else if (p->do_dechunking || p->do_chunked_passthru) {
     event = producer_handler_chunked(event, p);
   } else {
+    if (event == VC_EVENT_READ_COMPLETE) {
+      HttpTunnelConsumer *c;
+      for (c = p->consumer_list.head; c; c = c->link.next) {
+        if (c->alive && c->write_vio) {
+          c->write_vio->nbytes = p->init_bytes_done + p->read_vio->ndone;
+          c->write_vio->reenable();
+        }
+      }
+    }
     p->last_event = event;
   }
 

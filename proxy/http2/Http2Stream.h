@@ -214,6 +214,12 @@ public:
 
   IOBufferReader *send_get_data_reader() const;
 
+  bool 
+  send_body_is_chunked() const
+  {
+    return chunked;
+  }
+
   void release(IOBufferReader *r) override;
 
   virtual bool

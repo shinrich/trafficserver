@@ -144,6 +144,7 @@ Http1ServerSession::set_shared()
   // Set our state to KA for stat issues
   this->state = HS_KA_SHARED;
 
+  SCOPED_MUTEX_LOCK(lock, this->allocating_pool->mutex.get(), this_ethread());
   // Now we need to issue a read on the connection to detect
   //  if it closes on us.  We will get called back in the
   //  continuation for this bucket, ensuring we have the lock

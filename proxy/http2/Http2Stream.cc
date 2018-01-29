@@ -623,7 +623,7 @@ Http2Stream::update_write_request(IOBufferReader *buf_reader, int64_t write_len,
 
         // If there is additional data, send it along in a data frame.  Or if this was header only
         // make sure to send the end of stream
-        if (send_event == VC_EVENT_WRITE_COMPLETE && !this->send_is_data_available()) {
+        if (send_event == VC_EVENT_WRITE_COMPLETE && !this->send_is_data_available() && !this->send_body_is_chunked()) {
           this->mark_body_done();
         }
 
@@ -793,7 +793,7 @@ Http2Stream::initialize_data_handling(bool &is_done)
   int chunked_index = _send_header.value_get_index(name, strlen(name), value, strlen(value));
   // -1 means this value was not found for this field
   if (chunked_index >= 0) {
-    Http2StreamDebug("Response is chunked");
+    Http2StreamDebug("Sending body is chunked");
     chunked = true;
     this->chunked_handler.init_by_action(this->send_reader, ChunkedHandler::ACTION_DECHUNK);
     this->chunked_handler.state            = ChunkedHandler::CHUNK_READ_SIZE;
