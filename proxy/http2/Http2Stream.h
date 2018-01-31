@@ -275,7 +275,6 @@ private:
   Http2StreamId _id;
   Http2StreamState _state = Http2StreamState::HTTP2_STREAM_STATE_IDLE;
 
-  MIOBuffer send_buffer; // Buffer to gather bytes to send to peer
   HTTPHdr _recv_header; // Structure to process the headers received from peer
   HTTPHdr _send_header; // Structure to stage headers to send to peer
   VIO read_vio;

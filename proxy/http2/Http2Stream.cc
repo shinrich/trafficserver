@@ -732,7 +732,6 @@ Http2Stream::destroy()
 
   // Drop references to all buffer data
   recv_buffer.clear();
-  send_buffer.clear();
 
   // Free the mutexes in the VIO
   read_vio.mutex.clear();
