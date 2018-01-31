@@ -95,6 +95,8 @@ public:
   // Do nothing in the Http/1 case
   void add_session() override {}
 
+  void updateAfterRelease() override;
+
 private:
   Http1ServerSession(Http1ServerSession &);
 

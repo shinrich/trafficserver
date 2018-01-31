@@ -106,6 +106,8 @@ public:
   // proxy.process.http.current_parent_proxy_connections
   bool to_parent_proxy = false;
 
+  virtual void updateAfterRelease() {};
+
 protected: 
   ServerSessionPool *allocating_pool = nullptr;
 

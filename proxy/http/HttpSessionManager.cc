@@ -393,6 +393,7 @@ HttpSessionManager::release_session(PoolInterface *to_release)
   MUTEX_TRY_LOCK(lock, pool->mutex, ethread);
   if (lock.is_locked()) {
     pool->releaseSession(to_release);
+    to_release->updateAfterRelease();
   } else {
     Debug("http_ss", "[%" PRId64 "] [release session] could not release session due to lock contention", to_release->get_session()->connection_id());
     released_p = false;
@@ -400,6 +401,7 @@ HttpSessionManager::release_session(PoolInterface *to_release)
 
   return released_p ? HSM_DONE : HSM_RETRY;
 }
+
 
 HSMresult_t
 HttpSessionManager::add_session(PoolInterface *to_add)

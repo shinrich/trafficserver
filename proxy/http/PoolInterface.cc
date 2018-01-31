@@ -61,7 +61,6 @@ PoolInterface::release()
     netvc->do_io_write(nullptr, 0, nullptr);
     session->do_io_close();
   } else {
-    session->set_shared();
 
     // The session was successfully put into the session
     //    manager and it will manage it

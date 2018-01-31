@@ -525,7 +525,7 @@ Http2Stream::update_read_request(int64_t read_len, bool call_update)
 void
 Http2Stream::restart_sending()
 {
-  send_response_body();
+  send_body();
   if (this->write_vio.ntodo() > 0 && this->write_vio.get_writer()->write_avail() > 0) {
     write_vio._cont->handleEvent(VC_EVENT_WRITE_READY, &write_vio);
   }
@@ -559,11 +559,11 @@ Http2Stream::update_write_request(IOBufferReader *buf_reader, int64_t write_len,
         buffer_full_write_event = get_thread()->schedule_imm(this, VC_EVENT_WRITE_READY);
       }
     } else {
-      this->response_process_data(is_done);
+      this->process_data(is_done);
     }
   }
 
-  int64_t bytes_avail = this->response_get_data_reader()->read_avail();
+  int64_t bytes_avail = this->send_get_data_reader()->read_avail();
   if (write_vio.nbytes > 0 && write_vio.ntodo() > 0) {
     int64_t num_to_write = write_vio.ntodo();
     if (num_to_write > write_len) {

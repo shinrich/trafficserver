@@ -138,6 +138,13 @@ Http1ServerSession::do_io_close(int alerrno)
   destroy();
 }
 
+// Called under the Session pool lock
+void
+Http1ServerSession::updateAfterRelease()
+{
+  this->set_shared();
+}
+
 void
 Http1ServerSession::set_shared()
 {
