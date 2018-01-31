@@ -214,6 +214,18 @@ public:
   }
 
   IOBufferReader *send_get_data_reader() const;
+  IOBufferReader *recv_get_data_reader() const;
+
+  bool
+  is_send_chunked() const
+  {
+    return chunked_send;
+  }
+  bool
+  is_recv_chunked() const
+  {
+    return chunked_recv;
+  }
 
   void release(IOBufferReader *r) override;
 
@@ -263,10 +275,13 @@ public:
     initiating_flag = true;
   }
 
+  void recv_process_data(IOBufferReader *dechunked_reader, int max_read_len);
 private:
-  void initialize_data_handling(bool &is_done);
-  void process_data(bool &is_done);
+  void send_initialize_data_handling(bool &is_done);
+  void recv_initialize_data_handling(bool &is_done);
+  void send_process_data(bool &is_done);
   bool send_is_data_available() const;
+  bool recv_is_data_available() const;
   Event *send_tracked_event(Event *event, int send_event, VIO *vio);
 
   HTTPParser http_parser; // Header parsing engine
@@ -284,7 +299,8 @@ private:
 
   bool trailing_header = false;
   bool body_done       = false;
-  bool chunked         = false; // True if the data we are sending is chunked
+  bool chunked_send    = false; // True if the data we are sending is chunked
+  bool chunked_recv    = false; // True if the data we are receiving is chunked
   bool initiating_flag = false; // True if the stream sends the request
 
   // A brief disucssion of similar flags and state variables:  _state, closed, terminate_stream
@@ -312,6 +328,7 @@ private:
 
   uint64_t data_length = 0;
   uint64_t bytes_sent  = 0;
+  int offset_to_chunked = 0;
 
   ChunkedHandler chunked_handler;
   Event *cross_thread_event      = nullptr;
