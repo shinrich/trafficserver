@@ -137,6 +137,11 @@ public:
   {
     return trailing_header;
   }
+  void
+  set_trailing_header()
+  {
+    trailing_header = true;
+  }
 
   void
   set_recv_headers(HTTPHdr &h2_headers)

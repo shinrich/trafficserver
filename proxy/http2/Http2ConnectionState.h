@@ -173,15 +173,15 @@ public:
   void update_initial_rwnd(Http2WindowSize new_size);
 
   Http2StreamId
-  get_latest_stream_id_in() const
+  get_latest_stream_id_client() const
   {
-    return latest_streamid_in;
+    return latest_streamid_client;
   }
 
   Http2StreamId
-  get_latest_stream_id_out() const
+  get_latest_stream_id_server() const
   {
-    return latest_streamid_out;
+    return latest_streamid_server;
   }
 
   int
@@ -252,9 +252,9 @@ public:
   is_valid_streamid(Http2StreamId id) const
   {
     if (http2_is_client_streamid(id)) {
-      return id <= get_latest_stream_id_in();
+      return id <= get_latest_stream_id_client();
     } else {
-      return id <= get_latest_stream_id_out();
+      return id <= get_latest_stream_id_server();
     }
   }
 
@@ -292,8 +292,8 @@ private:
   //   If given Stream Identifier is not found in stream_list and it is greater
   //   than latest_streamid_in, the state of Stream is IDLE.
   Queue<Http2Stream> stream_list;
-  Http2StreamId latest_streamid_in  = 0;
-  Http2StreamId latest_streamid_out = 0;
+  Http2StreamId latest_streamid_client  = 0;
+  Http2StreamId latest_streamid_server = 0;
   int stream_requests               = 0;
 
   // Counter for current active streams which is started by client

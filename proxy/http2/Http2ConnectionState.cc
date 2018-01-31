@@ -124,6 +124,8 @@ rcv_data_frame(Http2ConnectionState &cstate, const Http2Frame &frame)
       return Http2Error(Http2ErrorClass::HTTP2_ERROR_CLASS_CONNECTION, Http2ErrorCode::HTTP2_ERROR_PROTOCOL_ERROR,
                         "recv data bad payload length");
     }
+  } else { // Any headers that show up after we've received data are trailing headers
+    stream->set_trailing_header();
   }
 
   // If Data length is 0, do nothing.
@@ -339,7 +341,10 @@ rcv_headers_frame(Http2ConnectionState &cstate, const Http2Frame &frame)
     }
 
     // Set up the State Machine
-    if (!stream->is_initiating_connection() && !empty_request) {
+    if (stream->has_trailing_header()) {
+      // Just treat the trailing headers as data for now
+      // HttpSM doesn't know about it.
+    } else if (!stream->is_initiating_connection() && !empty_request) {
       stream->new_transaction();
       // Send request header to SM
       stream->recv_headers(cstate);
@@ -918,7 +923,7 @@ Http2ConnectionState::main_event_handler(int event, void *edata)
           Error("HTTP/2 connection error client_ip=%s session_id=%" PRId64 " stream_id=%u %s", client_ip,
                 session->connection_id(), stream_id, error.msg);
         }
-        this->send_goaway_frame(this->latest_streamid_in, error.code);
+        this->send_goaway_frame(this->latest_streamid_client, error.code);
         this->session->set_half_close_local_flag(true);
         this_ethread()->schedule_imm_local((Continuation *)this, HTTP2_SESSION_EVENT_FINI);
 
@@ -955,7 +960,7 @@ Http2ConnectionState::main_event_handler(int event, void *edata)
     shutdown_state      = HTTP2_SHUTDOWN_IN_PROGRESS;
     // [RFC 7540] 6.8.  GOAWAY
     // ..., the server can send another GOAWAY frame with an updated last stream identifier
-    send_goaway_frame(latest_streamid_in, Http2ErrorCode::HTTP2_ERROR_NO_ERROR);
+    send_goaway_frame(latest_streamid_client, Http2ErrorCode::HTTP2_ERROR_NO_ERROR);
     // Stop creating new streams
     SCOPED_MUTEX_LOCK(lock, this->session->mutex, this_ethread());
     this->session->set_half_close_local_flag(true);
@@ -1004,13 +1009,13 @@ Http2ConnectionState::create_stream(Http2StreamId new_id, Http2Error &error, boo
   // receives an unexpected stream identifier MUST respond with a
   // connection error (Section 5.4.1) of type PROTOCOL_ERROR.
   if (client_streamid) {
-    if (new_id <= latest_streamid_in) {
+    if (new_id <= latest_streamid_client) {
       error = Http2Error(Http2ErrorClass::HTTP2_ERROR_CLASS_CONNECTION, Http2ErrorCode::HTTP2_ERROR_PROTOCOL_ERROR,
                          "recv headers new client id less than latest stream id");
       return nullptr;
     }
   } else {
-    if (new_id <= latest_streamid_out) {
+    if (new_id <= latest_streamid_server) {
       error = Http2Error(Http2ErrorClass::HTTP2_ERROR_CLASS_CONNECTION, Http2ErrorCode::HTTP2_ERROR_PROTOCOL_ERROR,
                          "recv headers new server id less than latest stream id");
       return nullptr;
@@ -1042,11 +1047,11 @@ Http2ConnectionState::create_stream(Http2StreamId new_id, Http2Error &error, boo
 
   stream_list.enqueue(new_stream);
   if (client_streamid) {
-    latest_streamid_in = new_id;
+    latest_streamid_client = new_id;
     ink_assert(client_streams_in_count < UINT32_MAX);
     ++client_streams_in_count;
   } else {
-    latest_streamid_out = new_id;
+    latest_streamid_server = new_id;
     ink_assert(client_streams_out_count < UINT32_MAX);
     ++client_streams_out_count;
   }
@@ -1440,7 +1445,7 @@ Http2ConnectionState::send_headers_frame(Http2Stream *stream)
 
   // Change stream state
   if (!stream->change_state(HTTP2_FRAME_TYPE_HEADERS, flags)) {
-    this->send_goaway_frame(this->latest_streamid_in, Http2ErrorCode::HTTP2_ERROR_PROTOCOL_ERROR);
+    this->send_goaway_frame(this->latest_streamid_client, Http2ErrorCode::HTTP2_ERROR_PROTOCOL_ERROR);
     this->session->set_half_close_local_flag(true);
     this_ethread()->schedule_imm_local((Continuation *)this, HTTP2_SESSION_EVENT_FINI);
 
@@ -1542,7 +1547,7 @@ Http2ConnectionState::send_push_promise_frame(Http2Stream *stream, URL &url, con
   }
   Http2Frame headers(HTTP2_FRAME_TYPE_PUSH_PROMISE, stream->get_id(), flags);
   headers.alloc(buffer_size_index[HTTP2_FRAME_TYPE_PUSH_PROMISE]);
-  Http2StreamId id               = this->get_latest_stream_id_out() + 2;
+  Http2StreamId id               = this->get_latest_stream_id_server() + 2;
   push_promise.promised_streamid = id;
   http2_write_push_promise(push_promise, buf, payload_length, headers.write());
   headers.finalize(sizeof(push_promise.promised_streamid) + payload_length);
@@ -1617,7 +1622,7 @@ Http2ConnectionState::send_rst_stream_frame(Http2StreamId id, Http2ErrorCode ec)
   Http2Stream *stream = find_stream(id);
   if (stream != nullptr) {
     if (!stream->change_state(HTTP2_FRAME_TYPE_RST_STREAM, 0)) {
-      this->send_goaway_frame(this->latest_streamid_in, Http2ErrorCode::HTTP2_ERROR_PROTOCOL_ERROR);
+      this->send_goaway_frame(this->latest_streamid_client, Http2ErrorCode::HTTP2_ERROR_PROTOCOL_ERROR);
       this->session->set_half_close_local_flag(true);
       this_ethread()->schedule_imm_local((Continuation *)this, HTTP2_SESSION_EVENT_FINI);
 
@@ -1653,7 +1658,7 @@ Http2ConnectionState::send_settings_frame(const Http2ConnectionSettings &new_set
 
       // Write settings to send buffer
       if (!http2_write_settings(param, iov)) {
-        this->send_goaway_frame(this->latest_streamid_in, Http2ErrorCode::HTTP2_ERROR_INTERNAL_ERROR);
+        this->send_goaway_frame(this->latest_streamid_client, Http2ErrorCode::HTTP2_ERROR_INTERNAL_ERROR);
         this->session->set_half_close_local_flag(true);
         this_ethread()->schedule_imm_local((Continuation *)this, HTTP2_SESSION_EVENT_FINI);
 
@@ -1669,6 +1674,12 @@ Http2ConnectionState::send_settings_frame(const Http2ConnectionSettings &new_set
       Http2StreamDebug(session, stream_id, "  %s : %u", Http2DebugNames::get_settings_param_name(param.id), param.value);
     }
   }
+  Http2SettingsIdentifier id = static_cast<Http2SettingsIdentifier>(HTTP2_SETTINGS_GRPC_ALLOW_TRUE_BINARY_METADATA); 
+  unsigned settings_value    = 1;
+
+  // Write settings to send buffer
+  const Http2SettingsParameter param = {static_cast<uint16_t>(id), settings_value};
+  http2_write_settings(param, iov);
 
   settings.finalize(settings_length);
   SCOPED_MUTEX_LOCK(lock, this->session->mutex, this_ethread());

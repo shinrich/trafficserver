@@ -508,8 +508,8 @@ Http2Stream::update_read_request(int64_t read_len, bool call_update, bool check_
       }
     } else {
       // Try to be smart and only signal if there was additional data
-      int send_event = (read_vio.nbytes == read_vio.ndone) ? VC_EVENT_READ_COMPLETE : VC_EVENT_READ_READY;
-      if (recv_reader->read_avail() > 0 || send_event == VC_EVENT_READ_COMPLETE) {
+      if (recv_reader->read_avail() > 0 || read_vio.nbytes == read_vio.ndone || (check_eos && recv_end_stream)) {
+        int send_event = (read_vio.nbytes == read_vio.ndone || (check_eos && recv_end_stream)) ? VC_EVENT_READ_COMPLETE : VC_EVENT_READ_READY;
         if (call_update) { // Safe to call vio handler directly
           inactive_timeout_at = Thread::get_hrtime() + inactive_timeout;
           if (read_vio._cont && this->current_reader) {
@@ -623,7 +623,8 @@ Http2Stream::update_write_request(IOBufferReader *buf_reader, int64_t write_len,
 
         // If there is additional data, send it along in a data frame.  Or if this was header only
         // make sure to send the end of stream
-        if (send_event == VC_EVENT_WRITE_COMPLETE && !this->send_is_data_available() && !this->send_body_is_chunked()) {
+        if (send_event == VC_EVENT_WRITE_COMPLETE && !this->send_is_data_available() && !this->send_body_is_chunked() &&
+          this->_send_header.presence(MIME_PRESENCE_CONTENT_LENGTH)) {
           this->mark_body_done();
         }
 

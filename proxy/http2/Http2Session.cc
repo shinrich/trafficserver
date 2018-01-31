@@ -509,7 +509,7 @@ Http2Session::state_process_frame_read(int event, VIO *vio, bool inside_frame)
       if (err > Http2ErrorCode::HTTP2_ERROR_NO_ERROR) {
         SCOPED_MUTEX_LOCK(lock, this->connection_state.mutex, this_ethread());
         if (!this->connection_state.is_state_closed()) {
-          this->connection_state.send_goaway_frame(this->connection_state.get_latest_stream_id_in(), err);
+          this->connection_state.send_goaway_frame(this->connection_state.get_latest_stream_id_client(), err);
           this->set_half_close_local_flag(true);
           this->do_io_close();
         }

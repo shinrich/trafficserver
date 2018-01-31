@@ -465,11 +465,6 @@ http2_convert_header_from_2_to_1_1(HTTPHdr *headers)
       return PARSE_RESULT_ERROR;
     }
 
-    // If the method is POST, make sure there is a content length or a chunked transfer
-    field = headers->field_find(MIME_FIELD_COOKIE, MIME_LEN_COOKIE);
-    if (!field) {
-    }
-
     // Combine Cookie headers ([RFC 7540] 8.1.2.5.)
     field = headers->field_find(MIME_FIELD_COOKIE, MIME_LEN_COOKIE);
     if (field) {
@@ -593,6 +588,12 @@ http2_generate_h2_header_from_1_1(HTTPHdr *headers, HTTPHdr *h2_headers)
     newfield->value_set(h2_headers->m_heap, h2_headers->m_mime, value, value_len);
     h2_headers->field_attach(newfield);
   }
+ 
+  // Stuff in the TE field for now SKH
+  MIMEField *newfield = h2_headers->field_create(MIME_FIELD_TE, MIME_LEN_TE);
+  const char *value = "trailers";
+  newfield->value_set(h2_headers->m_heap, h2_headers->m_mime, value, 8);
+  h2_headers->field_attach(newfield);
 }
 
 Http2ErrorCode
