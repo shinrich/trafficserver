@@ -598,21 +598,6 @@ Http2Stream::update_write_request(IOBufferReader *buf_reader, int64_t write_len,
       case PARSE_RESULT_DONE: {
         this->parsing_header_done = true;
 
-        if (!this->is_initiating_connection()) {
-          // Schedule session shutdown if response header has "Connection: close"
-          MIMEField *field = this->_send_header.field_find(MIME_FIELD_CONNECTION, MIME_LEN_CONNECTION);
-          if (field) {
-            int len;
-            const char *value = field->value_get(&len);
-            if (memcmp(HTTP_VALUE_CLOSE, value, HTTP_LEN_CLOSE) == 0) {
-              SCOPED_MUTEX_LOCK(lock, this->mutex, this_ethread());
-              if (parent->connection_state.get_shutdown_state() == HTTP2_SHUTDOWN_NONE) {
-                parent->connection_state.set_shutdown_state(HTTP2_SHUTDOWN_NOT_INITIATED);
-              }
-            }
-          }
-        }
-
         // See if the request or response is chunked.  Set up the dechunking logic if it is
         // Make sure to check if the chunk is complete and signal appropriately
         this->initialize_data_handling(is_done);

@@ -203,6 +203,7 @@ ProxySession::handle_api_return(int event)
     if (vc) {
       vc->do_io_close();
       this->release_netvc();
+      this->set_netvc(nullptr);
     }
     free(); // You can now clean things up
     break;
