@@ -5735,7 +5735,7 @@ HttpSM::handle_server_setup_error(int event, void *data)
   }
 
   // Closedown server connection and deallocate buffers
-  ink_assert(server_entry->in_tunnel == false);
+  ink_assert(!server_entry || server_entry->in_tunnel == false);
 
   // if we are waiting on a plugin callout for
   //   HTTP_API_SEND_REQUEST_HDR defer calling transact until
