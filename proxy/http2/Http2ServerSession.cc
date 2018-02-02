@@ -42,7 +42,8 @@ void
 Http2ServerSession::attach_transaction(HttpSM *attach_sm) 
 {
   // In == client side
-  Http2StreamId stream_id = connection_state.get_latest_stream_id_in() + 2;
+  Http2StreamId latest_id = connection_state.get_latest_stream_id_in();
+  Http2StreamId stream_id =  (latest_id == 0) ? 1 : latest_id + 2;
   this->set_session_active();
 
   // Create a new stream/transaction

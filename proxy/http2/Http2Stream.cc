@@ -303,7 +303,7 @@ Http2Stream::do_io_read(Continuation *c, int64_t nbytes, MIOBuffer *buf)
 
   // Is there already data in the recv_buffer?  If so, copy it over and then
   // schedule a READ_READY or READ_COMPLETE event after we return.
-  update_read_request(nbytes, false);
+  update_read_request(nbytes, false, true);
 
   return &read_vio;
 }
@@ -322,8 +322,17 @@ Http2Stream::do_io_write(Continuation *c, int64_t nbytes, IOBufferReader *abuffe
   write_vio.ndone     = 0;
   write_vio.vc_server = this;
   write_vio.op        = VIO::WRITE;
-  send_reader = abuffer;
-  return update_write_request(abuffer, nbytes, false) ? &write_vio : nullptr;
+  if (chunked_send) { 
+    chunked_handler.chunked_reader = abuffer;
+    send_reader =  nullptr;
+  } else {
+    send_reader = abuffer;
+  }
+  if (update_write_request(abuffer, nbytes, false)) {
+    return &write_vio;
+  } else {
+    return nullptr;
+  }
 }
 
 // Initiated from SM
@@ -476,7 +485,7 @@ Http2Stream::send_tracked_event(Event *event, int send_event, VIO *vio)
 }
 
 void
-Http2Stream::update_read_request(int64_t read_len, bool call_update)
+Http2Stream::update_read_request(int64_t read_len, bool call_update, bool check_eos)
 {
   if (closed || parent == nullptr || current_reader == nullptr || read_vio.mutex == nullptr) {
     return;
@@ -502,10 +511,10 @@ Http2Stream::update_read_request(int64_t read_len, bool call_update)
       }
       if (num_to_read > 0) {
         int bytes_added = read_vio.buffer.writer()->write(reader, num_to_read);
-        if (bytes_added > 0) {
+        if (bytes_added > 0 || (check_eos && recv_end_stream)) {
           reader->consume(bytes_added);
           read_vio.ndone += bytes_added;
-          int send_event = (read_vio.nbytes == read_vio.ndone) ? VC_EVENT_READ_COMPLETE : VC_EVENT_READ_READY;
+          int send_event = (read_vio.nbytes == read_vio.ndone || recv_end_stream) ? VC_EVENT_READ_COMPLETE : VC_EVENT_READ_READY;
           if (call_update) { // Safe to call vio handler directly
             inactive_timeout_at = Thread::get_hrtime() + inactive_timeout;
             if (read_vio._cont && this->current_reader) {
@@ -518,8 +527,8 @@ Http2Stream::update_read_request(int64_t read_len, bool call_update)
       }
     } else {
       // Try to be smart and only signal if there was additional data
-      int send_event = (read_vio.nbytes == read_vio.ndone) ? VC_EVENT_READ_COMPLETE : VC_EVENT_READ_READY;
-      if (reader->read_avail() > 0 || send_event == VC_EVENT_READ_COMPLETE) {
+      if (reader->read_avail() > 0 || read_vio.nbytes == read_vio.ndone || (check_eos && recv_end_stream)) {
+        int send_event = (read_vio.nbytes == read_vio.ndone || (check_eos && recv_end_stream)) ? VC_EVENT_READ_COMPLETE : VC_EVENT_READ_READY;
         if (call_update) { // Safe to call vio handler directly
           inactive_timeout_at = Thread::get_hrtime() + inactive_timeout;
           if (read_vio._cont && this->current_reader) {
@@ -589,7 +598,7 @@ Http2Stream::update_write_request(IOBufferReader *buf_reader, int64_t write_len,
 
   Http2StreamDebug("write_vio.nbytes=%" PRId64 ", write_vio.ndone=%" PRId64 ", write_vio.write_avail=%" PRId64
                    ", reader.read_avail=%" PRId64,
-                   write_vio.nbytes, write_vio.ndone, write_vio.get_writer()->write_avail(), bytes_avail);
+                   write_vio.nbytes, write_vio.ndone, write_vio.get_writer() ? write_vio.get_writer()->write_avail() : 0, bytes_avail);
 
   if (bytes_avail > 0 || is_done) {
     int send_event = (write_vio.ntodo() == bytes_avail || is_done) ? VC_EVENT_WRITE_COMPLETE : VC_EVENT_WRITE_READY;
@@ -620,7 +629,8 @@ Http2Stream::update_write_request(IOBufferReader *buf_reader, int64_t write_len,
 
         // If there is additional data, send it along in a data frame.  Or if this was header only
         // make sure to send the end of stream
-        if (send_event == VC_EVENT_WRITE_COMPLETE && !this->send_is_data_available()) {
+        if (send_event == VC_EVENT_WRITE_COMPLETE && !this->send_is_data_available() && !this->is_send_chunked() &&
+            !this->_send_header.presence(MIME_PRESENCE_CONTENT_LENGTH)) {
           this->mark_body_done();
         }
 

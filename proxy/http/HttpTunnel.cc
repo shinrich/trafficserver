@@ -885,6 +885,8 @@ HttpTunnel::producer_run(HttpTunnelProducer *p)
     consumer_n = (producer_n = INT64_MAX);
   }
 
+  int producer_event = VC_EVENT_READ_READY;
+
   // Do the IO on the consumers first so
   //  data doesn't disappear out from
   //  under the tunnel
@@ -955,6 +957,11 @@ HttpTunnel::producer_run(HttpTunnelProducer *p)
         }
       }
       c->write_vio = c->vc->do_io_write(this, c_write, c->buffer_reader);
+      if (!c->write_vio) {
+        // If all the chunked data was consumed in the first slurp, pass in PRECOMPLETE
+        // for the producer run
+        producer_event = HTTP_TUNNEL_EVENT_PRECOMPLETE;
+      }
       ink_assert(c_write > 0);
     }
 
@@ -984,7 +991,7 @@ HttpTunnel::producer_run(HttpTunnelProducer *p)
     p->chunked_handler.dechunked_reader->consume(p->chunked_handler.skip_bytes);
 
     // If there is data to process in the buffer, do it now
-    producer_handler(VC_EVENT_READ_READY, p);
+    producer_handler(producer_event, p);
   } else if (p->do_dechunking || p->do_chunked_passthru) {
     // remove the dechunked reader marker so that it doesn't act like a buffer guard
     if (p->do_dechunking && dechunked_buffer_start) {
@@ -1004,7 +1011,7 @@ HttpTunnel::producer_run(HttpTunnelProducer *p)
     // p->chunked_handler.chunked_reader->consume(
     // p->chunked_handler.skip_bytes);
 
-    producer_handler(VC_EVENT_READ_READY, p);
+    producer_handler(producer_event, p);
     if (!p->chunked_handler.chunked_reader->read_avail() && sm->redirection_tries > 0 &&
         p->vc_type == HT_HTTP_CLIENT) { // read_avail() == 0
       // [bug 2579251]
@@ -1058,8 +1065,8 @@ HttpTunnel::producer_handler_dechunked(int event, HttpTunnelProducer *p)
   case VC_EVENT_READ_COMPLETE:
   case HTTP_TUNNEL_EVENT_PRECOMPLETE:
   case VC_EVENT_EOS:
+    // TODO use return value.
     p->last_event = p->chunked_handler.last_server_event = event;
-    // TODO: Should we check the return code?
     p->chunked_handler.generate_chunked_content();
     break;
   };
