@@ -87,6 +87,8 @@ ChunkedHandler::init_by_action(IOBufferReader *buffer_in, Action action)
   bytes_left     = 0;
   truncation     = false;
   this->action   = action;
+  chunked_trailer_size = 0;
+  chunked_trailer_reader = nullptr;
 
   switch (action) {
   case ACTION_DOCHUNK:
@@ -267,6 +269,9 @@ ChunkedHandler::read_trailer()
   while (chunked_reader->is_read_avail_more_than(0) && !done) {
     const char *tmp   = chunked_reader->start();
     int64_t data_size = chunked_reader->block_read_avail();
+    if (!chunked_trailer_reader) {
+      chunked_trailer_reader = chunked_reader->writer()->clone_reader(chunked_reader);
+    }
 
     ink_assert(data_size > 0);
     for (bytes_used = 0; data_size > 0; data_size--) {
@@ -299,6 +304,7 @@ ChunkedHandler::read_trailer()
       tmp++;
     }
     chunked_reader->consume(bytes_used);
+    chunked_trailer_size += bytes_used;
   }
 }
 
@@ -328,6 +334,35 @@ ChunkedHandler::process_chunked_content()
     }
   }
   return (state == CHUNK_READ_DONE || state == CHUNK_READ_ERROR);
+}
+
+bool
+ChunkedHandler::generate_chunked_trailer()
+{
+  int64_t r_avail;
+
+  int64_t total_max_to_read = dechunked_reader->read_avail();
+  int64_t total_processed = 0;
+
+  while (total_processed < total_max_to_read) {
+    // Add the chunked transfer coding trailer.
+    chunked_buffer->write("0\r\n", 3);
+    chunked_size += 3;
+
+    r_avail = dechunked_reader->read_avail();
+    int64_t write_val = r_avail;
+
+    chunked_buffer->write(dechunked_reader, write_val);
+    chunked_size += write_val;
+    dechunked_reader->consume(write_val);
+
+    // Output the trailing CRLF.
+    chunked_buffer->write("\r\n", 2);
+    chunked_size += 2;
+    total_processed += write_val;
+  }
+
+  return true;
 }
 
 bool

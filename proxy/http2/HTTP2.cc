@@ -504,6 +504,12 @@ http2_convert_header_from_2_to_1_1(HTTPHdr *headers)
 
     // Remove HTTP/2 style headers
     headers->field_delete(HTTP2_VALUE_STATUS, HTTP2_LEN_STATUS);
+
+    // If there is no content length, add a transfer_encoding to trigger the appropriate generate chunking logic
+    if (!headers->presence(MIME_PRESENCE_CONTENT_LENGTH)) {
+      // Add the Transfer-Encoding header to trigger the chunked logic
+      headers->value_append(MIME_FIELD_TRANSFER_ENCODING, MIME_LEN_TRANSFER_ENCODING, HTTP_VALUE_CHUNKED, HTTP_LEN_CHUNKED, true);
+    }
   }
 
   // Check validity of all names and values
@@ -685,7 +691,7 @@ http2_decode_header_blocks(HTTPHdr *hdr, const uint8_t *buf_start, const uint32_
   if (hdr->field_find(MIME_FIELD_CONNECTION, MIME_LEN_CONNECTION) != nullptr ||
       hdr->field_find(MIME_FIELD_KEEP_ALIVE, MIME_LEN_KEEP_ALIVE) != nullptr ||
       hdr->field_find(MIME_FIELD_PROXY_CONNECTION, MIME_LEN_PROXY_CONNECTION) != nullptr ||
-      hdr->field_find(MIME_FIELD_TRANSFER_ENCODING, MIME_LEN_TRANSFER_ENCODING) != nullptr ||
+      //hdr->field_find(MIME_FIELD_TRANSFER_ENCODING, MIME_LEN_TRANSFER_ENCODING) != nullptr ||
       hdr->field_find(MIME_FIELD_UPGRADE, MIME_LEN_UPGRADE) != nullptr) {
     return Http2ErrorCode::HTTP2_ERROR_PROTOCOL_ERROR;
   }

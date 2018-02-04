@@ -139,6 +139,12 @@ public:
   }
 
   void
+  set_trailing_header()
+  {
+    trailing_header = true;
+  }
+
+  void
   set_recv_headers(HTTPHdr &h2_headers)
   {
     _recv_header.copy(&h2_headers);
@@ -198,6 +204,7 @@ public:
   bool is_first_transaction_flag = false;
 
   MIOBuffer recv_buffer                 = CLIENT_CONNECTION_FIRST_READ_BUFFER_SIZE_INDEX; // Buffer to gather bytes read from peer
+  MIOBuffer recv_trailer_buffer         = CLIENT_CONNECTION_FIRST_READ_BUFFER_SIZE_INDEX; // Buffer to gather bytes read from peer
   Http2DependencyTree::Node *priority_node = nullptr;
 
 
@@ -276,6 +283,7 @@ public:
   }
 
   void recv_process_data(IOBufferReader *dechunked_reader, int max_read_len);
+  void recv_process_trailer();
 private:
   void send_initialize_data_handling(bool &is_done);
   void recv_initialize_data_handling(bool &is_done);
@@ -296,6 +304,7 @@ private:
   VIO write_vio;
   IOBufferReader *send_reader          = nullptr;
   IOBufferReader *recv_reader           = nullptr;
+  int first_trailer_slot = 0;
 
   bool trailing_header = false;
   bool body_done       = false;

@@ -143,39 +143,68 @@ Http2Stream::decode_header_blocks(HpackHandle &hpack_handle, uint32_t maximum_ta
 void
 Http2Stream::recv_headers(Http2ConnectionState &cstate)
 {
+  bool first_header = true;
+  int last_slot = 0;
+
   // Convert header to HTTP/1.1 format
   http2_convert_header_from_2_to_1_1(&_recv_header);
-
-  // Write header to a buffer.  Borrowing logic from HttpSM::write_header_into_buffer.
-  // Seems like a function like this ought to be in HTTPHdr directly
-  int bufindex;
-  int dumpoffset = 0;
-  int done, tmp;
-  IOBufferBlock *block;
-  do {
-    bufindex = 0;
-    tmp      = dumpoffset;
-    block    = recv_buffer.get_current_block();
-    if (!block) {
-      recv_buffer.add_block();
-      block = recv_buffer.get_current_block();
-    }
-    done = _recv_header.print(block->start(), block->write_avail(), &bufindex, &tmp);
-    dumpoffset += bufindex;
-    recv_buffer.fill(bufindex);
-    if (!done) {
-      recv_buffer.add_block();
-    }
-  } while (!done);
-
-  // Should the data be chunked?
-  bool is_done = false;
-  this->offset_to_chunked = dumpoffset;
-  this->recv_initialize_data_handling(is_done);
-  if (chunked_recv) {
-    Http2StreamDebug("recv_headers: Not chunked");
+  if (!this->first_trailer_slot) {
+    this->first_trailer_slot  =  _recv_header.fields_count();
   } else {
-    this->offset_to_chunked = 0;
+    first_header = false;
+    last_slot  =  _recv_header.fields_count();
+  }
+
+  Debug("http2", "Trailer slot %d %d", first_trailer_slot, last_slot);
+
+  int dumpoffset = 0;
+  if (!first_header) { // This is the trailing header.  Only emit trailing headers
+    for (int slotnum = first_trailer_slot+1; slotnum <=  last_slot; slotnum++) {
+      MIMEField *f = mime_hdr_field_get_slotnum(_recv_header.m_mime, slotnum);
+      int len = 0;
+      const char *value = f->name_get(&len);
+      int nbytes = recv_trailer_buffer.write(value, len);
+      value = ":";
+      nbytes += recv_trailer_buffer.write(value, 1);
+      value = f->value_get(&len);
+      nbytes += recv_trailer_buffer.write(value, len);
+      value = "\r\n";
+      nbytes += recv_trailer_buffer.write(value, 2);
+    }
+
+    // Finish up the chunked encoding
+    recv_process_trailer();
+  } else { //  First headers,  print everything
+    // Write header to a buffer.  Borrowing logic from HttpSM::write_header_into_buffer.
+    // Seems like a function like this ought to be in HTTPHdr directly
+    int bufindex;
+    int done, tmp;
+    IOBufferBlock *block;
+    do {
+      bufindex = 0;
+      tmp      = dumpoffset;
+      block    = recv_buffer.get_current_block();
+     if (!block) {
+       recv_buffer.add_block();
+       block = recv_buffer.get_current_block();
+     }
+     done = _recv_header.print(block->start(), block->write_avail(), &bufindex, &tmp);
+     dumpoffset += bufindex;
+     recv_buffer.fill(bufindex);
+     if (!done) {
+       recv_buffer.add_block();
+     }
+    } while (!done);
+
+    // Should the data be chunked?
+    bool is_done = false;
+    this->offset_to_chunked = dumpoffset;
+    this->recv_initialize_data_handling(is_done);
+    if (chunked_recv) {
+      Http2StreamDebug("recv_headers: Not chunked");
+    } else {
+      this->offset_to_chunked = 0;
+    }
   }
 
   // Is there a read_vio request waiting?
@@ -669,8 +698,18 @@ Http2Stream::update_write_request(IOBufferReader *buf_reader, int64_t write_len,
       if (send_event == VC_EVENT_WRITE_COMPLETE) {
         // Defer sending the write complete until the send_data_frame has sent it all
         // this_ethread()->schedule_imm(this, send_event, &write_vio);
-        this->mark_body_done();
+
+        // If there is no trailer, go ahead and mark the data frame done    
+        if (!chunked_handler.chunk_trailer_reader) {
+          this->mark_body_done();
+        }
         send_body();
+        if (chunked_handler.chunk_trailer_reader) {
+          this->mark_body_done();
+          // Send the last header
+          MIMEHdr hdr.create();
+        headers->value_append(MIME_FIELD_TRANSFER_ENCODING, MIME_LEN_TRANSFER_ENCODING, HTTP_VALUE_CHUNKED, HTTP_LEN_CHUNKED, true);
+        }
         retval = false;
       } else {
         send_body();
@@ -755,6 +794,7 @@ Http2Stream::destroy()
 
   // Drop references to all buffer data
   recv_buffer.clear();
+  recv_trailer_buffer.clear();
 
   // Free the mutexes in the VIO
   read_vio.mutex.clear();
@@ -849,6 +889,7 @@ Http2Stream::send_process_data(bool &done)
     } while (chunked_handler.state == ChunkedHandler::CHUNK_FLOW_CONTROL);
   }
 }
+
 void
 Http2Stream::recv_process_data(IOBufferReader *dechunked_reader, int max_read_len)
 {
@@ -858,6 +899,16 @@ Http2Stream::recv_process_data(IOBufferReader *dechunked_reader, int max_read_le
     }
     chunked_handler.dechunked_reader = dechunked_reader;
     this->chunked_handler.generate_chunked_content(max_read_len);
+  }
+}
+
+void
+Http2Stream::recv_process_trailer()
+{
+  if (chunked_recv) {
+    chunked_handler.last_server_event = VC_EVENT_READ_COMPLETE;
+    chunked_handler.dechunked_reader = recv_trailer_buffer.alloc_reader();
+    this->chunked_handler.generate_chunked_trailer();
   }
 }
 

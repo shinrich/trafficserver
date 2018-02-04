@@ -124,6 +124,8 @@ rcv_data_frame(Http2ConnectionState &cstate, const Http2Frame &frame)
       return Http2Error(Http2ErrorClass::HTTP2_ERROR_CLASS_CONNECTION, Http2ErrorCode::HTTP2_ERROR_PROTOCOL_ERROR,
                         "recv data bad payload length");
     }
+  } else { // Any headers that show up after we received data are by definition trailing headers
+    stream->set_trailing_header();
   }
 
   // If Data length is 0, do nothing.
