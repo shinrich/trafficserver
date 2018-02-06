@@ -575,10 +575,7 @@ Http2Stream::update_read_request(int64_t read_len, bool call_update, bool check_
 void
 Http2Stream::restart_sending()
 {
-  send_body();
-  if (this->write_vio.ntodo() > 0 && this->write_vio.get_writer()->write_avail() > 0) {
-    write_vio._cont->handleEvent(VC_EVENT_WRITE_READY, &write_vio);
-  }
+  this->send_body(true);
 }
 
 bool
@@ -630,8 +627,6 @@ Http2Stream::update_write_request(IOBufferReader *buf_reader, int64_t write_len,
                    write_vio.nbytes, write_vio.ndone, write_vio.get_writer() ? write_vio.get_writer()->write_avail() : 0, bytes_avail);
 
   if (bytes_avail > 0 || is_done) {
-    int send_event = (write_vio.ntodo() == bytes_avail || is_done) ? VC_EVENT_WRITE_COMPLETE : VC_EVENT_WRITE_READY;
-
     // Process the new data
     if (!this->parsing_header_done) {
       // Still parsing the request or response header
@@ -652,39 +647,15 @@ Http2Stream::update_write_request(IOBufferReader *buf_reader, int64_t write_len,
         // See if the request or response is chunked.  Set up the dechunking logic if it is
         // Make sure to check if the chunk is complete and signal appropriately
         this->send_initialize_data_handling(is_done);
-        if (is_done) {
-          send_event = VC_EVENT_WRITE_COMPLETE;
-        }
 
         // If there is additional data, send it along in a data frame.  Or if this was header only
         // make sure to send the end of stream
-        if (send_event == VC_EVENT_WRITE_COMPLETE && !this->send_is_data_available() && !this->is_send_chunked() &&
-            !this->_send_header.presence(MIME_PRESENCE_CONTENT_LENGTH)) {
-          this->mark_body_done();
-        }
-
-        // Send the requiest or response header to peer
-        parent->connection_state.send_headers_frame(this);
-
-        if (this->send_is_data_available()) {
-          if (send_event != VC_EVENT_WRITE_COMPLETE) {
-            send_body();
-            // As with update_read_request, should be safe to call handler directly here if
-            // call_update is true.  Commented out for now while tracking a performance regression
-            if (call_update) { // Coming from reenable.  Safe to call the handler directly
-              if (write_vio._cont && this->current_reader) {
-                write_vio._cont->handleEvent(send_event, &write_vio);
-              }
-            } else { // Called from do_io_write.  Might still be setting up state.  Send an event to let the dust settle
-              write_event = send_tracked_event(write_event, send_event, &write_vio);
-            }
-          } else {
+        if (this->send_is_data_available() || is_done) {
+          if ((write_vio.ntodo() + this->send_header.length_get()) == bytes_avail || is_done) {
             this->mark_body_done();
-            // Send the data frame
-            send_body();
           }
-        } else {
-          write_event = send_tracked_event(write_event, send_event, &write_vio);
+
+          this->send_body(call_update);
         }
         break;
       }
@@ -695,37 +666,39 @@ Http2Stream::update_write_request(IOBufferReader *buf_reader, int64_t write_len,
         break;
       }
     } else {
-      if (send_event == VC_EVENT_WRITE_COMPLETE) {
-        // Defer sending the write complete until the send_data_frame has sent it all
-        // this_ethread()->schedule_imm(this, send_event, &write_vio);
-
-        // If there is no trailer, go ahead and mark the data frame done    
-        if (!chunked_handler.chunk_trailer_reader) {
-          this->mark_body_done();
-        }
-        send_body();
-        if (chunked_handler.chunk_trailer_reader) {
-          this->mark_body_done();
-          // Send the last header
-          MIMEHdr hdr.create();
-        headers->value_append(MIME_FIELD_TRANSFER_ENCODING, MIME_LEN_TRANSFER_ENCODING, HTTP_VALUE_CHUNKED, HTTP_LEN_CHUNKED, true);
-        }
+      if (write_vio.ntodo() == bytes_avail || is_done) {
+        this->mark_body_done();
         retval = false;
-      } else {
-        send_body();
-        if (call_update) { // Coming from reenable.  Safe to call the handler directly
-          if (write_vio._cont && this->current_reader) {
-            write_vio._cont->handleEvent(send_event, &write_vio);
-          }
-        } else { // Called from do_io_write.  Might still be setting up state.  Send an event to let the dust settle
-          write_event = send_tracked_event(write_event, send_event, &write_vio);
-        }
       }
+      this->send_body(call_update);
     }
-    Http2StreamDebug("write update (event=%d)", send_event);
   }
 
   return retval;
+}
+
+void
+Http2Stream::signal_write_event(bool call_update)
+{
+  if (this->write_vio._cont == nullptr || this->write_vio.op == VIO::NONE) {
+    return;
+  }
+
+  if (this->write_vio.get_writer()->write_avail() == 0) {
+    return;
+  }
+
+  int send_event = this->write_vio.ntodo() == 0 ? VC_EVENT_WRITE_COMPLETE : VC_EVENT_WRITE_READY;
+
+  if (call_update) {
+    // Coming from reenable.  Safe to call the handler directly
+    if (write_vio._cont && this->current_reader) {
+      write_vio._cont->handleEvent(send_event, &write_vio);
+    }
+  } else {
+    // Called from do_io_write. Might still be setting up state. Send an event to let the dust settle
+    write_event = send_tracked_event(write_event, send_event, &write_vio);
+  }
 }
 
 void
@@ -736,14 +709,17 @@ Http2Stream::push_promise(URL &url, const MIMEField *accept_encoding)
 }
 
 void
-Http2Stream::send_body()
+Http2Stream::send_body(bool call_update)
 {
   Http2ClientSession *parent = static_cast<Http2ClientSession *>(this->get_parent());
 
   if (Http2::stream_priority_enabled) {
     parent->connection_state.schedule_stream(this);
+    // signal_write_event() will be called from `Http2ConnectionState::send_data_frames_depends_on_priority()`
+    // when write_vio is consumed
   } else {
     parent->connection_state.send_data_frames(this);
+    this->signal_write_event(call_update);
   }
   inactive_timeout_at = Thread::get_hrtime() + inactive_timeout;
 }

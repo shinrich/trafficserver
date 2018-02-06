@@ -1263,6 +1263,9 @@ Http2ConnectionState::send_data_frames_depends_on_priority()
       dependency_tree->deactivate(node, len);
     } else {
       dependency_tree->update(node, len);
+
+      SCOPED_MUTEX_LOCK(stream_lock, stream->mutex, this_ethread());
+      stream->signal_write_event(true);
     }
     break;
   }
