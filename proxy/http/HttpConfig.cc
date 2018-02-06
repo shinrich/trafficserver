@@ -1147,6 +1147,7 @@ HttpConfig::startup()
   HttpEstablishStaticConfigByte(c.record_cop_page, "proxy.config.http.record_heartbeat");
 
   HttpEstablishStaticConfigByte(c.oride.send_http11_requests, "proxy.config.http.send_http11_requests");
+  HttpEstablishStaticConfigByte(c.oride.allow_multi_range, "proxy.config.http.allow_multi_range");
 
   // HTTP Referer Filtering
   HttpEstablishStaticConfigByte(c.referer_filter_enabled, "proxy.config.http.referer_filter");
@@ -1431,6 +1432,7 @@ HttpConfig::reconfigure()
   params->oride.cache_required_headers = m_master.oride.cache_required_headers;
   params->oride.cache_range_lookup     = INT_TO_BOOL(m_master.oride.cache_range_lookup);
   params->oride.cache_range_write      = INT_TO_BOOL(m_master.oride.cache_range_write);
+  params->oride.allow_multi_range      = m_master.oride.allow_multi_range;
 
   params->oride.cacheWrite.max_doc_size = m_master.oride.cacheWrite.max_doc_size;
 
