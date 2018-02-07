@@ -105,7 +105,8 @@ enum HTTPWarningCode {
   HTTP_WARNING_CODE_MISC_WARNING           = 199
 };
 
-/* squild log codes */
+/* squild log codes
+   There is code (e.g. logstats) that depends on these errors coming at the end of this enum */
 enum SquidLogCode {
   SQUID_LOG_EMPTY                     = '0',
   SQUID_LOG_TCP_HIT                   = '1',
@@ -141,7 +142,8 @@ enum SquidLogCode {
   SQUID_LOG_ERR_POST_ENTITY_TOO_LARGE = 'L',
   SQUID_LOG_ERR_NO_CLIENTS_BIG_OBJ    = 'r',
   SQUID_LOG_ERR_READ_ERROR            = 's',
-  SQUID_LOG_ERR_CLIENT_ABORT          = 't',
+  SQUID_LOG_ERR_CLIENT_ABORT          = 't', // Client side abort logging
+  SQUID_LOG_ERR_CLIENT_READ_ERROR     = 'J', // Client side abort logging
   SQUID_LOG_ERR_CONNECT_FAIL          = 'u',
   SQUID_LOG_ERR_INVALID_REQ           = 'v',
   SQUID_LOG_ERR_UNSUP_REQ             = 'w',

@@ -156,6 +156,7 @@ struct OriginStats {
     } misses;
     struct {
       StatsCounter client_abort;
+      StatsCounter client_read_error;
       StatsCounter connect_fail;
       StatsCounter invalid_req;
       StatsCounter unknown;
@@ -436,6 +437,7 @@ public:
         ++(l->misses);
         break;
       case SQUID_LOG_ERR_CLIENT_ABORT:
+      case SQUID_LOG_ERR_CLIENT_READ_ERROR:
       case SQUID_LOG_ERR_CONNECT_FAIL:
       case SQUID_LOG_ERR_INVALID_REQ:
       case SQUID_LOG_ERR_UNKNOWN:
@@ -509,6 +511,7 @@ public:
         l->misses = 1;
         break;
       case SQUID_LOG_ERR_CLIENT_ABORT:
+      case SQUID_LOG_ERR_CLIENT_READ_ERROR:
       case SQUID_LOG_ERR_CONNECT_FAIL:
       case SQUID_LOG_ERR_INVALID_REQ:
       case SQUID_LOG_ERR_UNKNOWN:
@@ -909,22 +912,6 @@ update_results_elapsed(OriginStats *stat, int result, int elapsed, int size)
     update_elapsed(stat->elapsed.misses.refresh, elapsed, stat->results.misses.refresh);
     update_elapsed(stat->elapsed.misses.total, elapsed, stat->results.misses.total);
     break;
-  case SQUID_LOG_ERR_CLIENT_ABORT:
-    update_counter(stat->results.errors.client_abort, size);
-    update_counter(stat->results.errors.total, size);
-    break;
-  case SQUID_LOG_ERR_CONNECT_FAIL:
-    update_counter(stat->results.errors.connect_fail, size);
-    update_counter(stat->results.errors.total, size);
-    break;
-  case SQUID_LOG_ERR_INVALID_REQ:
-    update_counter(stat->results.errors.invalid_req, size);
-    update_counter(stat->results.errors.total, size);
-    break;
-  case SQUID_LOG_ERR_UNKNOWN:
-    update_counter(stat->results.errors.unknown, size);
-    update_counter(stat->results.errors.total, size);
-    break;
   case SQUID_LOG_TCP_DISK_HIT:
   case SQUID_LOG_TCP_REF_FAIL_HIT:
   case SQUID_LOG_UDP_HIT:
@@ -942,6 +929,26 @@ update_results_elapsed(OriginStats *stat, int result, int elapsed, int size)
     update_counter(stat->results.misses.total, size);
     update_elapsed(stat->elapsed.misses.other, elapsed, stat->results.misses.other);
     update_elapsed(stat->elapsed.misses.total, elapsed, stat->results.misses.total);
+    break;
+  case SQUID_LOG_ERR_CLIENT_ABORT:
+    update_counter(stat->results.errors.client_abort, size);
+    update_counter(stat->results.errors.total, size);
+    break;
+  case SQUID_LOG_ERR_CLIENT_READ_ERROR:
+    update_counter(stat->results.errors.client_read_error, size);
+    update_counter(stat->results.errors.total, size);
+    break;
+  case SQUID_LOG_ERR_CONNECT_FAIL:
+    update_counter(stat->results.errors.connect_fail, size);
+    update_counter(stat->results.errors.total, size);
+    break;
+  case SQUID_LOG_ERR_INVALID_REQ:
+    update_counter(stat->results.errors.invalid_req, size);
+    update_counter(stat->results.errors.total, size);
+    break;
+  case SQUID_LOG_ERR_UNKNOWN:
+    update_counter(stat->results.errors.unknown, size);
+    update_counter(stat->results.errors.total, size);
     break;
   default:
     if ((result >= SQUID_LOG_ERR_READ_TIMEOUT) && (result <= SQUID_LOG_ERR_UNKNOWN)) {
@@ -2021,6 +2028,8 @@ print_detail_stats(const OriginStats *stat, bool json, bool concise)
   }
 
   format_line(json ? "error.client_abort" : "Client aborted", stat->results.errors.client_abort, stat->total, json, concise);
+  format_line(json ? "error.client_read_error" : "Client read error", stat->results.errors.client_read_error, stat->total, json,
+              concise);
   format_line(json ? "error.connect_failed" : "Connect failed", stat->results.errors.connect_fail, stat->total, json, concise);
   format_line(json ? "error.invalid_request" : "Invalid request", stat->results.errors.invalid_req, stat->total, json, concise);
   format_line(json ? "error.unknown" : "Unknown error(99)", stat->results.errors.unknown, stat->total, json, concise);
