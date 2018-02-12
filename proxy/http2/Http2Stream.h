@@ -33,7 +33,7 @@
 class Http2Stream;
 class Http2ConnectionState;
 
-typedef Http2DependencyTree<Http2Stream *> DependencyTree;
+typedef Http2DependencyTree::Tree<Http2Stream *> DependencyTree;
 
 class Http2Stream : public ProxyClientTransaction
 {
@@ -109,6 +109,7 @@ public:
   update_sent_count(unsigned num_bytes)
   {
     bytes_sent += num_bytes;
+    this->write_vio.ndone += num_bytes;
   }
 
   Http2StreamId
@@ -175,13 +176,14 @@ public:
   VIO *do_io_write(Continuation *c, int64_t nbytes, IOBufferReader *abuffer, bool owner = false);
   void do_io_close(int lerrno = -1);
   void initiating_close();
+  void terminate_if_possible();
   void do_io_shutdown(ShutdownHowTo_t) {}
   void update_read_request(int64_t read_len, bool send_update);
   bool update_write_request(IOBufferReader *buf_reader, int64_t write_len, bool send_update);
   void reenable(VIO *vio);
   virtual void transaction_done();
   void send_response_body();
-  void push_promise(URL &url);
+  void push_promise(URL &url, const MIMEField *accept_encoding);
 
   // Stream level window size
   ssize_t client_rwnd, server_rwnd;
@@ -201,10 +203,10 @@ public:
   bool h2_trace;
 
   HTTPHdr response_header;
-  IOBufferReader *response_reader;
-  IOBufferReader *request_reader;
-  MIOBuffer request_buffer;
-  DependencyTree::Node *priority_node;
+  IOBufferReader *response_reader          = nullptr;
+  IOBufferReader *request_reader           = nullptr;
+  MIOBuffer request_buffer                 = CLIENT_CONNECTION_FIRST_READ_BUFFER_SIZE_INDEX;
+  Http2DependencyTree::Node *priority_node = nullptr;
 
   EThread *
   get_thread()
@@ -302,7 +304,8 @@ private:
   uint64_t bytes_sent  = 0;
 
   ChunkedHandler chunked_handler;
-  Event *cross_thread_event;
+  Event *cross_thread_event      = nullptr;
+  Event *buffer_full_write_event = nullptr;
 
   // Support stream-specific timeouts
   ink_hrtime active_timeout;

@@ -1180,6 +1180,7 @@ INKVConnInternal::do_io_close(int error)
 
   if (m_output_vc) {
     m_output_vc->do_io_close(error);
+    m_output_vc = nullptr;
   }
 
   eventProcessor.schedule_imm(this, ET_NET);
@@ -7683,10 +7684,21 @@ TSHttpTxnServerPush(TSHttpTxn txnp, const char *url, int url_len)
     url_obj.destroy();
     return;
   }
+
   HttpSM *sm          = reinterpret_cast<HttpSM *>(txnp);
   Http2Stream *stream = dynamic_cast<Http2Stream *>(sm->ua_session);
   if (stream) {
-    stream->push_promise(url_obj);
+    Http2ClientSession *parent = static_cast<Http2ClientSession *>(stream->get_parent());
+    if (!parent->is_url_pushed(url, url_len)) {
+      HTTPHdr *hptr = &(sm->t_state.hdr_info.client_request);
+      TSMLoc obj    = reinterpret_cast<TSMLoc>(hptr->m_http);
+
+      MIMEHdrImpl *mh = _hdr_mloc_to_mime_hdr_impl(obj);
+      MIMEField *f    = mime_hdr_field_find(mh, MIME_FIELD_ACCEPT_ENCODING, MIME_LEN_ACCEPT_ENCODING);
+      stream->push_promise(url_obj, f);
+
+      parent->add_url_to_pushed_table(url, url_len);
+    }
   }
   url_obj.destroy();
 }

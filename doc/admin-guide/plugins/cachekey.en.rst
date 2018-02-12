@@ -39,6 +39,13 @@ This plugin allows some common cache key manipulations based on various HTTP req
 * capture and replace strings from the URI and include them in the cache key
 * do more - please find more examples below.
 
+URI type
+========
+
+The plugin manipulates the ``remap`` URI (value set during URI remap) by default. If manipulation needs to be based on the ``pristine`` URI (the value before URI remapping takes place) one could use the following option:
+
+* ``--uri-type=[remap|pristine]`` (default: ``remap``)
+
 Cache key structure and related plugin parameters
 =================================================
 
@@ -167,7 +174,7 @@ All parameters are optional, and if not used, their default values are as mentio
 
 Cache key elements separator
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-* ``--separator=<string>`` - the cache key is constructed by extracting elements from HTTP URI and headers or by using the UA classifiers and they are appended during the key construction and separated by ``/`` (by default). This options allows to override the dafault separator to any string (including an empty string)
+* ``--separator=<string>`` - the cache key is constructed by extracting elements from HTTP URI and headers or by using the UA classifiers and they are appended during the key construction and separated by ``/`` (by default). This options allows to override the default separator to any string (including an empty string).
 
 
 Detailed examples and troubleshooting

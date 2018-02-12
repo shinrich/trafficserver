@@ -103,6 +103,10 @@ As with the global method above, multiple configuration files may be listed,
 each with its own ``@pparam=<file>`` and their contents will be evaluated in
 the order the files were specified.
 
+Each ruleset that is configured per-mapping should have a special
+`Hook Conditions`_ defined. Without a defined hook, these rulesets will use the
+``REMAP_PSEUDO_HOOK``.
+
 Rewriting Rules
 ===============
 
@@ -792,6 +796,12 @@ Variable                Description
 %<INBOUND:STACK>        The full protocol stack of the inbound connection separated by ','.
 ======================= ==================================================================================
 
+Variables to be expanded must be enclosed in double quotes ``"``, as in this example using the arbitrary header
+``Custom-Client-IP``::
+
+    set-header Custom-Client-IP "%<chi>"
+
+
 Header Values
 -------------
 
@@ -826,7 +836,7 @@ The URL part names which may be used for these conditions and actions are:
 Part     Description
 ======== ======================================================================
 HOST     Full hostname.
-PATH     URL substring beginning with the first ``/`` after the hostname up to,
+PATH     URL substring beginning with (but not including) the first ``/`` after the hostname up to,
          but not including, the query string.
 PORT     Port number.
 QUERY    URL substring from the ``?``, signifying the beginning of the query
@@ -1126,10 +1136,10 @@ path.  One provides a max age and the other provides a “no-cache” statement 
 two different file paths. ::
 
     cond %{SEND_RESPONSE_HDR_HOOK}
-    cond %{PATH} /examplepath1/
+    cond %{CLIENT-URL:PATH} /examplepath1/
     add-header Cache-Control "max-age=3600" [L]
     cond %{SEND_RESPONSE_HDR_HOOK}
-    cond %{PATH} /examplepath2/examplepath3/.*/
+    cond %{CLIENT-URL:PATH} /examplepath2\/examplepath3\/.*/
     add-header Cache-Control "no-cache" [L]
 
 Redirect when the Origin Server Times Out
@@ -1141,7 +1151,7 @@ Query string when the Origin server times out or the connection is refused::
     cond %{SEND_RESPONSE_HDR_HOOK}
     cond %{STATUS} =502 [OR]
     cond %{STATUS} =504
-    set-redirect 302 http://different_origin.example.com/%{PATH} [QSA]
+    set-redirect 302 http://different_origin.example.com/%{CLIENT-URL:PATH} [QSA]
 
 Check for existence of a header
 -------------------------------

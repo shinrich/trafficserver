@@ -575,6 +575,26 @@ HttpTransact::BadRequest(State *s)
 }
 
 void
+HttpTransact::PostActiveTimeoutResponse(State *s)
+{
+  DebugTxn("http_trans", "[PostActiveTimeoutResponse]"
+                         "post active timeout");
+  bootstrap_state_variables_from_request(s, &s->hdr_info.client_request);
+  build_error_response(s, HTTP_STATUS_REQUEST_TIMEOUT, "Active Timeout", "timeout#activity", nullptr);
+  TRANSACT_RETURN(SM_ACTION_SEND_ERROR_CACHE_NOOP, nullptr);
+}
+
+void
+HttpTransact::PostInactiveTimeoutResponse(State *s)
+{
+  DebugTxn("http_trans", "[PostInactiveTimeoutResponse]"
+                         "post inactive timeout");
+  bootstrap_state_variables_from_request(s, &s->hdr_info.client_request);
+  build_error_response(s, HTTP_STATUS_REQUEST_TIMEOUT, "Inactive Timeout", "timeout#inactivity", nullptr);
+  TRANSACT_RETURN(SM_ACTION_SEND_ERROR_CACHE_NOOP, nullptr);
+}
+
+void
 HttpTransact::Forbidden(State *s)
 {
   DebugTxn("http_trans", "[Forbidden]"
@@ -624,6 +644,11 @@ HttpTransact::StartRemapRequest(State *s)
     DebugTxn("http_trans", "API request to skip remapping");
 
     s->hdr_info.client_request.set_url_target_from_host_field();
+
+    // Since we're not doing remap, we still have to allow for these overridable
+    // configurations to modify follow-redirect behavior. Someone could for example
+    // have set them in a plugin other than conf_remap running in a prior hook.
+    s->state_machine->enable_redirection = (s->txn_conf->redirection_enabled && (s->txn_conf->number_of_redirections > 0));
 
     if (s->is_upgrade_request && s->post_remap_upgrade_return_point) {
       TRANSACT_RETURN(SM_ACTION_POST_REMAP_SKIP, s->post_remap_upgrade_return_point);
@@ -706,6 +731,12 @@ HttpTransact::EndRemapRequest(State *s)
   int host_len;
   const char *host = incoming_request->host_get(&host_len);
   DebugTxn("http_trans", "EndRemapRequest host is %.*s", host_len, host);
+
+  // Setting enable_redirection according to HttpConfig (master or overridable). We
+  // defer this as late as possible, to allow plugins to modify the overridable
+  // configurations (e.g. conf_remap.so). We intentionally only modify this if
+  // the configuration says so.
+  s->state_machine->enable_redirection = (s->txn_conf->redirection_enabled && (s->txn_conf->number_of_redirections > 0));
 
   ////////////////////////////////////////////////////////////////
   // if we got back a URL to redirect to, vector the user there //
@@ -2315,8 +2346,8 @@ HttpTransact::HandleCacheOpenReadHitFreshness(State *s)
   // for it. this is just to deal with the effects
   // of the skew by setting minimum and maximum times
   // so that ages are not negative, etc.
-  s->request_sent_time      = min(s->client_request_time, s->request_sent_time);
-  s->response_received_time = min(s->client_request_time, s->response_received_time);
+  s->request_sent_time      = std::min(s->client_request_time, s->request_sent_time);
+  s->response_received_time = std::min(s->client_request_time, s->response_received_time);
 
   ink_assert(s->request_sent_time <= s->response_received_time);
 
@@ -2352,8 +2383,10 @@ HttpTransact::HandleCacheOpenReadHitFreshness(State *s)
   }
 
   ink_assert(s->cache_lookup_result != HttpTransact::CACHE_LOOKUP_MISS);
-  if (s->cache_lookup_result == HttpTransact::CACHE_LOOKUP_HIT_STALE)
+  if (s->cache_lookup_result == HttpTransact::CACHE_LOOKUP_HIT_STALE) {
     SET_VIA_STRING(VIA_DETAIL_CACHE_LOOKUP, VIA_DETAIL_MISS_EXPIRED);
+    SET_VIA_STRING(VIA_CACHE_RESULT, VIA_IN_CACHE_STALE);
+  }
 
   if (!s->force_dns) { // If DNS is not performed before
     if (need_to_revalidate(s)) {
@@ -3973,7 +4006,8 @@ HttpTransact::handle_forward_server_connection_open(State *s)
     // dont update the hostdb. let us try again with what we currently think.
   }
 
-  if (s->hdr_info.server_response.status_get() == HTTP_STATUS_CONTINUE) {
+  if (s->hdr_info.server_response.status_get() == HTTP_STATUS_CONTINUE ||
+      s->hdr_info.server_response.status_get() == HTTP_STATUS_EARLY_HINTS) {
     handle_100_continue_response(s);
     return;
   }
@@ -4106,16 +4140,26 @@ HttpTransact::build_response_copy(State *s, HTTPHdr *base_response, HTTPHdr *out
 //          and are later used for IMS                                  //
 //       D < D'                                                         //
 //                                                                      //
-//  +------------------------------------------------------------+      //
-//  | Client's | Cached    | Proxy's  | Response to client       |      //
-//  | Request  |  State    | Request  |  OS 200    |   OS 304    |      //
-//  |------------------------------------------------------------|      //
+//  +----------+-----------+----------+-----------+--------------+      //
+//  | Client's | Cached    | Proxy's  |   Response to client     |      //
+//  | Request  | State     | Request  +-----------+--------------+      //
+//  |          |           |          | OS 200    |  OS 304      |      //
+//  +==========+===========+==========+===========+==============+      //
 //  |  GET     | Fresh     | N/A      |  N/A      |  N/A         |      //
-//  |------------------------------------------------------------|      //
+//  +----------+-----------+----------+-----------+--------------+      //
 //  |  GET     | Stale, D' | IMS  D'  | 200, new  | 200, cached  |      //
-//  |------------------------------------------------------------|      //
+//  +----------+-----------+----------+-----------+--------------+      //
+//  |  GET     | Stale, E  | INM  E   | 200, new  | 200, cached  |      //
+//  +----------+-----------+----------+-----------+--------------+      //
+//  |  INM E   | Stale, E  | INM  E   | 304       | 304          |      //
+//  +----------+-----------+----------+-----------+--------------+      //
+//  |  INM E + | Stale,    | INM E    | 200, new *| 304          |      //
+//  |  IMS D'  | E + D'    | IMS D'   |           |              |      //
+//  +----------+-----------+----------+-----------+--------------+      //
 //  |  IMS D   | None      | GET      | 200, new *|  N/A         |      //
-//  |------------------------------------------------------------|      //
+//  +----------+-----------+----------+-----------+--------------+      //
+//  |  INM E   | None      | GET      | 200, new *|  N/A         |      //
+//  +----------+-----------+----------+-----------+--------------+      //
 //  |  IMS D   | Stale, D' | IMS D'   | 200, new  | Compare      |      //
 //  |---------------------------------------------| LMs & D'     |      //
 //  |  IMS D'  | Stale, D' | IMS D'   | 200, new  | If match, 304|      //
@@ -4742,7 +4786,7 @@ HttpTransact::merge_and_update_headers_for_cache_update(State *s)
     // If the cached response has an Age: we should update it
     // We could use calculate_document_age but my guess is it's overkill
     // Just use 'now' - 304's Date: + Age: (response's Age: if there)
-    date_value = max(s->current.now - date_value, (ink_time_t)0);
+    date_value = std::max(s->current.now - date_value, (ink_time_t)0);
     if (s->hdr_info.server_response.presence(MIME_PRESENCE_AGE)) {
       time_t new_age = s->hdr_info.server_response.get_age();
 
@@ -7169,7 +7213,7 @@ HttpTransact::calculate_document_freshness_limit(State *s, HTTPHdr *response, ti
       freshness_limit = (int)response->get_cooked_cc_max_age();
       DebugTxn("http_match", "calculate_document_freshness_limit --- max_age set, freshness_limit = %d", freshness_limit);
     }
-    freshness_limit = min(max(0, freshness_limit), (int)s->txn_conf->cache_guaranteed_max_lifetime);
+    freshness_limit = std::min(std::max(0, freshness_limit), (int)s->txn_conf->cache_guaranteed_max_lifetime);
   } else {
     date_set = last_modified_set = false;
 
@@ -7206,7 +7250,7 @@ HttpTransact::calculate_document_freshness_limit(State *s, HTTPHdr *response, ti
       DebugTxn("http_match", "calculate_document_freshness_limit --- Expires: %" PRId64 ", Date: %" PRId64 ", freshness_limit = %d",
                (int64_t)expires_value, (int64_t)date_value, freshness_limit);
 
-      freshness_limit = min(max(0, freshness_limit), (int)s->txn_conf->cache_guaranteed_max_lifetime);
+      freshness_limit = std::min(std::max(0, freshness_limit), (int)s->txn_conf->cache_guaranteed_max_lifetime);
     } else {
       last_modified_value = 0;
       if (response->presence(MIME_PRESENCE_LAST_MODIFIED)) {
@@ -7230,7 +7274,7 @@ HttpTransact::calculate_document_freshness_limit(State *s, HTTPHdr *response, ti
         ink_assert((f >= 0.0) && (f <= 1.0));
         ink_time_t time_since_last_modify = date_value - last_modified_value;
         int h_freshness                   = (int)(time_since_last_modify * f);
-        freshness_limit                   = max(h_freshness, 0);
+        freshness_limit                   = std::max(h_freshness, 0);
         DebugTxn("http_match", "calculate_document_freshness_limit --- heuristic: date=%" PRId64 ", lm=%" PRId64
                                ", time_since_last_modify=%" PRId64 ", f=%g, freshness_limit = %d",
                  (int64_t)date_value, (int64_t)last_modified_value, (int64_t)time_since_last_modify, f, freshness_limit);
@@ -7242,13 +7286,13 @@ HttpTransact::calculate_document_freshness_limit(State *s, HTTPHdr *response, ti
   }
 
   // The freshness limit must always fall within the min and max guaranteed bounds.
-  min_freshness_bounds = max((MgmtInt)0, s->txn_conf->cache_guaranteed_min_lifetime);
+  min_freshness_bounds = std::max((MgmtInt)0, s->txn_conf->cache_guaranteed_min_lifetime);
   max_freshness_bounds = s->txn_conf->cache_guaranteed_max_lifetime;
 
   // Heuristic freshness can be more strict.
   if (*heuristic) {
-    min_freshness_bounds = max(min_freshness_bounds, s->txn_conf->cache_heuristic_min_lifetime);
-    max_freshness_bounds = min(max_freshness_bounds, s->txn_conf->cache_heuristic_max_lifetime);
+    min_freshness_bounds = std::max(min_freshness_bounds, s->txn_conf->cache_heuristic_min_lifetime);
+    max_freshness_bounds = std::min(max_freshness_bounds, s->txn_conf->cache_heuristic_max_lifetime);
   }
   // Now clip the freshness limit.
   if (freshness_limit > max_freshness_bounds) {
@@ -7289,12 +7333,12 @@ HttpTransact::calculate_freshness_fuzz(State *s, int fresh_limit)
     if (s->txn_conf->freshness_fuzz_min_time > 0) {
       // Complicated calculations to try to find a reasonable fuzz time between fuzz_min_time and fuzz_time
       int fresh_small = (int)rint((double)s->txn_conf->freshness_fuzz_min_time *
-                                  pow(2, min((double)fresh_limit / (double)s->txn_conf->freshness_fuzz_time,
-                                             sqrt((double)s->txn_conf->freshness_fuzz_time))));
-      int fresh_large = max((int)s->txn_conf->freshness_fuzz_min_time,
-                            (int)rint(s->txn_conf->freshness_fuzz_time *
-                                      log10((double)(fresh_limit - s->txn_conf->freshness_fuzz_min_time) / LOG_YEAR)));
-      result = min(fresh_small, fresh_large);
+                                  pow(2, std::min((double)fresh_limit / (double)s->txn_conf->freshness_fuzz_time,
+                                                  sqrt((double)s->txn_conf->freshness_fuzz_time))));
+      int fresh_large = std::max((int)s->txn_conf->freshness_fuzz_min_time,
+                                 (int)rint(s->txn_conf->freshness_fuzz_time *
+                                           log10((double)(fresh_limit - s->txn_conf->freshness_fuzz_min_time) / LOG_YEAR)));
+      result = std::min(fresh_small, fresh_large);
       DebugTxn("http_match", "calculate_freshness_fuzz using min/max --- freshness fuzz = %d", result);
     } else {
       result = s->txn_conf->freshness_fuzz_time;
@@ -7374,8 +7418,8 @@ HttpTransact::what_is_document_freshness(State *s, HTTPHdr *client_request, HTTP
   //  documents at the same time
   if ((s->txn_conf->freshness_fuzz_time > 0) && (s->txn_conf->freshness_fuzz_prob > 0.0)) {
     fresh_limit = fresh_limit - calculate_freshness_fuzz(s, fresh_limit);
-    fresh_limit = max(0, fresh_limit);
-    fresh_limit = min((int)s->txn_conf->cache_guaranteed_max_lifetime, fresh_limit);
+    fresh_limit = std::max(0, fresh_limit);
+    fresh_limit = std::min((int)s->txn_conf->cache_guaranteed_max_lifetime, fresh_limit);
   }
 
   current_age = HttpTransactHeaders::calculate_document_age(s->request_sent_time, s->response_received_time, cached_obj_response,
@@ -7385,7 +7429,7 @@ HttpTransact::what_is_document_freshness(State *s, HTTPHdr *client_request, HTTP
   if (current_age < 0) {
     current_age = s->txn_conf->cache_guaranteed_max_lifetime;
   } else {
-    current_age = min((time_t)s->txn_conf->cache_guaranteed_max_lifetime, current_age);
+    current_age = std::min((time_t)s->txn_conf->cache_guaranteed_max_lifetime, current_age);
   }
 
   DebugTxn("http_match", "[what_is_document_freshness] fresh_limit:  %d  current_age: %" PRId64, fresh_limit, (int64_t)current_age);
@@ -7462,7 +7506,7 @@ HttpTransact::what_is_document_freshness(State *s, HTTPHdr *client_request, HTTP
     // if min-fresh set, constrain the freshness limit //
     /////////////////////////////////////////////////////
     if (cooked_cc_mask & MIME_COOKED_MASK_CC_MIN_FRESH) {
-      age_limit = min(age_limit, fresh_limit - client_request->get_cooked_cc_min_fresh());
+      age_limit = std::min(age_limit, fresh_limit - client_request->get_cooked_cc_min_fresh());
       DebugTxn("http_match", "[..._document_freshness] min_fresh set, age limit: %d", age_limit);
     }
     ///////////////////////////////////////////////////
@@ -7473,7 +7517,7 @@ HttpTransact::what_is_document_freshness(State *s, HTTPHdr *client_request, HTTP
       if (age_val == 0) {
         do_revalidate = true;
       }
-      age_limit = min(age_limit, age_val);
+      age_limit = std::min(age_limit, age_val);
       DebugTxn("http_match", "[..._document_freshness] min_fresh set, age limit: %d", age_limit);
     }
   }
@@ -7611,9 +7655,8 @@ HttpTransact::handle_server_died(State *s)
     body_type = "response#bad_response";
     break;
   case CONNECTION_ERROR:
-    status = HTTP_STATUS_BAD_GATEWAY;
-    reason =
-      static_cast<const char *>(get_error_string(s->cause_of_death_errno == 0 ? -ENET_CONNECT_FAILED : s->cause_of_death_errno));
+    status    = HTTP_STATUS_BAD_GATEWAY;
+    reason    = get_error_string(s->cause_of_death_errno == 0 ? -ENET_CONNECT_FAILED : s->cause_of_death_errno);
     body_type = "connect#failed_connect";
     break;
   case OPEN_RAW_ERROR:
@@ -8778,7 +8821,7 @@ HttpTransact::update_size_and_time_stats(State *s, ink_hrtime total_time, ink_hr
   switch (s->state_machine->background_fill) {
   case BACKGROUND_FILL_COMPLETED: {
     int64_t bg_size = origin_server_response_body_size - user_agent_response_body_size;
-    bg_size         = max((int64_t)0, bg_size);
+    bg_size         = std::max((int64_t)0, bg_size);
     HTTP_SUM_DYN_STAT(http_background_fill_bytes_completed_stat, bg_size);
     break;
   }

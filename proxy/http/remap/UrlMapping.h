@@ -24,6 +24,8 @@
 #ifndef _URL_MAPPING_H_
 #define _URL_MAPPING_H_
 
+#include <vector>
+
 #include "ts/ink_config.h"
 #include "AclFiltering.h"
 #include "Main.h"
@@ -31,8 +33,6 @@
 #include "RemapPluginInfo.h"
 #include "ts/Regex.h"
 #include "ts/List.h"
-
-static const unsigned int MAX_REMAP_PLUGIN_CHAIN = 10;
 
 /**
  * Used to store http referer strings (and/or regexp)
@@ -79,38 +79,38 @@ public:
 class url_mapping
 {
 public:
-  url_mapping(int rank = 0);
   ~url_mapping();
 
   bool add_plugin(remap_plugin_info *i, void *ih);
-  remap_plugin_info *get_plugin(unsigned int) const;
+  remap_plugin_info *get_plugin(std::size_t) const;
+  void *get_instance(std::size_t) const;
 
-  void *
-  get_instance(unsigned int index) const
+  std::size_t
+  plugin_count() const
   {
-    return _instance_data[index];
-  };
+    return _plugin_list.size();
+  }
+
   void delete_instance(unsigned int index);
   void Print();
 
-  int from_path_len;
+  int from_path_len = 0;
   URL fromURL;
   URL toUrl; // Default TO-URL (from remap.config)
-  bool homePageRedirect;
-  bool unique; // INKqa11970 - unique mapping
-  bool default_redirect_url;
-  bool optional_referer;
-  bool negative_referer;
-  bool wildcard_from_scheme; // from url is '/foo', only http or https for now
-  char *tag;                 // tag
-  char *filter_redirect_url; // redirect url when referer filtering enabled
-  unsigned int map_id;
-  referer_info *referer_list;
-  redirect_tag_str *redir_chunk_list;
-  bool ip_allow_check_enabled_p;
-  acl_filter_rule *filter; // acl filtering (list of rules)
-  unsigned int _plugin_count;
-  LINK(url_mapping, link); // For use with the main Queue linked list holding all the mapping
+  bool homePageRedirect              = false;
+  bool unique                        = false; // INKqa11970 - unique mapping
+  bool default_redirect_url          = false;
+  bool optional_referer              = false;
+  bool negative_referer              = false;
+  bool wildcard_from_scheme          = false;   // from url is '/foo', only http or https for now
+  char *tag                          = nullptr; // tag
+  char *filter_redirect_url          = nullptr; // redirect url when referer filtering enabled
+  unsigned int map_id                = 0;
+  referer_info *referer_list         = nullptr;
+  redirect_tag_str *redir_chunk_list = nullptr;
+  bool ip_allow_check_enabled_p      = false;
+  acl_filter_rule *filter            = nullptr; // acl filtering (list of rules)
+  LINK(url_mapping, link);                      // For use with the main Queue linked list holding all the mapping
 
   int
   getRank() const
@@ -124,9 +124,9 @@ public:
   };
 
 private:
-  remap_plugin_info *_plugin_list[MAX_REMAP_PLUGIN_CHAIN];
-  void *_instance_data[MAX_REMAP_PLUGIN_CHAIN];
-  int _rank;
+  std::vector<remap_plugin_info *> _plugin_list;
+  std::vector<void *> _instance_data;
+  int _rank = 0;
 };
 
 /**
