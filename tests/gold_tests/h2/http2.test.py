@@ -75,6 +75,7 @@ ts.Disk.records_config.update({
 })
 ts.Setup.CopyAs('h2client.py', Test.RunDirectory)
 ts.Setup.CopyAs('h2bigclient.py', Test.RunDirectory)
+ts.Setup.CopyAs('h2chunked.py',Test.RunDirectory)
 
 # Test Case 1:  basic H2 interaction
 tr = Test.AddTestRun()

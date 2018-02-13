@@ -580,7 +580,7 @@ HttpTransact::PostActiveTimeoutResponse(State *s)
   DebugTxn("http_trans", "[PostActiveTimeoutResponse]"
                          "post active timeout");
   bootstrap_state_variables_from_request(s, &s->hdr_info.client_request);
-  build_error_response(s, HTTP_STATUS_REQUEST_TIMEOUT, "Active Timeout", "timeout#activity", nullptr);
+  build_error_response(s, HTTP_STATUS_REQUEST_TIMEOUT, "Active Timeout", "timeout#activity");
   TRANSACT_RETURN(SM_ACTION_SEND_ERROR_CACHE_NOOP, nullptr);
 }
 
@@ -590,7 +590,7 @@ HttpTransact::PostInactiveTimeoutResponse(State *s)
   DebugTxn("http_trans", "[PostInactiveTimeoutResponse]"
                          "post inactive timeout");
   bootstrap_state_variables_from_request(s, &s->hdr_info.client_request);
-  build_error_response(s, HTTP_STATUS_REQUEST_TIMEOUT, "Inactive Timeout", "timeout#inactivity", nullptr);
+  build_error_response(s, HTTP_STATUS_REQUEST_TIMEOUT, "Inactive Timeout", "timeout#inactivity");
   TRANSACT_RETURN(SM_ACTION_SEND_ERROR_CACHE_NOOP, nullptr);
 }
 

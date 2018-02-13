@@ -172,7 +172,7 @@ TSRemapNewInstance(int argc, char *argv[], void **ih, char *errbuf, int errbuf_s
         free_cfg(cfg);
         return TS_ERROR;
       }
-      snprintf(&cfg->keys[keynum][0], MAX_KEY_LEN, value);
+      snprintf(&cfg->keys[keynum][0], MAX_KEY_LEN, "%s", value);
     } else if (strncmp(line, "error_url", 9) == 0) {
       if (atoi(value)) {
         cfg->err_status = atoi(value);

@@ -195,13 +195,13 @@ public:
   }
 
   sockaddr const *
-  get_client_addr()
+  get_client_addr() override
   {
     return client_vc ? client_vc->get_remote_addr() : &cached_client_addr.sa;
   }
 
   sockaddr const *
-  get_local_addr()
+  get_local_addr() override
   {
     return client_vc ? client_vc->get_local_addr() : &cached_local_addr.sa;
   }
