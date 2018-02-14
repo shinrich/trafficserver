@@ -1,6 +1,6 @@
 /** @file
 
-  ProxyClientTransaction - Base class for protocol client transactions.
+  ProxyTransaction - Base class for protocol client transactions.
 
   @section license License
 
@@ -22,12 +22,11 @@
  */
 
 #include "http/HttpSM.h"
-#include "http/HttpServerSession.h"
 #include "Plugin.h"
 
 #define HttpTxnDebug(fmt, ...) SsnDebug(this, "http_txn", fmt, __VA_ARGS__)
 
-ProxyClientTransaction::ProxyClientTransaction()
+ProxyTransaction::ProxyTransaction()
   : VConnection(nullptr),
     parent(nullptr),
     current_reader(nullptr),
@@ -38,7 +37,7 @@ ProxyClientTransaction::ProxyClientTransaction()
 }
 
 void
-ProxyClientTransaction::new_transaction()
+ProxyTransaction::new_transaction()
 {
   ink_assert(current_reader == nullptr);
 
@@ -61,7 +60,16 @@ ProxyClientTransaction::new_transaction()
 }
 
 void
-ProxyClientTransaction::release(IOBufferReader *r)
+ProxyTransaction::attach_transaction(HttpSM *attach_sm)
+{
+  current_reader = attach_sm;
+  if (attach_sm) {
+    current_reader->attach_server_session(this);
+  }
+}
+
+void
+ProxyTransaction::release(IOBufferReader *r)
 {
   HttpTxnDebug("[%" PRId64 "] session released by sm [%" PRId64 "]", parent ? parent->connection_id() : 0,
                current_reader ? current_reader->sm_id : 0);
@@ -73,20 +81,20 @@ ProxyClientTransaction::release(IOBufferReader *r)
 }
 
 void
-ProxyClientTransaction::attach_server_session(HttpServerSession *ssession, bool transaction_done)
+ProxyTransaction::attach_peer_session(ProxySession *ssession, bool transaction_done)
 {
-  parent->attach_server_session(ssession, transaction_done);
+  parent->attach_peer_session(ssession, transaction_done);
 }
 
 void
-ProxyClientTransaction::destroy()
+ProxyTransaction::destroy()
 {
   current_reader = nullptr;
   this->mutex.clear();
 }
 
 Action *
-ProxyClientTransaction::adjust_thread(Continuation *cont, int event, void *data)
+ProxyTransaction::adjust_thread(Continuation *cont, int event, void *data)
 {
   NetVConnection *vc   = this->get_netvc();
   EThread *this_thread = this_ethread();

@@ -34,10 +34,10 @@
 #define _HTTP_SESSION_MANAGER_H_
 
 #include "P_EventSystem.h"
-#include "HttpServerSession.h"
+#include "PoolInterface.h"
 #include <ts/Map.h>
 
-class ProxyClientTransaction;
+class ProxyTransaction;
 class HttpSM;
 
 void initialize_thread_for_http_sessions(EThread *thread, int thread_index);
@@ -72,8 +72,8 @@ protected:
   struct IPHashing {
     typedef uint32_t ID;
     typedef sockaddr const *Key;
-    typedef HttpServerSession Value;
-    typedef DList(HttpServerSession, ip_hash_link) ListHead;
+    typedef PoolInterface Value;
+    typedef DList(PoolInterface, ip_hash_link) ListHead;
 
     static ID
     hash(Key key)
@@ -83,7 +83,7 @@ protected:
     static Key
     key(Value const *value)
     {
-      return &value->get_server_ip().sa;
+      return value->get_session()->get_peer_addr();
     }
     static bool
     equal(Key lhs, Key rhs)
@@ -96,8 +96,8 @@ protected:
   struct HostHashing {
     typedef uint64_t ID;
     typedef INK_MD5 const &Key;
-    typedef HttpServerSession Value;
-    typedef DList(HttpServerSession, host_hash_link) ListHead;
+    typedef PoolInterface Value;
+    typedef DList(PoolInterface, host_hash_link) ListHead;
 
     static ID
     hash(Key key)
@@ -122,7 +122,7 @@ protected:
 public:
   /** Check if a session matches address and host name.
    */
-  static bool match(HttpServerSession *ss, sockaddr const *addr, INK_MD5 const &host_hash,
+  static bool match(PoolInterface *ss, sockaddr const *addr, INK_MD5 const &host_hash,
                     TSServerSessionSharingMatchType match_style);
 
   /** Get a session from the pool.
@@ -133,10 +133,12 @@ public:
       @return A pointer to the session or @c NULL if not matching session was found.
   */
   HSMresult_t acquireSession(sockaddr const *addr, INK_MD5 const &host_hash, TSServerSessionSharingMatchType match_style,
-                             HttpSM *sm, HttpServerSession *&server_session);
+                             HttpSM *sm, PoolInterface *&server_session);
   /** Release a session to to pool.
    */
-  void releaseSession(HttpServerSession *ss);
+  void releaseSession(PoolInterface *ss);
+  void addSession(PoolInterface *ss);
+  void removeSession(PoolInterface *to_remove);
 
   /// Close all sessions and then clear the table.
   void purge();
@@ -152,13 +154,16 @@ class HttpSessionManager
 public:
   HttpSessionManager() : m_g_pool(NULL) {}
   ~HttpSessionManager() {}
-  HSMresult_t acquire_session(Continuation *cont, sockaddr const *addr, const char *hostname, ProxyClientTransaction *ua_txn,
+  HSMresult_t acquire_session(Continuation *cont, sockaddr const *addr, const char *hostname, ProxyTransaction *ua_txn,
                               HttpSM *sm);
-  HSMresult_t release_session(HttpServerSession *to_release);
+  HSMresult_t release_session(PoolInterface *to_release);
+  HSMresult_t add_session(PoolInterface *to_release);
   void purge_keepalives();
   void init();
   int main_handler(int event, void *data);
 
+  static PoolInterface *make_session(NetVConnection *netvc, TSServerSessionSharingPoolType pool_type, TSServerSessionSharingMatchType match_type, const char *hostname, Ptr<ProxyMutex> mutex);
+ 
 private:
   /// Global pool, used if not per thread pools.
   /// @internal We delay creating this because the session manager is created during global statics init.

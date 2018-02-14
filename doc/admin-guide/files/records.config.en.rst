@@ -3388,6 +3388,11 @@ Client-Related Configuration
    Specifies the location of the certificate authority file against
    which the origin server will be verified.
 
+.. ts:cv:: CONFIG proxy.config.ssl.client.alpn_protocols STRING NULL
+
+   Specify the list of protocols ATS should advertise to the origin via ALPN.  By default none are
+   specified.  The list is comma delimited, e.g. "h2,http/1.1" would advertise HTTP/2 and HTTP/1.1.
+
 OCSP Stapling Configuration
 ===========================
 

@@ -78,6 +78,7 @@ typedef enum {
   SSL_HOOK_OP_LAST = SSL_HOOK_OP_TERMINATE ///< End marker value.
 } SslVConnOp;
 
+
 //////////////////////////////////////////////////////////////////
 //
 //  class NetVConnection
@@ -310,6 +311,10 @@ public:
   // noncopyable
   SSLNetVConnection(const SSLNetVConnection &) = delete;
   SSLNetVConnection &operator=(const SSLNetVConnection &) = delete;
+
+  // For SSL, we defer notifying the SM that the connection was made until the
+  // TLS handshake completes
+  void notify_open() override;
 
 private:
   ts::string_view map_tls_protocol_to_tag(const char *proto_string) const;

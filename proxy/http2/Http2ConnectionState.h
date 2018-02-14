@@ -29,7 +29,7 @@
 #include "Http2Stream.h"
 #include "Http2DependencyTree.h"
 
-class Http2ClientSession;
+class Http2Session;
 
 enum class Http2SendDataFrameResult {
   NO_ERROR = 0,
@@ -72,6 +72,8 @@ public:
   {
     if (0 < id && id < HTTP2_SETTINGS_MAX) {
       return this->settings[indexof(id)];
+    } else if (id == HTTP2_SETTINGS_GRPC_ALLOW_TRUE_BINARY_METADATA) {
+      return 0;
     } else {
       ink_assert(!"Bad Settings Identifier");
     }
@@ -84,6 +86,8 @@ public:
   {
     if (0 < id && id < HTTP2_SETTINGS_MAX) {
       return this->settings[indexof(id)] = value;
+    } else if (id == HTTP2_SETTINGS_GRPC_ALLOW_TRUE_BINARY_METADATA) {
+      return 0;
     } else {
       ink_assert(!"Bad Settings Identifier");
     }
@@ -115,7 +119,7 @@ class Http2ConnectionState : public Continuation
 public:
   Http2ConnectionState() : stream_list() { SET_HANDLER(&Http2ConnectionState::main_event_handler); }
 
-  Http2ClientSession *ua_session   = nullptr;
+  Http2Session *session   = nullptr;
   HpackHandle *local_hpack_handle  = nullptr;
   HpackHandle *remote_hpack_handle = nullptr;
   DependencyTree *dependency_tree  = nullptr;
@@ -151,7 +155,7 @@ public:
     ats_free(continued_buffer.iov_base);
 
     delete dependency_tree;
-    this->ua_session = nullptr;
+    this->session = nullptr;
   }
 
   // Event handlers
@@ -159,7 +163,7 @@ public:
   int state_closed(int, void *);
 
   // Stream control interfaces
-  Http2Stream *create_stream(Http2StreamId new_id, Http2Error &error);
+  Http2Stream *create_stream(Http2StreamId new_id, Http2Error &error, bool initiating_connection = false);
   Http2Stream *find_stream(Http2StreamId id) const;
   void restart_streams();
   bool delete_stream(Http2Stream *stream);
@@ -225,6 +229,7 @@ public:
   void send_data_frames(Http2Stream *stream);
   Http2SendDataFrameResult send_a_data_frame(Http2Stream *stream, size_t &payload_length);
   void send_headers_frame(Http2Stream *stream);
+  void send_trailing_headers_frame(Http2Stream *stream, MIMEHdr *send_header);
   void send_push_promise_frame(Http2Stream *stream, URL &url, const MIMEField *accept_encoding);
   void send_rst_stream_frame(Http2StreamId id, Http2ErrorCode ec);
   void send_settings_frame(const Http2ConnectionSettings &new_settings);
@@ -235,7 +240,7 @@ public:
   bool
   is_state_closed() const
   {
-    return ua_session == nullptr || fini_received;
+    return session == nullptr || fini_received;
   }
 
   bool
@@ -264,6 +269,14 @@ public:
   set_shutdown_state(Http2ShutdownState state)
   {
     shutdown_state = state;
+  }
+
+  void start_streams() {
+    Http2Stream *s = stream_list.head;
+    for (; s; s = static_cast<Http2Stream*>(s->link.next)) {
+      send_headers_frame(s);
+      send_data_frames(s);
+    }
   }
 
   // noncopyable

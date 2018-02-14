@@ -1,6 +1,6 @@
 /** @file
 
-  ProxyClientSession - Base class for protocol client sessions.
+  ProxySession - Base class for protocol client sessions.
 
   @section license License
 
@@ -29,8 +29,8 @@
 #include <ts/string_view.h>
 #include "P_Net.h"
 #include "InkAPIInternal.h"
-#include "http/HttpServerSession.h"
 
+class PoolInterface;
 extern bool http_client_session_draining;
 
 // Emit a debug message conditional on whether this particular client session
@@ -38,13 +38,14 @@ extern bool http_client_session_draining;
 // member function.
 #define SsnDebug(ssn, tag, ...) SpecificDebug((ssn)->debug(), tag, __VA_ARGS__)
 
-class ProxyClientTransaction;
+class ProxyTransaction;
+class HttpSM;
 struct AclRecord;
 
-class ProxyClientSession : public VConnection
+class ProxySession : public VConnection
 {
 public:
-  ProxyClientSession();
+  ProxySession();
 
   virtual void destroy() = 0;
   virtual void free();
@@ -53,6 +54,7 @@ public:
   virtual void new_connection(NetVConnection *new_vc, MIOBuffer *iobuf, IOBufferReader *reader, bool backdoor) = 0;
 
   virtual NetVConnection *get_netvc() const = 0;
+  virtual void set_netvc(NetVConnection *netvc) = 0;
   virtual void release_netvc()              = 0;
 
   virtual int get_transact_count() const = 0;
@@ -116,7 +118,7 @@ public:
     return this->api_hooks.has_hooks() || http_global_hooks->has_hooks();
   }
 
-  bool
+  virtual bool
   is_active() const
   {
     return m_active;
@@ -151,7 +153,7 @@ public:
   }
 
   // Indicate we are done with a transaction.
-  virtual void release(ProxyClientTransaction *trans) = 0;
+  virtual void release(ProxyTransaction *trans) = 0;
 
   int64_t
   connection_id() const
@@ -160,14 +162,8 @@ public:
   }
 
   virtual void
-  attach_server_session(HttpServerSession *ssession, bool transaction_done = true)
+  attach_peer_session(ProxySession *ssession, bool transaction_done = true)
   {
-  }
-
-  virtual HttpServerSession *
-  get_server_session() const
-  {
-    return NULL;
   }
 
   TSHttpHookID
@@ -176,19 +172,42 @@ public:
     return api_hookid;
   }
 
+  virtual ink_hrtime
+  get_inactivity_timeout() const
+  {
+    auto net_vc = this->get_netvc();
+    return net_vc ? net_vc->get_inactivity_timeout() : 0;
+  }
+
+  virtual ink_hrtime
+  get_active_timeout() const
+  {
+    auto net_vc = this->get_netvc();
+    return net_vc ? net_vc->get_active_timeout() : 0;
+  }
+
   virtual void
   set_active_timeout(ink_hrtime timeout_in)
   {
+    auto net_vc = this->get_netvc();
+    if (net_vc)
+      net_vc->set_active_timeout(timeout_in);
   }
 
   virtual void
   set_inactivity_timeout(ink_hrtime timeout_in)
   {
+    auto net_vc = this->get_netvc();
+    if (net_vc)
+      net_vc->set_inactivity_timeout(timeout_in);
   }
 
   virtual void
   cancel_inactivity_timeout()
   {
+    auto net_vc = this->get_netvc();
+    if (net_vc)
+      net_vc->cancel_inactivity_timeout();
   }
 
   bool
@@ -211,22 +230,31 @@ public:
     return vc ? vc->protocol_contains(tag_prefix) : nullptr;
   }
 
+  virtual PoolInterface * const
+  get_peer_session() const
+  {
+    return nullptr;
+  }
+
   void set_session_active();
   void clear_session_active();
 
   static int64_t next_connection_id();
 
-  virtual sockaddr const *
-  get_client_addr()
+  virtual IpEndpoint const &
+  get_peer_addr() const
   {
     NetVConnection *netvc = get_netvc();
-    return netvc ? netvc->get_remote_addr() : nullptr;
+    return netvc->get_remote_endpoint();
   }
   virtual sockaddr const *
-  get_local_addr()
+  get_local_addr() const
   {
     NetVConnection *netvc = get_netvc();
     return netvc ? netvc->get_local_addr() : nullptr;
+  }
+
+  virtual void attach_transaction(HttpSM *attach_sm)  {
   }
 
   /// acl record - cache IpAllow::match() call
@@ -239,8 +267,12 @@ public:
   ink_hrtime ssn_last_txn_time = 0;
 
   // noncopyable
-  ProxyClientSession(ProxyClientSession &) = delete;
-  ProxyClientSession &operator=(const ProxyClientSession &) = delete;
+  ProxySession(ProxySession &) = delete;
+  ProxySession &operator=(const ProxySession &) = delete;
+
+  virtual void set_shared() {}
+
+  virtual bool is_shared() const { return true; }
 
 protected:
   // XXX Consider using a bitwise flags variable for the following flags, so

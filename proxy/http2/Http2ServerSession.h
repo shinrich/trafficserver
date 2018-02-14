@@ -1,6 +1,6 @@
 /** @file
 
-  Http2ClientSession.h
+  Http2ServerSession.h
 
   @section license License
 
@@ -21,28 +21,42 @@
   limitations under the License.
  */
 
-#ifndef __HTTP2_CLIENT_SESSION_H__
-#define __HTTP2_CLIENT_SESSION_H__
+#ifndef __HTTP2_SERVER_SESSION_H__
+#define __HTTP2_SERVER_SESSION_H__
 
 #include "Http2Session.h"
+#include "../http/PoolInterface.h"
 
-class Http2ClientSession : public Http2Session
+class Http2ServerSession : public Http2Session, public PoolInterface
 {
 public:
   typedef Http2Session super; ///< Parent type.
-  typedef int (Http2ClientSession::*SessionHandler)(int, void *);
+  typedef int (Http2ServerSession::*SessionHandler)(int, void *);
 
-  Http2ClientSession() {}
+  Http2ServerSession() {}
 
   void free() override;
+  void attach_transaction(HttpSM *attach_sm) override;
+  void new_connection(NetVConnection *new_vc, MIOBuffer *iobuf, IOBufferReader *reader, bool backdoor) override;
 
   // noncopyable
-  Http2ClientSession(Http2ClientSession &) = delete;
-  Http2ClientSession &operator=(const Http2ClientSession &) = delete;
+  Http2ServerSession(Http2ServerSession &) = delete;
+  Http2ServerSession &operator=(const Http2ServerSession &) = delete;
 
-private:
+  // Add the session to the Session Manager up front
+  // Makes sense in the Http/2 case
+  void add_session() override;
+
+  bool
+  allow_concurrent_transactions() const override
+  {
+    return true;
+  }
+
+  void do_io_close(int lerrno = -1) override;
+
 };
 
-extern ClassAllocator<Http2ClientSession> http2ClientSessionAllocator;
+extern ClassAllocator<Http2ServerSession> http2ServerSessionAllocator;
 
 #endif // __HTTP2_CLIENT_SESSION_H__

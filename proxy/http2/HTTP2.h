@@ -224,8 +224,9 @@ enum Http2SettingsIdentifier {
   HTTP2_SETTINGS_INITIAL_WINDOW_SIZE    = 4,
   HTTP2_SETTINGS_MAX_FRAME_SIZE         = 5,
   HTTP2_SETTINGS_MAX_HEADER_LIST_SIZE   = 6,
+  HTTP2_SETTINGS_MAX,  // Really just the max of the "densely numbered" core id's
+  HTTP2_SETTINGS_GRPC_ALLOW_TRUE_BINARY_METADATA = 0xfe03,
 
-  HTTP2_SETTINGS_MAX
 };
 
 // [RFC 7540] 4.1. Frame Format
@@ -349,12 +350,13 @@ bool http2_parse_goaway(IOVec, Http2Goaway &);
 
 bool http2_parse_window_update(IOVec, uint32_t &);
 
-Http2ErrorCode http2_decode_header_blocks(HTTPHdr *, const uint8_t *, const uint32_t, uint32_t *, HpackHandle &, bool &, uint32_t);
+Http2ErrorCode http2_decode_header_blocks(HTTPHdr *, const uint8_t *, const uint32_t, uint32_t *, HpackHandle &, bool &, uint32_t, bool);
 
 Http2ErrorCode http2_encode_header_blocks(HTTPHdr *, uint8_t *, uint32_t, uint32_t *, HpackHandle &, int32_t);
 
 ParseResult http2_convert_header_from_2_to_1_1(HTTPHdr *);
 void http2_generate_h2_header_from_1_1(HTTPHdr *headers, HTTPHdr *h2_headers);
+void http2_generate_h2_mime_header(MIMEHdr *headers, HTTPHdr *h2_headers);
 
 // Not sure where else to put this, but figure this is as good of a start as
 // anything else.

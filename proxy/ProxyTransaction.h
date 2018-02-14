@@ -1,6 +1,6 @@
 /** @file
 
-  ProxyClientTransaction - Base class for protocol client transactions.
+  ProxyTransaction - Base class for protocol client transactions.
 
   @section license License
 
@@ -24,19 +24,19 @@
 #ifndef __PROXY_CLIENT_TRANSACTION_H__
 #define __PROXY_CLIENT_TRANSACTION_H__
 
-#include "ProxyClientSession.h"
+#include "ProxySession.h"
 #include <ts/string_view.h>
 
 class HttpSM;
-class HttpServerSession;
-class ProxyClientTransaction : public VConnection
+class ProxyTransaction : public VConnection
 {
 public:
-  ProxyClientTransaction();
+  ProxyTransaction();
 
   // do_io methods implemented by subclasses
 
   virtual void new_transaction();
+  virtual void attach_transaction(HttpSM *attach_sm);
 
   virtual NetVConnection *
   get_netvc() const
@@ -48,7 +48,7 @@ public:
   virtual void set_inactivity_timeout(ink_hrtime timeout_in) = 0;
   virtual void cancel_inactivity_timeout()                   = 0;
 
-  virtual void attach_server_session(HttpServerSession *ssession, bool transaction_done = true);
+  virtual void attach_peer_session(ProxySession *session, bool transaction_done = true);
 
   // See if we need to schedule on the primary thread for the transaction or change the thread that is associated with the VC.
   // If we reschedule, the scheduled action is returned.  Otherwise, NULL is returned
@@ -126,6 +126,12 @@ public:
     }
   }
 
+  virtual PoolInterface * const
+  get_peer_session()
+  {
+    return parent ? parent->get_peer_session() : nullptr;
+  }
+
   /// DNS resolution preferences.
   HostResStyle
   get_host_res_style() const
@@ -191,14 +197,14 @@ public:
 
   virtual void transaction_done() = 0;
 
-  ProxyClientSession *
+  ProxySession *
   get_parent()
   {
     return parent;
   }
 
   virtual void
-  set_parent(ProxyClientSession *new_parent)
+  set_parent(ProxySession *new_parent)
   {
     parent         = new_parent;
     host_res_style = parent->host_res_style;
@@ -206,12 +212,6 @@ public:
   virtual void
   set_h2c_upgrade_flag()
   {
-  }
-
-  HttpServerSession *
-  get_server_session() const
-  {
-    return parent ? parent->get_server_session() : NULL;
   }
 
   HttpSM *
@@ -256,8 +256,14 @@ public:
   //
   virtual int get_transaction_id() const = 0;
 
+  IOBufferReader *
+  get_reader() const
+  {
+    return sm_reader;
+  } 
+
 protected:
-  ProxyClientSession *parent;
+  ProxySession *parent;
   HttpSM *current_reader;
   IOBufferReader *sm_reader;
 

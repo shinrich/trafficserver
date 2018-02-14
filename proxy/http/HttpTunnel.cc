@@ -87,6 +87,8 @@ ChunkedHandler::init_by_action(IOBufferReader *buffer_in, Action action)
   bytes_left     = 0;
   truncation     = false;
   this->action   = action;
+  chunked_trailer_size = 0;
+  chunked_trailer_reader = nullptr;
 
   switch (action) {
   case ACTION_DOCHUNK:
@@ -267,6 +269,9 @@ ChunkedHandler::read_trailer()
   while (chunked_reader->is_read_avail_more_than(0) && !done) {
     const char *tmp   = chunked_reader->start();
     int64_t data_size = chunked_reader->block_read_avail();
+    if (!chunked_trailer_reader) {
+      chunked_trailer_reader = chunked_reader->writer()->clone_reader(chunked_reader);
+    }
 
     ink_assert(data_size > 0);
     for (bytes_used = 0; data_size > 0; data_size--) {
@@ -299,6 +304,11 @@ ChunkedHandler::read_trailer()
       tmp++;
     }
     chunked_reader->consume(bytes_used);
+    chunked_trailer_size += bytes_used;
+  }
+  if (chunked_trailer_size == 2) { // Default case, not really a trailer
+    chunked_trailer_size = 0;
+    chunked_trailer_reader = nullptr;
   }
 }
 
@@ -331,7 +341,36 @@ ChunkedHandler::process_chunked_content()
 }
 
 bool
-ChunkedHandler::generate_chunked_content()
+ChunkedHandler::generate_chunked_trailer()
+{
+  int64_t r_avail;
+
+  int64_t total_max_to_read = dechunked_reader->read_avail();
+  int64_t total_processed = 0;
+
+  while (total_processed < total_max_to_read) {
+    // Add the chunked transfer coding trailer.
+    chunked_buffer->write("0\r\n", 3);
+    chunked_size += 3;
+
+    r_avail = dechunked_reader->read_avail();
+    int64_t write_val = r_avail;
+
+    chunked_buffer->write(dechunked_reader, write_val);
+    chunked_size += write_val;
+    dechunked_reader->consume(write_val);
+
+    // Output the trailing CRLF.
+    chunked_buffer->write("\r\n", 2);
+    chunked_size += 2;
+    total_processed += write_val;
+  }
+
+  return true;
+}
+
+bool
+ChunkedHandler::generate_chunked_content(int64_t max_read_len)
 {
   char tmp[16];
   bool server_done = false;
@@ -347,7 +386,18 @@ ChunkedHandler::generate_chunked_content()
     break;
   }
 
-  while ((r_avail = dechunked_reader->read_avail()) > 0 && state != CHUNK_WRITE_DONE) {
+  int64_t total_max_to_read = dechunked_reader->read_avail();
+  if (max_read_len > 0) {
+    total_max_to_read = std::min(max_read_len, total_max_to_read);
+  }
+  int64_t total_processed = 0;
+
+  while (total_processed < total_max_to_read && state != CHUNK_WRITE_DONE) {
+    r_avail = dechunked_reader->read_avail();
+    if (max_read_len > 0) {
+      r_avail = std::min(r_avail, max_read_len);
+    }
+
     int64_t write_val = std::min(max_chunk_size, r_avail);
 
     state = CHUNK_WRITE_CHUNK;
@@ -380,6 +430,7 @@ ChunkedHandler::generate_chunked_content()
     // Output the trailing CRLF.
     chunked_buffer->write("\r\n", 2);
     chunked_size += 2;
+    total_processed += write_val;
   }
 
   if (server_done) {
@@ -873,6 +924,8 @@ HttpTunnel::producer_run(HttpTunnelProducer *p)
     consumer_n = (producer_n = INT64_MAX);
   }
 
+  int producer_event = VC_EVENT_READ_READY;
+
   // Do the IO on the consumers first so
   //  data doesn't disappear out from
   //  under the tunnel
@@ -935,7 +988,7 @@ HttpTunnel::producer_run(HttpTunnelProducer *p)
       // the amount to read since we know it.  We will forward the FIN
       // to the server on VC_EVENT_WRITE_COMPLETE.
       if (p->vc_type == HT_HTTP_CLIENT) {
-        ProxyClientTransaction *ua_vc = static_cast<ProxyClientTransaction *>(p->vc);
+        ProxyTransaction *ua_vc = static_cast<ProxyTransaction *>(p->vc);
         if (ua_vc->get_half_close_flag()) {
           c_write          = c->buffer_reader->read_avail();
           p->alive         = false;
@@ -943,6 +996,11 @@ HttpTunnel::producer_run(HttpTunnelProducer *p)
         }
       }
       c->write_vio = c->vc->do_io_write(this, c_write, c->buffer_reader);
+      if (!c->write_vio) {
+        // If all the chunked data was consumed in the first slurp, pass in PRECOMPLETE
+        // for the producer run
+        producer_event = HTTP_TUNNEL_EVENT_PRECOMPLETE;
+      }
       ink_assert(c_write > 0);
     }
 
@@ -972,7 +1030,7 @@ HttpTunnel::producer_run(HttpTunnelProducer *p)
     p->chunked_handler.dechunked_reader->consume(p->chunked_handler.skip_bytes);
 
     // If there is data to process in the buffer, do it now
-    producer_handler(VC_EVENT_READ_READY, p);
+    producer_handler(producer_event, p);
   } else if (p->do_dechunking || p->do_chunked_passthru) {
     // remove the dechunked reader marker so that it doesn't act like a buffer guard
     if (p->do_dechunking && dechunked_buffer_start) {
@@ -992,7 +1050,7 @@ HttpTunnel::producer_run(HttpTunnelProducer *p)
     // p->chunked_handler.chunked_reader->consume(
     // p->chunked_handler.skip_bytes);
 
-    producer_handler(VC_EVENT_READ_READY, p);
+    producer_handler(producer_event, p);
     if (!p->chunked_handler.chunked_reader->read_avail() && sm->redirection_tries > 0 &&
         p->vc_type == HT_HTTP_CLIENT) { // read_avail() == 0
       // [bug 2579251]
@@ -1046,8 +1104,8 @@ HttpTunnel::producer_handler_dechunked(int event, HttpTunnelProducer *p)
   case VC_EVENT_READ_COMPLETE:
   case HTTP_TUNNEL_EVENT_PRECOMPLETE:
   case VC_EVENT_EOS:
+    // TODO use return value.
     p->last_event = p->chunked_handler.last_server_event = event;
-    // TODO: Should we check the return code?
     p->chunked_handler.generate_chunked_content();
     break;
   };

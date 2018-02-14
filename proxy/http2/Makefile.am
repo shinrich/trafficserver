@@ -39,6 +39,10 @@ libhttp2_a_SOURCES = \
   HTTP2.h \
   Http2ClientSession.cc \
   Http2ClientSession.h \
+  Http2ServerSession.cc \
+  Http2ServerSession.h \
+  Http2Session.cc \
+  Http2Session.h \
   Http2ConnectionState.cc \
   Http2ConnectionState.h \
   Http2DebugNames.cc \

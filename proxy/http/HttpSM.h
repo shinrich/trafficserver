@@ -39,7 +39,7 @@
 #include "HttpTransact.h"
 #include "HttpTunnel.h"
 #include "InkAPIInternal.h"
-#include "../ProxyClientTransaction.h"
+#include "../ProxyTransaction.h"
 #include "HdrUtils.h"
 #include <ts/string_view.h>
 #include <ts/History.h>
@@ -56,7 +56,6 @@
  * IMPORTANT NOTE: enable/disable LAZY_BUF_ALLOC in HttpServerSession.h
  * as well.
  */
-#define LAZY_BUF_ALLOC
 
 #define HTTP_API_CONTINUE (INK_API_EVENT_EVENTS_START + 0)
 #define HTTP_API_ERROR (INK_API_EVENT_EVENTS_START + 1)
@@ -209,19 +208,19 @@ public:
 
   void init();
 
-  void attach_client_session(ProxyClientTransaction *client_vc_arg, IOBufferReader *buffer_reader);
+  void attach_client_session(ProxyTransaction *client_vc_arg, IOBufferReader *buffer_reader);
 
   // Called by httpSessionManager so that we can reset
   //  the session timeouts and initiate a read while
   //  holding the lock for the server session
-  void attach_server_session(HttpServerSession *s);
+  void attach_server_session(ProxyTransaction *s);
 
   // Used to read attributes of
   // the current active server session
-  HttpServerSession *
-  get_server_session()
+  ProxyTransaction *
+  get_server_txn()
   {
-    return server_session;
+    return server_txn;
   }
 
   // Called by transact.  Updates are fire and forget
@@ -285,6 +284,7 @@ public:
 
   void add_cache_sm();
   bool is_private();
+  bool set_server_session_private(bool flag);
   bool is_redirect_required();
 
   /// Get the protocol stack for the inbound (client, user agent) connection.
@@ -331,7 +331,7 @@ protected:
   void remove_ua_entry();
 
 public:
-  ProxyClientTransaction *ua_txn   = nullptr;
+  ProxyTransaction *ua_txn   = nullptr;
   BackgroundFill_t background_fill = BACKGROUND_FILL_NONE;
   // AuthHttpAdapter authAdapter;
   void set_http_schedule(Continuation *);
@@ -344,7 +344,7 @@ protected:
   IOBufferReader *ua_raw_buffer_reader = nullptr;
 
   HttpVCTableEntry *server_entry    = nullptr;
-  HttpServerSession *server_session = nullptr;
+  ProxyTransaction *server_txn = nullptr;
 
   /* Because we don't want to take a session from a shared pool if we know that it will be private,
    * but we cannot set it to private until we have an attached server session.
@@ -399,7 +399,6 @@ protected:
   int state_auth_callback(int event, void *data);
   int state_add_to_list(int event, void *data);
   int state_remove_from_list(int event, void *data);
-  int state_congestion_control_lookup(int event, void *data);
 
   // Y! ebalsa: remap handlers
   int state_remap_request(int event, void *data);
@@ -455,8 +454,6 @@ protected:
 #ifdef PROXY_DRAIN
   void do_drain_request_body();
 #endif
-
-  bool do_congestion_control_lookup();
 
   virtual void handle_api_return();
   void handle_server_setup_error(int event, void *data);
@@ -579,7 +576,6 @@ public:
   LINK(HttpSM, debug_link);
 
 public:
-  bool set_server_session_private(bool private_session);
   bool
   is_dying() const
   {

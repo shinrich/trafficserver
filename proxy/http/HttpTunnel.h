@@ -105,6 +105,8 @@ struct ChunkedHandler {
   Action action;
 
   IOBufferReader *chunked_reader;
+  IOBufferReader *chunked_trailer_reader;
+  int64_t chunked_trailer_size;
   MIOBuffer *dechunked_buffer;
   int64_t dechunked_size;
 
@@ -147,7 +149,8 @@ struct ChunkedHandler {
 
   // Returns true if complete, false otherwise
   bool process_chunked_content();
-  bool generate_chunked_content();
+  bool generate_chunked_content(int64_t max_read_len = 0);
+  bool generate_chunked_trailer();
 
 private:
   void read_size();
