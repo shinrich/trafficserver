@@ -201,7 +201,7 @@ Http2Stream::recv_headers(Http2ConnectionState &cstate)
     this->offset_to_chunked = dumpoffset;
     this->recv_initialize_data_handling(is_done);
     if (chunked_recv) {
-      Http2StreamDebug("recv_headers: Not chunked");
+      Http2StreamDebug("recv_headers: Chunked");
     } else {
       this->offset_to_chunked = 0;
     }
@@ -575,7 +575,9 @@ Http2Stream::update_read_request(int64_t read_len, bool call_update, bool check_
 void
 Http2Stream::restart_sending()
 {
-  this->send_body(true);
+  if (sending_body) {
+    this->send_body(true);
+  }
 }
 
 bool
@@ -607,6 +609,9 @@ Http2Stream::update_write_request(IOBufferReader *buf_reader, int64_t write_len,
       }
     } else {
       this->send_process_data(is_done);
+      if (is_done) {
+        write_vio.nbytes = write_vio.ndone;
+      }
     }
   }
 
@@ -650,8 +655,20 @@ Http2Stream::update_write_request(IOBufferReader *buf_reader, int64_t write_len,
 
         // If there is additional data, send it along in a data frame.  Or if this was header only
         // make sure to send the end of stream
+        if (!this->send_is_data_available() && !this->is_send_chunked() && !this->_send_header.presence(MIME_PRESENCE_CONTENT_LENGTH)) {
+          this->mark_body_done();
+        }
+
+        // Send the request or response to peer
+        parent->connection_state.send_headers_frame(this);
+
+        // Signal write ready or write complete because the header has been sent.
+        this->signal_write_event(call_update);
+
+        // If there is additional data, send it along in a data frame.  Or if this was header only
+        // make sure to send the end of stream
         if (this->send_is_data_available() || is_done) {
-          if ((write_vio.ntodo() + this->send_header.length_get()) == bytes_avail || is_done) {
+          if ((write_vio.ntodo() + this->_send_header.length_get()) == bytes_avail || is_done) {
             this->mark_body_done();
           }
 
@@ -690,14 +707,19 @@ Http2Stream::signal_write_event(bool call_update)
 
   int send_event = this->write_vio.ntodo() == 0 ? VC_EVENT_WRITE_COMPLETE : VC_EVENT_WRITE_READY;
 
-  if (call_update) {
-    // Coming from reenable.  Safe to call the handler directly
-    if (write_vio._cont && this->current_reader) {
-      write_vio._cont->handleEvent(send_event, &write_vio);
-    }
+  if (has_trailer() && send_event == VC_EVENT_WRITE_COMPLETE) {
+    // Send the trailer header before delivering the write complete up the chain
+    this->send_trailer();
   } else {
-    // Called from do_io_write. Might still be setting up state. Send an event to let the dust settle
-    write_event = send_tracked_event(write_event, send_event, &write_vio);
+    if (call_update) {
+      // Coming from reenable.  Safe to call the handler directly
+      if (write_vio._cont && this->current_reader) {
+        write_vio._cont->handleEvent(send_event, &write_vio);
+      }
+    } else {
+      // Called from do_io_write. Might still be setting up state. Send an event to let the dust settle
+      write_event = send_tracked_event(write_event, send_event, &write_vio);
+    }
   }
 }
 
@@ -712,7 +734,7 @@ void
 Http2Stream::send_body(bool call_update)
 {
   Http2ClientSession *parent = static_cast<Http2ClientSession *>(this->get_parent());
-
+  sending_body = true;
   if (Http2::stream_priority_enabled) {
     parent->connection_state.schedule_stream(this);
     // signal_write_event() will be called from `Http2ConnectionState::send_data_frames_depends_on_priority()`
@@ -722,6 +744,56 @@ Http2Stream::send_body(bool call_update)
     this->signal_write_event(call_update);
   }
   inactive_timeout_at = Thread::get_hrtime() + inactive_timeout;
+}
+
+void
+Http2Stream::send_trailer()
+{
+  // Give up, no trailer data
+  if (!chunked_handler.chunked_trailer_reader) {
+    return;
+  }
+  // Convert trailer stream to a header
+  MIMEParser parser;
+  mime_parser_init(&parser);
+  MIMEHdr hdr;
+  hdr.create();
+  int bytes_used = 0;
+  const char *start;
+  const char *tmp;
+  const char *end;
+  int used;
+
+  ParseResult state = PARSE_RESULT_CONT;
+
+  do {
+    int64_t b_avail = chunked_handler.chunked_trailer_reader->block_read_avail();
+
+    if (b_avail <= 0) {
+      break;
+    }
+
+    tmp = start = chunked_handler.chunked_trailer_reader->start();
+    end         = start + b_avail;
+
+    int heap_slot = hdr.m_heap->attach_block(chunked_handler.chunked_trailer_reader->get_current_block(), start);
+
+    hdr.m_heap->lock_ronly_str_heap(heap_slot);
+    state = mime_parser_parse(&parser, hdr.m_heap, hdr.m_mime, &tmp, end, false, false);
+    hdr.m_heap->set_ronly_str_heap_end(heap_slot, tmp);
+    hdr.m_heap->unlock_ronly_str_heap(heap_slot);
+
+    used = (int)(tmp - start);
+    chunked_handler.chunked_trailer_reader->consume(used);
+    bytes_used += used;
+
+  } while (state == PARSE_RESULT_CONT);
+
+  Http2StreamDebug("Parse trailer with state=%d and %d bytes read", state, bytes_used);
+  static_cast<Http2ClientSession*>(parent)->connection_state.send_trailing_headers_frame(this, &hdr);
+  inactive_timeout_at = Thread::get_hrtime() + inactive_timeout;
+  hdr.destroy();
+  chunked_handler.chunked_trailer_reader = nullptr;
 }
 
 void

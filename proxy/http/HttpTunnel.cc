@@ -306,6 +306,10 @@ ChunkedHandler::read_trailer()
     chunked_reader->consume(bytes_used);
     chunked_trailer_size += bytes_used;
   }
+  if (chunked_trailer_size == 2) { // Default case, not really a trailer
+    chunked_trailer_size = 0;
+    chunked_trailer_reader = nullptr;
+  }
 }
 
 bool

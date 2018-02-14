@@ -94,6 +94,12 @@ public:
     this->write_vio.ndone += num_bytes;
   }
 
+  void
+  finialize_write_vio() 
+  {
+    write_vio.nbytes = write_vio.ndone;
+  }
+
   Http2StreamId
   get_id() const
   {
@@ -164,6 +170,12 @@ public:
     return content_length == 0 || content_length == data_length;
   }
 
+  bool
+  has_trailer() const
+  {
+    return (chunked_handler.chunked_trailer_reader != nullptr);
+  }
+
   Http2ErrorCode decode_header_blocks(HpackHandle &hpack_handle, uint32_t maximum_table_size);
   void recv_headers(Http2ConnectionState &cstate);
   VIO *do_io_read(Continuation *c, int64_t nbytes, MIOBuffer *buf) override;
@@ -187,6 +199,7 @@ public:
 
   void restart_sending();
   void send_body(bool call_update);
+  void send_trailer();
   void push_promise(URL &url, const MIMEField *accept_encoding);
 
   // Stream level window size
@@ -312,6 +325,7 @@ private:
   bool chunked_send    = false; // True if the data we are sending is chunked
   bool chunked_recv    = false; // True if the data we are receiving is chunked
   bool initiating_flag = false; // True if the stream sends the request
+  bool sending_body    = false;
 
   // A brief disucssion of similar flags and state variables:  _state, closed, terminate_stream
   //

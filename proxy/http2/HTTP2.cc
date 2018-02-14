@@ -523,6 +523,37 @@ http2_convert_header_from_2_to_1_1(HTTPHdr *headers)
   return PARSE_RESULT_DONE;
 }
 
+void 
+http2_generate_h2_mime_header(MIMEHdr *headers, HTTPHdr *h2_headers)
+{
+  h2_headers->create(HTTP_TYPE_REQUEST);
+
+  // Copy headers
+  // Intermediaries SHOULD remove connection-specific header fields.
+  MIMEFieldIter field_iter;
+  for (MIMEField *field = headers->iter_get_first(&field_iter); field != nullptr; field = headers->iter_get_next(&field_iter)) {
+    const char *name;
+    int name_len;
+    const char *value;
+    int value_len;
+    name = field->name_get(&name_len);
+    if ((name_len == MIME_LEN_CONNECTION && strncasecmp(name, MIME_FIELD_CONNECTION, name_len) == 0) ||
+        (name_len == MIME_LEN_KEEP_ALIVE && strncasecmp(name, MIME_FIELD_KEEP_ALIVE, name_len) == 0) ||
+        (name_len == MIME_LEN_HOST && strncasecmp(name, MIME_FIELD_HOST, name_len) == 0) ||
+        (name_len == MIME_LEN_PROXY_CONNECTION && strncasecmp(name, MIME_FIELD_PROXY_CONNECTION, name_len) == 0) ||
+        (name_len == MIME_LEN_TRANSFER_ENCODING && strncasecmp(name, MIME_FIELD_TRANSFER_ENCODING, name_len) == 0) ||
+        (name_len == MIME_LEN_UPGRADE && strncasecmp(name, MIME_FIELD_UPGRADE, name_len) == 0)) {
+      continue;
+    }
+    MIMEField *newfield;
+    name     = field->name_get(&name_len);
+    newfield = h2_headers->field_create(name, name_len);
+    value    = field->value_get(&value_len);
+    newfield->value_set(h2_headers->m_heap, h2_headers->m_mime, value, value_len);
+    h2_headers->field_attach(newfield);
+  }
+}
+
 void
 http2_generate_h2_header_from_1_1(HTTPHdr *headers, HTTPHdr *h2_headers)
 {

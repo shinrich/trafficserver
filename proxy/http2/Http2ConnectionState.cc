@@ -480,7 +480,8 @@ rcv_rst_stream_frame(Http2ConnectionState &cstate, const Http2Frame &frame)
                       "reset failed to parse");
   }
 
-  if (stream != nullptr) {
+  // Only immediately delete the stream if the RST sent an error
+  if (stream != nullptr && rst_stream.error_code != 0) {
     Http2StreamDebug(cstate.session, stream_id, "RST_STREAM: Error Code: %u", rst_stream.error_code);
 
     cstate.delete_stream(stream);
@@ -1340,6 +1341,14 @@ Http2ConnectionState::send_a_data_frame(Http2Stream *stream, size_t &payload_len
   Http2StreamDebug(session, stream->get_id(), "Send a DATA frame - client window con: %5zd stream: %5zd payload: %5zd",
                    client_rwnd, stream->client_rwnd, payload_length);
 
+  bool send_trailer = false;
+  if (stream->has_trailer() && (flags & HTTP2_FLAGS_DATA_END_STREAM)) {
+    // Back out the end send stream flag, Must be send with trailing headers
+    flags &= ~HTTP2_FLAGS_DATA_END_STREAM;
+    stream->finialize_write_vio();
+    send_trailer = true;
+  }
+
   Http2Frame data(HTTP2_FRAME_TYPE_DATA, stream->get_id(), flags);
   data.alloc(buffer_size_index[HTTP2_FRAME_TYPE_DATA]);
   http2_write_data(payload_buffer, payload_length, data.write());
@@ -1350,9 +1359,16 @@ Http2ConnectionState::send_a_data_frame(Http2Stream *stream, size_t &payload_len
 
   // xmit event
   SCOPED_MUTEX_LOCK(lock, this->session->mutex, this_ethread());
-  this->session->handleEvent(HTTP2_SESSION_EVENT_XMIT, &data);
 
-  if (flags & HTTP2_FLAGS_DATA_END_STREAM) {
+  if (!send_trailer || payload_length > 0) {
+    this->session->handleEvent(HTTP2_SESSION_EVENT_XMIT, &data);
+  }
+
+  if (send_trailer) {
+    //stream->send_trailer();
+    return Http2SendDataFrameResult::NO_PAYLOAD;
+  }
+  else if ((flags & HTTP2_FLAGS_DATA_END_STREAM)) {
     Http2StreamDebug(session, stream->get_id(), "End of DATA frame");
     stream->send_end_stream = true;
     // Setting to the same state shouldn't be erroneous
@@ -1393,6 +1409,92 @@ Http2ConnectionState::send_data_frames(Http2Stream *stream)
   }
 
   return;
+}
+
+void
+Http2ConnectionState::send_trailing_headers_frame(Http2Stream *stream, MIMEHdr *send_header)
+{
+  uint8_t *buf                = nullptr;
+  uint32_t buf_len            = 0;
+  uint32_t header_blocks_size = 0;
+  int payload_length          = 0;
+  uint64_t sent               = 0;
+  uint8_t flags               = 0x00;
+
+  Http2StreamDebug(session, stream->get_id(), "Send trailing HEADERS frame");
+
+  HTTPHdr h2_hdr;
+  http2_generate_h2_mime_header(send_header, &h2_hdr);
+
+  buf_len = send_header->length_get() * 2; // Make it double just in case
+  buf     = (uint8_t *)ats_malloc(buf_len);
+  if (buf == nullptr) {
+    h2_hdr.destroy();
+    return;
+  }
+  Http2ErrorCode result = http2_encode_header_blocks(&h2_hdr, buf, buf_len, &header_blocks_size, *(this->remote_hpack_handle),
+                                                     client_settings.get(HTTP2_SETTINGS_HEADER_TABLE_SIZE));
+  if (result != Http2ErrorCode::HTTP2_ERROR_NO_ERROR) {
+    h2_hdr.destroy();
+    ats_free(buf);
+    return;
+  }
+
+  // Send a HEADERS frame
+  if (header_blocks_size <= static_cast<uint32_t>(BUFFER_SIZE_FOR_INDEX(buffer_size_index[HTTP2_FRAME_TYPE_HEADERS]))) {
+    payload_length = header_blocks_size;
+    flags |= HTTP2_FLAGS_HEADERS_END_HEADERS;
+    flags |= HTTP2_FLAGS_HEADERS_END_STREAM;
+    stream->send_end_stream = true;
+  } else {
+    payload_length = BUFFER_SIZE_FOR_INDEX(buffer_size_index[HTTP2_FRAME_TYPE_HEADERS]);
+  }
+  Http2Frame headers(HTTP2_FRAME_TYPE_HEADERS, stream->get_id(), flags);
+  headers.alloc(buffer_size_index[HTTP2_FRAME_TYPE_HEADERS]);
+  http2_write_headers(buf, payload_length, headers.write());
+  headers.finalize(payload_length);
+
+  // Change stream state
+  if (!stream->change_state(HTTP2_FRAME_TYPE_HEADERS, flags)) {
+    this->send_goaway_frame(this->latest_streamid_in, Http2ErrorCode::HTTP2_ERROR_PROTOCOL_ERROR);
+    this->session->set_half_close_local_flag(true);
+    this_ethread()->schedule_imm_local((Continuation *)this, HTTP2_SESSION_EVENT_FINI);
+
+    h2_hdr.destroy();
+    ats_free(buf);
+    return;
+  }
+
+  // xmit event
+  SCOPED_MUTEX_LOCK(lock, this->session->mutex, this_ethread());
+  this->session->handleEvent(HTTP2_SESSION_EVENT_XMIT, &headers);
+  sent += payload_length;
+
+  // Send CONTINUATION frames
+  flags = 0;
+  while (sent < header_blocks_size) {
+    Http2StreamDebug(session, stream->get_id(), "Send CONTINUATION frame");
+    payload_length = std::min(static_cast<uint32_t>(BUFFER_SIZE_FOR_INDEX(buffer_size_index[HTTP2_FRAME_TYPE_CONTINUATION])),
+                              static_cast<uint32_t>(header_blocks_size - sent));
+    if (sent + payload_length == header_blocks_size) {
+      flags |= HTTP2_FLAGS_CONTINUATION_END_HEADERS;
+    }
+    Http2Frame headers(HTTP2_FRAME_TYPE_CONTINUATION, stream->get_id(), flags);
+    headers.alloc(buffer_size_index[HTTP2_FRAME_TYPE_CONTINUATION]);
+    http2_write_headers(buf + sent, payload_length, headers.write());
+    headers.finalize(payload_length);
+    stream->change_state(headers.header().type, headers.header().flags);
+    // xmit event
+    SCOPED_MUTEX_LOCK(lock, this->session->mutex, this_ethread());
+    this->session->handleEvent(HTTP2_SESSION_EVENT_XMIT, &headers);
+    sent += payload_length;
+  }
+
+  stream->send_end_stream = true;
+  stream->change_state(HTTP2_FRAME_TYPE_DATA, flags);
+
+  h2_hdr.destroy();
+  ats_free(buf);
 }
 
 void
