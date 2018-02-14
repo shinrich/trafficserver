@@ -628,8 +628,8 @@ Http2Stream::update_write_request(IOBufferReader *buf_reader, int64_t write_len,
   }
 
   Http2StreamDebug("write_vio.nbytes=%" PRId64 ", write_vio.ndone=%" PRId64 ", write_vio.write_avail=%" PRId64
-                   ", reader.read_avail=%" PRId64,
-                   write_vio.nbytes, write_vio.ndone, write_vio.get_writer() ? write_vio.get_writer()->write_avail() : 0, bytes_avail);
+                   ", reader.read_avail=%" PRId64 " is_done=%d",
+                   write_vio.nbytes, write_vio.ndone, write_vio.get_writer() ? write_vio.get_writer()->write_avail() : 0, bytes_avail, is_done);
 
   if (bytes_avail > 0 || is_done) {
     // Process the new data

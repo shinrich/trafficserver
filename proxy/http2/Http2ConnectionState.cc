@@ -115,6 +115,7 @@ rcv_data_frame(Http2ConnectionState &cstate, const Http2Frame &frame)
 
   stream->increment_data_length(payload_length - pad_length - nbytes);
   if (frame.header().flags & HTTP2_FLAGS_DATA_END_STREAM) {
+    Http2StreamDebug(cstate.session, id, "Received DATA EOS"); 
     stream->recv_end_stream = true;
     if (!stream->change_state(frame.header().type, frame.header().flags)) {
       cstate.send_rst_stream_frame(id, Http2ErrorCode::HTTP2_ERROR_STREAM_CLOSED);
@@ -129,7 +130,7 @@ rcv_data_frame(Http2ConnectionState &cstate, const Http2Frame &frame)
   }
 
   // If Data length is 0, do nothing.
-  if (payload_length == 0) {
+  if (payload_length == 0 && !stream->recv_end_stream) {
     return Http2Error(Http2ErrorClass::HTTP2_ERROR_CLASS_NONE);
   }
 
