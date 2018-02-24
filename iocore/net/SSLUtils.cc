@@ -41,6 +41,7 @@
 #include <openssl/dh.h>
 #include <openssl/bn.h>
 #include <openssl/engine.h>
+#include <openssl/conf.h>
 #include <unistd.h>
 #include <termios.h>
 #include <vector>
@@ -889,9 +890,20 @@ SSLInitializeLibrary()
     ASYNC_init_thread(0,0);
 
     ENGINE_load_dynamic();
+
+    //OPENSSL_config("/home/shinrich/test.cnf");
+    OPENSSL_load_builtin_modules();
+    if (CONF_modules_load_file("/home/shinrich/test.cnf", nullptr, 0) <= 0) {
+      fprintf(stderr, "FATAL: error loading configuration file\n");
+      ERR_print_errors_fp(stderr);
+      exit(1);
+    }
+/*    ENGINE_load_dynamic();
+
     ENGINE *e = ENGINE_by_id("async-test");
     ENGINE_init(e);
     ENGINE_set_default_RSA(e);
+*/
 
 #ifdef OPENSSL_FIPS
     // calling FIPS_mode_set() will force FIPS to POST (Power On Self Test)
