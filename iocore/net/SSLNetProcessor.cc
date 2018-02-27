@@ -58,8 +58,8 @@ int
 SSLNetProcessor::start(int, size_t stacksize)
 {
   // This initialization order matters ...
-  SSLInitializeLibrary();
   SSLConfig::startup();
+  SSLInitializeLibrary();
   SNIConfig::startup();
 
   if (!SSLCertificateConfig::startup()) {
