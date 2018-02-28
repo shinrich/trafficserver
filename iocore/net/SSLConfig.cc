@@ -504,6 +504,12 @@ SSLCertificateConfig::reconfigure()
     delete lookup;
   }
 
+  if (retStatus) {
+    Note("ssl_multicert.config done reloading!");
+  } else {
+    Note("failed to reload ssl_multicert.config");
+  }
+
   return retStatus;
 }
 
@@ -542,7 +548,7 @@ SSLTicketParams::LoadTicket()
     // See if the file changed since we last loaded
     struct stat sdata;
     if (stat(ticket_key_filename, &sdata) >= 0) {
-      if (sdata.st_mtim.tv_sec <= last_load_time) {
+      if (sdata.st_mtime <= last_load_time) {
         // No updates since last load
         return false;
       }

@@ -60,6 +60,7 @@ const uint32_t HTTP2_INITIAL_WINDOW_SIZE    = 65535;
 const uint32_t HTTP2_MAX_FRAME_SIZE         = 16384;
 const uint32_t HTTP2_HEADER_TABLE_SIZE      = 4096;
 const uint32_t HTTP2_MAX_HEADER_LIST_SIZE   = UINT_MAX;
+const uint32_t HTTP2_MAX_BUFFER_USAGE       = 524288;
 
 // [RFC 7540] 5.3.5 Default Priorities
 // The RFC says weight value is 1 to 256, but the value in TS is between 0 to 255
@@ -376,6 +377,7 @@ public:
   static uint32_t accept_no_activity_timeout;
   static uint32_t no_activity_timeout_in;
   static uint32_t active_timeout_in;
+  static uint32_t push_diary_size;
 
   static void init();
 };

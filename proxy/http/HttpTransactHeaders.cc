@@ -414,7 +414,7 @@ HttpTransactHeaders::calculate_document_age(ink_time_t request_time, ink_time_t 
   // Deal with clock skew. Sigh.
   //
   // TODO solve this global clock problem
-  now_value = max(now, response_time);
+  now_value = std::max(now, response_time);
 
   ink_assert(response_time >= 0);
   ink_assert(request_time >= 0);
@@ -422,12 +422,12 @@ HttpTransactHeaders::calculate_document_age(ink_time_t request_time, ink_time_t 
   ink_assert(now_value >= response_time);
 
   if (date_value > 0) {
-    apparent_age = max((time_t)0, (response_time - date_value));
+    apparent_age = std::max((time_t)0, (response_time - date_value));
   }
   if (age_value < 0) {
     current_age = -1; // Overflow from Age: header
   } else {
-    corrected_received_age = max(apparent_age, age_value);
+    corrected_received_age = std::max(apparent_age, age_value);
     response_delay         = response_time - request_time;
     corrected_initial_age  = corrected_received_age + response_delay;
     resident_time          = now_value - response_time;
@@ -598,7 +598,7 @@ HttpTransactHeaders::generate_and_set_squid_codes(HTTPHdr *header, char *via_str
     log_code = SQUID_LOG_ERR_PROXY_DENIED;
     break;
   case VIA_ERROR_CONNECTION:
-    if (log_code == SQUID_LOG_TCP_MISS) {
+    if (log_code == SQUID_LOG_TCP_MISS || log_code == SQUID_LOG_TCP_REFRESH_MISS) {
       log_code = SQUID_LOG_ERR_CONNECT_FAIL;
     }
     break;

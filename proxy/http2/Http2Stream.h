@@ -33,7 +33,7 @@
 class Http2Stream;
 class Http2ConnectionState;
 
-typedef Http2DependencyTree<Http2Stream *> DependencyTree;
+typedef Http2DependencyTree::Tree<Http2Stream *> DependencyTree;
 
 class Http2Stream : public ProxyClientTransaction
 {
@@ -91,7 +91,7 @@ public:
   ~Http2Stream() { this->destroy(); }
   int main_event_handler(int event, void *edata);
 
-  void destroy();
+  void destroy() override;
 
   bool
   is_body_done() const
@@ -109,6 +109,7 @@ public:
   update_sent_count(unsigned num_bytes)
   {
     bytes_sent += num_bytes;
+    this->write_vio.ndone += num_bytes;
   }
 
   Http2StreamId
@@ -171,17 +172,18 @@ public:
 
   Http2ErrorCode decode_header_blocks(HpackHandle &hpack_handle, uint32_t maximum_table_size);
   void send_request(Http2ConnectionState &cstate);
-  VIO *do_io_read(Continuation *c, int64_t nbytes, MIOBuffer *buf);
-  VIO *do_io_write(Continuation *c, int64_t nbytes, IOBufferReader *abuffer, bool owner = false);
-  void do_io_close(int lerrno = -1);
+  VIO *do_io_read(Continuation *c, int64_t nbytes, MIOBuffer *buf) override;
+  VIO *do_io_write(Continuation *c, int64_t nbytes, IOBufferReader *abuffer, bool owner = false) override;
+  void do_io_close(int lerrno = -1) override;
   void initiating_close();
-  void do_io_shutdown(ShutdownHowTo_t) {}
+  void terminate_if_possible();
+  void do_io_shutdown(ShutdownHowTo_t) override {}
   void update_read_request(int64_t read_len, bool send_update);
   bool update_write_request(IOBufferReader *buf_reader, int64_t write_len, bool send_update);
-  void reenable(VIO *vio);
-  virtual void transaction_done();
+  void reenable(VIO *vio) override;
+  virtual void transaction_done() override;
   void send_response_body();
-  void push_promise(URL &url);
+  void push_promise(URL &url, const MIMEField *accept_encoding);
 
   // Stream level window size
   ssize_t client_rwnd, server_rwnd;
@@ -201,10 +203,10 @@ public:
   bool h2_trace;
 
   HTTPHdr response_header;
-  IOBufferReader *response_reader;
-  IOBufferReader *request_reader;
-  MIOBuffer request_buffer;
-  DependencyTree::Node *priority_node;
+  IOBufferReader *response_reader          = nullptr;
+  IOBufferReader *request_reader           = nullptr;
+  MIOBuffer request_buffer                 = CLIENT_CONNECTION_FIRST_READ_BUFFER_SIZE_INDEX;
+  Http2DependencyTree::Node *priority_node = nullptr;
 
   EThread *
   get_thread()
@@ -219,17 +221,17 @@ public:
     return chunked;
   }
 
-  void release(IOBufferReader *r);
+  void release(IOBufferReader *r) override;
 
   virtual bool
-  allow_half_open() const
+  allow_half_open() const override
   {
     return false;
   }
 
-  virtual void set_active_timeout(ink_hrtime timeout_in);
-  virtual void set_inactivity_timeout(ink_hrtime timeout_in);
-  virtual void cancel_inactivity_timeout();
+  virtual void set_active_timeout(ink_hrtime timeout_in) override;
+  virtual void set_inactivity_timeout(ink_hrtime timeout_in) override;
+  virtual void cancel_inactivity_timeout() override;
   void clear_inactive_timer();
   void clear_active_timer();
   void clear_timers();
@@ -249,7 +251,7 @@ public:
   }
 
   bool
-  is_first_transaction() const
+  is_first_transaction() const override
   {
     return is_first_transaction_flag;
   }
@@ -302,7 +304,8 @@ private:
   uint64_t bytes_sent  = 0;
 
   ChunkedHandler chunked_handler;
-  Event *cross_thread_event;
+  Event *cross_thread_event      = nullptr;
+  Event *buffer_full_write_event = nullptr;
 
   // Support stream-specific timeouts
   ink_hrtime active_timeout;

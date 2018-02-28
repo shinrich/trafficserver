@@ -798,7 +798,8 @@ SSLNetVConnection::load_buffer_and_write(int64_t towrite, MIOBufferAccessor &buf
       ERR_error_string_n(e, buf, sizeof(buf));
       TraceIn(trace, get_remote_addr(), get_remote_port(), "SSL Error: sslErr=%d, ERR_get_error=%ld (%s) errno=%d", err, e, buf,
               errno);
-      num_really_written = -errno;
+      // Treat SSL_ERROR_SSL as EPIPE error.
+      num_really_written = -EPIPE;
       SSL_CLR_ERR_INCR_DYN_STAT(this, ssl_error_ssl, "SSL_write-SSL_ERROR_SSL errno=%d", errno);
     } break;
     }
@@ -938,17 +939,22 @@ SSLNetVConnection::sslStartHandShake(int event, int &err)
   case SSL_EVENT_SERVER:
     if (this->ssl == nullptr) {
       SSLCertificateConfig::scoped_config lookup;
-      IpEndpoint ip;
-      int namelen = sizeof(ip);
-      safe_getsockname(this->get_socket(), &ip.sa, &namelen);
-      SSLCertContext *cc = lookup->find(ip);
+      IpEndpoint dst;
+      int namelen = sizeof(dst);
+      if (0 != safe_getsockname(this->get_socket(), &dst.sa, &namelen)) {
+        Debug("ssl", "Failed to get dest ip, errno = [%d]", errno);
+        return EVENT_ERROR;
+      }
+      SSLCertContext *cc = lookup->find(dst);
       if (is_debug_tag_set("ssl")) {
-        IpEndpoint src, dst;
+        IpEndpoint src;
         ip_port_text_buffer ipb1, ipb2;
-        int ip_len;
+        int ip_len = sizeof(src);
 
-        safe_getsockname(this->get_socket(), &dst.sa, &(ip_len = sizeof ip));
-        safe_getpeername(this->get_socket(), &src.sa, &(ip_len = sizeof ip));
+        if (0 != safe_getpeername(this->get_socket(), &src.sa, &ip_len)) {
+          Debug("ssl", "Failed to get src ip, errno = [%d]", errno);
+          return EVENT_ERROR;
+        }
         ats_ip_nptop(&dst, ipb1, sizeof(ipb1));
         ats_ip_nptop(&src, ipb2, sizeof(ipb2));
         Debug("ssl", "IP context is %p for [%s] -> [%s], default context %p", cc, ipb2, ipb1, lookup->defaultContext());

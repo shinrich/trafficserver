@@ -536,7 +536,7 @@ NetHandler::waitForActivity(ink_hrtime timeout)
   while ((vc = write_ready_list.dequeue())) {
     set_cont_flags(vc->control_flags);
     if (vc->closed)
-      close_UnixNetVConnection(vc, triggthis->thread);
+      close_UnixNetVConnection(vc, this->thread);
     else if (vc->write.enabled && vc->write.triggered)
       write_to_net(this, vc, this->thread);
     else if (!vc->write.enabled)

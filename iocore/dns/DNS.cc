@@ -510,7 +510,7 @@ DNSHandler::startEvent(int /* event ATS_UNUSED */, Event *e)
       open_con(nullptr); // use current target address.
       n_con = 1;
     }
-    e->ethread->schedule_every(this, DNS_PERIOD);
+    e->ethread->schedule_every(this, -DNS_PERIOD);
 
     return EVENT_CONT;
   } else {
@@ -533,7 +533,7 @@ DNSHandler::startEvent_sdns(int /* event ATS_UNUSED */, Event *e)
   open_con(&ip.sa, false, n_con);
   ++n_con; // TODO should n_con be zeroed?
 
-  e->schedule_every(DNS_PERIOD);
+  e->schedule_every(-DNS_PERIOD);
   return EVENT_CONT;
 }
 
@@ -646,6 +646,8 @@ DNSHandler::failover()
     switch_named(name_server);
   } else {
     ip_text_buffer buff;
+    con[name_server].eio.stop();
+    con[name_server].close();
     Warning("failover: connection to DNS server %s lost, retrying", ats_ip_ntop(&ip.sa, buff, sizeof(buff)));
   }
 }
@@ -1236,7 +1238,7 @@ Lretry:
   e->retries    = 0;
   if (e->timeout)
     e->timeout->cancel();
-  e->timeout = h->mutex->thread_holding->schedule_in(e, DNS_PERIOD);
+  e->timeout = h->mutex->thread_holding->schedule_in(e, MUTEX_RETRY_DELAY);
 }
 
 int

@@ -55,34 +55,34 @@ public:
   //
   // client -> proxy fields
   //
-  virtual int marshal_client_host_ip(char *);                // STR
-  virtual int marshal_host_interface_ip(char *);             // STR
-  virtual int marshal_client_host_port(char *);              // INT
-  virtual int marshal_client_auth_user_name(char *);         // STR
-  virtual int marshal_client_req_text(char *);               // STR
-  virtual int marshal_client_req_http_method(char *);        // INT
-  virtual int marshal_client_req_url(char *);                // STR
-  virtual int marshal_client_req_url_canon(char *);          // STR
-  virtual int marshal_client_req_unmapped_url_canon(char *); // STR
-  virtual int marshal_client_req_unmapped_url_path(char *);  // STR
-  virtual int marshal_client_req_unmapped_url_host(char *);  // STR
-  virtual int marshal_client_req_url_path(char *);           // STR
-  virtual int marshal_client_req_url_scheme(char *);         // STR
-  virtual int marshal_client_req_http_version(char *);       // INT
-  virtual int marshal_client_req_protocol_version(char *);   // STR
-  virtual int marshal_client_req_header_len(char *);         // INT
-  virtual int marshal_client_req_content_len(char *);        // INT
-  virtual int marshal_client_req_squid_len(char *);          // INT
-  virtual int marshal_client_req_tcp_reused(char *);         // INT
-  virtual int marshal_client_req_is_ssl(char *);             // INT
-  virtual int marshal_client_req_ssl_reused(char *);         // INT
-  virtual int marshal_client_req_timestamp_sec(char *);      // INT
-  virtual int marshal_client_req_timestamp_ms(char *);       // INT
-  virtual int marshal_client_security_protocol(char *);      // STR
-  virtual int marshal_client_security_cipher_suite(char *);  // STR
-  virtual int marshal_client_finish_status_code(char *);     // INT
-  virtual int marshal_client_req_id(char *);                 // INT
-  virtual int marshal_client_req_uuid(char *);               // STR
+  int marshal_client_host_ip(char *) override;                // STR
+  int marshal_host_interface_ip(char *) override;             // STR
+  int marshal_client_host_port(char *) override;              // INT
+  int marshal_client_auth_user_name(char *) override;         // STR
+  int marshal_client_req_text(char *) override;               // STR
+  int marshal_client_req_http_method(char *) override;        // INT
+  int marshal_client_req_url(char *) override;                // STR
+  int marshal_client_req_url_canon(char *) override;          // STR
+  int marshal_client_req_unmapped_url_canon(char *) override; // STR
+  int marshal_client_req_unmapped_url_path(char *) override;  // STR
+  int marshal_client_req_unmapped_url_host(char *) override;  // STR
+  int marshal_client_req_url_path(char *) override;           // STR
+  int marshal_client_req_url_scheme(char *) override;         // STR
+  int marshal_client_req_http_version(char *) override;       // INT
+  int marshal_client_req_protocol_version(char *) override;   // STR
+  int marshal_client_req_header_len(char *) override;         // INT
+  int marshal_client_req_content_len(char *) override;        // INT
+  int marshal_client_req_squid_len(char *) override;          // INT
+  int marshal_client_req_tcp_reused(char *) override;         // INT
+  int marshal_client_req_is_ssl(char *) override;             // INT
+  int marshal_client_req_ssl_reused(char *) override;         // INT
+  int marshal_client_req_timestamp_sec(char *) override;      // INT
+  int marshal_client_req_timestamp_ms(char *) override;       // INT
+  int marshal_client_security_protocol(char *) override;      // STR
+  int marshal_client_security_cipher_suite(char *) override;  // STR
+  int marshal_client_finish_status_code(char *) override;     // INT
+  int marshal_client_req_id(char *) override;                 // INT
+  int marshal_client_req_uuid(char *) override;               // STR
 
   //
   // proxy -> client fields
@@ -162,7 +162,7 @@ public:
   int marshal_http_header_field(LogField::Container container, char *field, char *buf) override;
   int marshal_http_header_field_escapify(LogField::Container container, char *field, char *buf) override;
 
-  virtual int marshal_milestone_fmt_sec(TSMilestonesType ms, char *buf);
+  int marshal_milestone_fmt_sec(TSMilestonesType ms, char *buf) override;
 
   int marshal_milestone(TSMilestonesType ms, char *buf) override;
   int marshal_milestone_diff(TSMilestonesType ms1, TSMilestonesType ms2, char *buf) override;

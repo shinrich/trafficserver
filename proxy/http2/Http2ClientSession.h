@@ -195,13 +195,13 @@ public:
   }
 
   sockaddr const *
-  get_client_addr()
+  get_client_addr() override
   {
     return client_vc ? client_vc->get_remote_addr() : &cached_client_addr.sa;
   }
 
   sockaddr const *
-  get_local_addr()
+  get_local_addr() override
   {
     return client_vc ? client_vc->get_local_addr() : &cached_local_addr.sa;
   }
@@ -289,6 +289,32 @@ public:
     return half_close_local;
   }
 
+  bool
+  is_url_pushed(const char *url, int url_len)
+  {
+    char *dup_url            = ats_strndup(url, url_len);
+    InkHashTableEntry *entry = ink_hash_table_lookup_entry(h2_pushed_urls, dup_url);
+    ats_free(dup_url);
+    return entry != nullptr;
+  }
+
+  void
+  add_url_to_pushed_table(const char *url, int url_len)
+  {
+    if (h2_pushed_urls_size < Http2::push_diary_size) {
+      char *dup_url = ats_strndup(url, url_len);
+      ink_hash_table_insert(h2_pushed_urls, dup_url, nullptr);
+      h2_pushed_urls_size++;
+      ats_free(dup_url);
+    }
+  }
+
+  int64_t
+  write_buffer_size()
+  {
+    return write_buffer->max_read_avail();
+  }
+
 private:
   Http2ClientSession(Http2ClientSession &);                  // noncopyable
   Http2ClientSession &operator=(const Http2ClientSession &); // noncopyable
@@ -325,6 +351,9 @@ private:
   bool kill_me;
   bool half_close_local;
   int recursion;
+
+  InkHashTable *h2_pushed_urls = nullptr;
+  uint32_t h2_pushed_urls_size = 0;
 };
 
 extern ClassAllocator<Http2ClientSession> http2ClientSessionAllocator;
