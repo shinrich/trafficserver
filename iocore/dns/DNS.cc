@@ -446,7 +446,6 @@ DNSHandler::open_con(sockaddr const *target, bool failed, int icon)
   Debug("dns", "open_con: opening connection %s", ats_ip_nptop(target, ip_text, sizeof ip_text));
 
   if (con[icon].fd != NO_FD) { // Remove old FD from epoll fd
-    con[icon].eio.stop();
     con[icon].close();
   }
 
