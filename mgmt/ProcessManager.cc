@@ -423,6 +423,9 @@ ProcessManager::handleMgmtMsgFromLM(MgmtMessageHdr *mh)
   case MGMT_EVENT_RESTART:
     executeMgmtCallback(MGMT_EVENT_RESTART, nullptr, 0);
     break;
+  case MGMT_EVENT_DRAIN:
+    executeMgmtCallback(MGMT_EVENT_DRAIN, data_raw, mh->data_len);
+    break;
   case MGMT_EVENT_CLEAR_STATS:
     executeMgmtCallback(MGMT_EVENT_CLEAR_STATS, nullptr, 0);
     break;

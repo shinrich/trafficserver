@@ -131,8 +131,7 @@ public:
       fini_received(false),
       recursion(0),
       fini_event(nullptr),
-      zombie_event(nullptr),
-      shutdown_state(HTTP2_SHUTDOWN_NOT_INITIATED)
+      zombie_event(nullptr)
   {
     SET_HANDLER(&Http2ConnectionState::main_event_handler);
   }

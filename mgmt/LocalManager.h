@@ -53,8 +53,13 @@ enum ManagementPendingOperation {
   MGMT_PENDING_NONE,         // Do nothing
   MGMT_PENDING_RESTART,      // Restart TS and TM
   MGMT_PENDING_BOUNCE,       // Restart TS
+  MGMT_PENDING_STOP,         // Stop TS
+  MGMT_PENDING_DRAIN,        // Drain TS
   MGMT_PENDING_IDLE_RESTART, // Restart TS and TM when TS is idle
-  MGMT_PENDING_IDLE_BOUNCE   // Restart TS when TS is idle
+  MGMT_PENDING_IDLE_BOUNCE,  // Restart TS when TS is idle
+  MGMT_PENDING_IDLE_STOP,    // Stop TS when TS is idle
+  MGMT_PENDING_IDLE_DRAIN,   // Drain TS when TS is idle from new connections
+  MGMT_PENDING_UNDO_DRAIN,   // Recover TS from drain
 };
 
 class LocalManager : public BaseManager
@@ -88,6 +93,7 @@ public:
   void processShutdown(bool mainThread = false);
   void processRestart();
   void processBounce();
+  void processDrain(int to_drain = 1);
   void rollLogFiles();
   void clearStats(const char *name = NULL);
 
@@ -95,13 +101,15 @@ public:
   bool clusterOk();
 
   volatile bool run_proxy;
-  volatile bool proxy_recoverable; // false if traffic_server cannot recover with a reboot
+  volatile bool proxy_recoverable = true; // false if traffic_server cannot recover with a reboot
   volatile time_t manager_started_at;
-  volatile time_t proxy_started_at;
-  volatile int proxy_launch_count;
-  volatile bool proxy_launch_outstanding;
-  volatile ManagementPendingOperation mgmt_shutdown_outstanding;
-  volatile int proxy_running;
+  volatile time_t proxy_started_at                              = -1;
+  volatile int proxy_launch_count                               = 0;
+  volatile bool proxy_launch_outstanding                        = false;
+  volatile ManagementPendingOperation mgmt_shutdown_outstanding = MGMT_PENDING_NONE;
+  volatile time_t mgmt_shutdown_triggered_at;
+  volatile time_t mgmt_drain_triggered_at;
+  volatile int proxy_running = 0;
   HttpProxyPort::Group m_proxy_ports;
   // Local inbound addresses to bind, if set.
   IpAddr m_inbound_ip4;
