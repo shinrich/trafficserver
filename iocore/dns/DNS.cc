@@ -110,24 +110,6 @@ ink_get16(const uint8_t *src)
   return dst;
 }
 
-static inline unsigned int
-get_rcode(char *buff)
-{
-  return reinterpret_cast<HEADER *>(buff)->rcode;
-}
-
-static inline unsigned int
-get_rcode(HostEnt *ent)
-{
-  return get_rcode(reinterpret_cast<char *>(ent->buf));
-}
-
-bool
-HostEnt::isNameError()
-{
-  return get_rcode(this) == NXDOMAIN;
-}
-
 void
 HostEnt::free()
 {
@@ -721,6 +703,18 @@ DNSHandler::rr_failure(int ndx)
   }
 }
 
+static inline unsigned int
+get_rcode(char *buff)
+{
+  return reinterpret_cast<HEADER *>(buff)->rcode;
+}
+
+static inline unsigned int
+get_rcode(HostEnt *ent)
+{
+  return get_rcode(reinterpret_cast<char *>(ent));
+}
+
 static bool
 good_rcode(char *buff)
 {
@@ -1122,7 +1116,7 @@ dns_result(DNSHandler *h, DNSEntry *e, HostEnt *ent, bool retry)
   ProxyMutex *mutex = h->mutex.get();
   bool cancelled    = (e->action.cancelled ? true : false);
 
-  if ((!ent || !ent->good) && !cancelled) {
+  if (!ent && !cancelled) {
     // try to retry operation
     if (retry && e->retries) {
       Debug("dns", "doing retry for %s", e->qname);
@@ -1169,7 +1163,7 @@ dns_result(DNSHandler *h, DNSEntry *e, HostEnt *ent, bool retry)
   if (ent == BAD_DNS_RESULT)
     ent = nullptr;
   if (!cancelled) {
-    if (!ent || !ent->good) {
+    if (!ent) {
       DNS_SUM_DYN_STAT(dns_fail_time_stat, Thread::get_hrtime() - e->submit_time);
     } else {
       DNS_SUM_DYN_STAT(dns_success_time_stat, Thread::get_hrtime() - e->submit_time);
@@ -1182,13 +1176,13 @@ dns_result(DNSHandler *h, DNSEntry *e, HostEnt *ent, bool retry)
       ip_text_buffer buff;
       const char *ptr    = "<none>";
       const char *result = "FAIL";
-      if (ent && ent->good) {
+      if (ent) {
         result = "SUCCESS";
         ptr    = inet_ntop(e->qtype == T_AAAA ? AF_INET6 : AF_INET, ent->ent.h_addr_list[0], buff, sizeof(buff));
       }
       Debug("dns", "%s result for %s = %s retry %d", result, e->qname, ptr, retry);
     } else {
-      if (ent && ent->good) {
+      if (ent) {
         Debug("dns", "SUCCESS result for %s = %s af=%d retry %d", e->qname, ent->ent.h_name, ent->ent.h_addrtype, retry);
       } else {
         Debug("dns", "FAIL result for %s = <not found> retry %d", e->qname, retry);
@@ -1196,7 +1190,7 @@ dns_result(DNSHandler *h, DNSEntry *e, HostEnt *ent, bool retry)
     }
   }
 
-  if (ent || !ent->good) {
+  if (ent) {
     DNS_INCREMENT_DYN_STAT(dns_lookup_success_stat);
   } else {
     DNS_INCREMENT_DYN_STAT(dns_lookup_fail_stat);
@@ -1609,8 +1603,7 @@ dns_process(DNSHandler *handler, HostEnt *buf, int len)
   }
 Lerror:;
   DNS_INCREMENT_DYN_STAT(dns_lookup_fail_stat);
-  buf->good = false;
-  dns_result(handler, e, buf, retry);
+  dns_result(handler, e, nullptr, retry);
   return server_ok;
 }
 
