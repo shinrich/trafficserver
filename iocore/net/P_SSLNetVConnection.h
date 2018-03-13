@@ -229,14 +229,14 @@ public:
     switch (this->sslHandshakeHookState) {
     case HANDSHAKE_HOOKS_PRE:
     case HANDSHAKE_HOOKS_PRE_INVOKE:
-      if (eventId == TS_EVENT_VCONN_PRE_ACCEPT) {
+      if (eventId == TS_EVENT_VCONN_START) {
         if (curHook) {
           retval = true;
         }
       }
       break;
     case HANDSHAKE_HOOKS_SNI:
-      if (eventId == TS_EVENT_VCONN_PRE_ACCEPT) {
+      if (eventId == TS_EVENT_VCONN_START) {
         retval = true;
       } else if (eventId == TS_EVENT_SSL_SERVERNAME) {
         if (curHook) {
@@ -246,7 +246,7 @@ public:
       break;
     case HANDSHAKE_HOOKS_CERT:
     case HANDSHAKE_HOOKS_CERT_INVOKE:
-      if (eventId == TS_EVENT_VCONN_PRE_ACCEPT || eventId == TS_EVENT_SSL_SERVERNAME) {
+      if (eventId == TS_EVENT_VCONN_START || eventId == TS_EVENT_SSL_SERVERNAME) {
         retval = true;
       } else if (eventId == TS_EVENT_SSL_CERT) {
         if (curHook) {

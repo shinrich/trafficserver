@@ -93,9 +93,10 @@ static RecRawStatBlock *api_rsb;
 struct UserArg {
   /// Types of user args.
   enum Type {
-    TXN,  ///< Transaction based.
-    SSN,  ///< Session based
-    COUNT ///< Fake enum, # of valid entries.
+    TXN,   ///< Transaction based.
+    SSN,   ///< Session based
+    VCONN, ///< VConnection based
+    COUNT  ///< Fake enum, # of valid entries.
   };
 
   std::string name;        ///< Name of reserving plugin.
@@ -5915,9 +5916,10 @@ TSHttpArgIndexReserve(UserArg::Type type, const char *name, const char *descript
   sdk_assert(0 <= type && type < UserArg::Type::COUNT);
 
   std::lock_guard<std::mutex> lock(UserArgIdxMutex);
-  int idx = UserArgIdx[type]++;
+  int idx   = UserArgIdx[type]++;
+  int limit = (type == UserArg::Type::VCONN) ? TS_VCONN_MAX_USER_ARG : TS_HTTP_MAX_USER_ARG;
 
-  if (idx < TS_HTTP_MAX_USER_ARG) {
+  if (idx < limit) {
     UserArg &arg(UserArgTable[type][idx]);
     arg.name = name;
     if (description) {
@@ -6043,6 +6045,24 @@ TSHttpSsnArgIndexNameLookup(const char *name, int *arg_idx, const char **descrip
   return TSHttpArgIndexNameLookup(UserArg::SSN, name, arg_idx, description);
 }
 
+TSReturnCode
+TSVConnArgIndexReserve(const char *name, const char *description, int *arg_idx)
+{
+  return TSHttpArgIndexReserve(UserArg::VCONN, name, description, arg_idx);
+}
+
+TSReturnCode
+TSVConnArgIndexLookup(int arg_idx, const char **name, const char **description)
+{
+  return TSHttpArgIndexLookup(UserArg::VCONN, arg_idx, name, description);
+}
+
+TSReturnCode
+TSVConnArgIndexNameLookup(const char *name, int *arg_idx, const char **description)
+{
+  return TSHttpArgIndexNameLookup(UserArg::VCONN, name, arg_idx, description);
+}
+
 void
 TSHttpTxnArgSet(TSHttpTxn txnp, int arg_idx, void *arg)
 {
@@ -6083,6 +6103,26 @@ TSHttpSsnArgGet(TSHttpSsn ssnp, int arg_idx)
   ProxyClientSession *cs = reinterpret_cast<ProxyClientSession *>(ssnp);
   return cs->get_user_arg(arg_idx);
 }
+
+void
+TSVConnArgSet(TSVConn connp, int arg_idx, void *arg)
+{
+  sdk_assert(sdk_sanity_check_iocore_structure(connp) == TS_SUCCESS);
+  sdk_assert(arg_idx >= 0 && arg_idx < TS_VCONN_MAX_USER_ARG);
+  AnnotatedVConnection *avc = reinterpret_cast<AnnotatedVConnection *>(connp);
+  avc->set_user_arg(arg_idx, arg);
+}
+
+void *
+TSVConnArgGet(TSVConn connp, int arg_idx)
+{
+  sdk_assert(sdk_sanity_check_iocore_structure(connp) == TS_SUCCESS);
+  sdk_assert(arg_idx >= 0 && arg_idx < TS_VCONN_MAX_USER_ARG);
+
+  AnnotatedVConnection *avc = reinterpret_cast<AnnotatedVConnection *>(connp);
+  return avc->get_user_arg(arg_idx);
+}
+
 void
 TSHttpTxnSetHttpRetStatus(TSHttpTxn txnp, TSHttpStatus http_retstatus)
 {

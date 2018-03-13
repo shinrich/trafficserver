@@ -55,7 +55,8 @@ example_Plugins = \
 	thread-1.la \
 	txn-data-sink.la \
 	version.la \
-	replace-protoset.la
+	replace-protoset.la \
+	vconn_args.la
 
 example_Plugins += \
 	cppapi/AsyncHttpFetch.la \
@@ -121,6 +122,7 @@ statistic_la_SOURCES = statistic/statistic.cc
 thread_1_la_SOURCES = thread-1/thread-1.c
 txn_data_sink_la_SOURCES = txn-data-sink/txn-data-sink.c
 version_la_SOURCES = version/version.c
+vconn_args_la_SOURCES = vconn_args/vconn_args.cc
 
 # The following examples do not build:
 #

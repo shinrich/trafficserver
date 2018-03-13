@@ -145,6 +145,10 @@ CB_Pre_Accept(TSCont, TSEvent event, void *edata)
     TSDebug("skh", "Proxy tunnel");
   }
 
+  TSDebug(PN, "Pre accept callback %p - event is %s, target address %s, client address %s%s", ssl_vc,
+          event == TS_EVENT_VCONN_START ? "good" : "bad", ip.toString(buff, sizeof(buff)), ip_client.toString(buff2, sizeof(buff2)),
+          proxy_tunnel ? "" : " blind tunneled");
+
   // All done, reactivate things
   TSVConnReenable(ssl_vc);
   return TS_SUCCESS;
@@ -192,7 +196,7 @@ TSPluginInit(int argc, const char *argv[])
   } else if (nullptr == (cb_pa = TSContCreate(&CB_Pre_Accept, TSMutexCreate()))) {
     TSError(PCP "Failed to pre-accept callback.");
   } else {
-    TSHttpHookAdd(TS_VCONN_PRE_ACCEPT_HOOK, cb_pa);
+    TSHttpHookAdd(TS_VCONN_START_HOOK, cb_pa);
     success = true;
   }
 
