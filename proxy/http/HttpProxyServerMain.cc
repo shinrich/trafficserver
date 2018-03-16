@@ -339,6 +339,9 @@ start_HttpProxyServer()
   }
 #endif
 
+  // Set up stat page for http connection count
+  statPagesManager.register_http("connection_count", register_ShowConnectionCount);
+
   // Alert plugins that connections will be accepted.
   APIHook *hook = lifecycle_hooks->get(TS_LIFECYCLE_PORTS_READY_HOOK);
   while (hook) {
