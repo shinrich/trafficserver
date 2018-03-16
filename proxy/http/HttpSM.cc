@@ -1467,8 +1467,13 @@ HttpSM::state_api_callout(int event, void *data)
   }
 
   switch (event) {
+  case HTTP_TUNNEL_EVENT_DONE:
+  // This is a reschedule via the tunnel.  Just fall through
+  //
   case EVENT_INTERVAL:
-    ink_assert(pending_action == data);
+    if (data != pending_action) {
+      pending_action->cancel();
+    }
     pending_action = nullptr;
   // FALLTHROUGH
   case EVENT_NONE:
@@ -1632,12 +1637,6 @@ plugins required to work with sni_routing.
       api_next = API_RETURN_ERROR_JUMP;
     }
     break;
-
-  // We may receive an event from the tunnel
-  // if it took a long time to call the SEND_RESPONSE_HDR hook
-  case HTTP_TUNNEL_EVENT_DONE:
-    state_common_wait_for_transform_read(&transform_info, &HttpSM::tunnel_handler, event, data);
-    return 0;
 
   default:
     ink_assert(false);
@@ -2584,6 +2583,9 @@ HttpSM::state_cache_open_write(int event, void *data)
 
   // Make sure we are on the "right" thread
   if (ua_session) {
+    if (pending_action) {
+      pending_action->cancel();
+    }
     if ((pending_action = ua_session->adjust_thread(this, event, data))) {
       return 0; // Go away if we reschedule
     }
@@ -3042,7 +3044,6 @@ HttpSM::tunnel_handler(int event, void *data)
   STATE_ENTER(&HttpSM::tunnel_handler, event);
 
   ink_assert(event == HTTP_TUNNEL_EVENT_DONE);
-  ink_assert(data == &tunnel);
   // The tunnel calls this when it is done
   terminate_sm = true;
 
@@ -7003,6 +7004,8 @@ HttpSM::kill_this()
     if (callout_state == HTTP_API_NO_CALLOUT && pending_action) {
       pending_action->cancel();
       pending_action = nullptr;
+    } else if (pending_action) {
+      ink_assert(pending_action == nullptr);
     }
 
     cache_sm.end_both();
@@ -7062,6 +7065,7 @@ HttpSM::kill_this()
   //   then the value of kill_this_async_done has changed so
   //   we must check it again
   if (kill_this_async_done == true) {
+    ink_assert(pending_action == nullptr);
     if (t_state.http_config_param->enable_http_stats) {
       update_stats();
     }
@@ -7738,6 +7742,7 @@ HttpSM::set_next_state()
     Action *action_handle = statPagesManager.handle_http(this, &t_state.hdr_info.client_request);
 
     if (action_handle != ACTION_RESULT_DONE) {
+      ink_assert(pending_action == nullptr);
       pending_action = action_handle;
     }
 
