@@ -30,8 +30,7 @@ std::string
 ConnectionCount::dumpToJSON()
 {
   Vec<ConnAddr> keys;
-  ink_mutex_acquire(&_mutex);
-  _hostCount.get_keys(keys);
+  safelyGetKeys(keys);
   std::ostringstream oss;
   oss << '{';
   appendJSONPair(oss, "connectionCountSize", keys.n);
@@ -54,9 +53,27 @@ ConnectionCount::dumpToJSON()
     if (i < keys.n - 1)
       oss << ',';
   }
-  ink_mutex_release(&_mutex);
+
   oss << "]}";
   return oss.str();
+}
+
+void 
+ConnectionCount::dump(FILE *fd)
+{
+  Vec<ConnAddr> keys;
+  safelyGetKeys(keys);
+
+  if (keys.n) {
+      fprintf(fd, "\n%5s | %24s\n", "Count", "IP:Port");
+      fprintf(fd, "------|-------------------------\n");
+
+      for (size_t i = 0; i < keys.n; i++) {
+      fprintf(fd, "%5" PRId32 " | %21s:%-5" PRId16 "\n", _hostCount.get(keys[i]), keys[i].getIpStr().c_str(), keys[i]._addr.host_order_port());
+      }
+
+      fprintf(fd, "--------------------------------\n");
+  }
 }
 
 struct ShowConnectionCount : public ShowCont {

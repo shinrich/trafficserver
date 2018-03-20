@@ -24,7 +24,6 @@
 //
 #include "ts/ink_platform.h"
 #include "ts/ink_inet.h"
-#include "ts/ink_mutex.h"
 #include "ts/Map.h"
 #include "ts/Diags.h"
 #include "ts/INK_MD5.h"
@@ -32,6 +31,7 @@
 #include "HttpProxyAPIEnums.h"
 #include "Show.h"
 #include <sstream>
+#include <mutex>
 
 #ifndef _HTTP_CONNECTION_COUNT_H_
 #define _HTTP_CONNECTION_COUNT_H_
@@ -64,9 +64,8 @@ public:
       return 0; // We can never match a node if match type is NONE
     }
 
-    ink_mutex_acquire(&_mutex);
+    std::lock_guard<std::mutex> lock(_mutex);
     int count = _hostCount.get(ConnAddr(addr, hostname_hash, match_type));
-    ink_mutex_release(&_mutex);
     return count;
   }
 
@@ -84,16 +83,21 @@ public:
     }
 
     ConnAddr caddr(addr, hostname_hash, match_type);
-    ink_mutex_acquire(&_mutex);
+    std::lock_guard<std::mutex> lock(_mutex);
     int count = _hostCount.get(caddr);
     _hostCount.put(caddr, count + delta);
-    ink_mutex_release(&_mutex);
   }
   /**
    * dump to JSON for stat page.
    * @return JSON string for _hostCount
    */
   std::string dumpToJSON();
+
+   /**
+   * dumps current stats to a specified file descriptor in a nice table
+   * @param fd File descriptor to write to
+   */
+  void dump(FILE *fd);
 
   struct ConnAddr {
     IpEndpoint _addr;
@@ -219,11 +223,11 @@ public:
 
 protected:
   // Hide the constructor and copy constructor
-  ConnectionCount() { ink_mutex_init(&_mutex, "ConnectionCountMutex"); }
+  ConnectionCount() {}
   ConnectionCount(const ConnectionCount & /* x ATS_UNUSED */) {}
   static ConnectionCount _connectionCount;
   HashMap<ConnAddr, ConnAddrHashFns, int> _hostCount;
-  ink_mutex _mutex;
+  std::mutex _mutex;
 
 private:
   void
@@ -236,6 +240,11 @@ private:
   appendJSONPair(std::ostringstream &oss, const std::string &key, const std::string &value)
   {
     oss << '\"' << key << "\": \"" << value << '"';
+  }
+
+  void safelyGetKeys(Vec<ConnAddr> &keys) {
+    std::lock_guard<std::mutex> lock(_mutex);
+    _hostCount.get_keys(keys);
   }
 };
 

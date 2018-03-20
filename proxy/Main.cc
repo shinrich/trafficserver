@@ -94,6 +94,7 @@ extern "C" int plock(int);
 #include "ts/ink_config.h"
 #include "P_SSLSNI.h"
 #include <ts/ink_cap.h>
+#include <HttpConnectionCount.h>
 
 #if TS_HAS_PROFILER
 #include <gperftools/profiler.h>
@@ -251,6 +252,8 @@ public:
       // TODO: TS-567 Integrate with debugging allocators "dump" features?
       ink_freelists_dump(stderr);
       ResourceTracker::dump(stderr);
+      ConnectionCount::getInstance()->dump(stderr);
+      
       if (!end) {
         end = (char *)sbrk(0);
       }
