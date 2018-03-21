@@ -1961,7 +1961,15 @@ main(int /* argc ATS_UNUSED */, const char **argv)
         proxyServerCheck.wait(lock, [] { return et_net_threads_ready; });
         start_HttpProxyServer(); // PORTS_READY_HOOK called from in here
       }
-    }
+      // Start the back door for health checks. This shouldn't wait on cache readiness
+      // even if that is configured. It should be OK to start at this point because
+      // the normal proxy ports can be fired up if there's no cache wait.
+      int back_door_port = 0;
+      REC_ReadConfigInteger(back_door_port, "proxy.config.process_manager.mgmt_port");
+      if (back_door_port > 0) {
+        start_HttpProxyServerBackDoor(back_door_port, !!num_accept_threads); // One accept thread is enough
+      }
+   }
     SNIConfig::cloneProtoSet();
     // Plugins can register their own configuration names so now after they've done that
     // check for unexpected names. This is very late because remap plugins must be allowed to
