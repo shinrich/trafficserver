@@ -1115,6 +1115,8 @@ HttpConfig::startup()
   HttpEstablishStaticConfigStringAlloc(c.cache_vary_default_images, "proxy.config.http.cache.vary_default_images");
   HttpEstablishStaticConfigStringAlloc(c.cache_vary_default_other, "proxy.config.http.cache.vary_default_other");
 
+  HttpEstablishStaticConfigByte(c.oride.allow_half_open, "proxy.config.http.allow_half_open");
+
   // open read failure retries
   HttpEstablishStaticConfigLongLong(c.oride.max_cache_open_read_retries, "proxy.config.http.cache.max_open_read_retries");
   HttpEstablishStaticConfigLongLong(c.oride.cache_open_read_retry_time, "proxy.config.http.cache.open_read_retry_time");
@@ -1428,6 +1430,8 @@ HttpConfig::reconfigure()
   params->cache_vary_default_other  = ats_strdup(m_master.cache_vary_default_other);
 
   params->oride.srv_enabled = m_master.oride.srv_enabled;
+
+  params->oride.allow_half_open = m_master.oride.allow_half_open;
 
   // open read failure retries
   params->oride.max_cache_open_read_retries = m_master.oride.max_cache_open_read_retries;

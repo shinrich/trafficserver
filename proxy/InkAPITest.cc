@@ -7623,7 +7623,8 @@ std::array<ts::string_view, TS_CONFIG_LAST_ENTRY> SDK_Overridable_Configs = {{"p
                                                              "proxy.config.cache.max_doc_size",
                                                              OutboundConnTrack::CONFIG_VAR_MAX,
                                                              OutboundConnTrack::CONFIG_VAR_MATCH,
-                                                             "proxy.config.http.allow_multi_range"}};
+                                                             "proxy.config.http.allow_multi_range",
+                                                             "proxy.config.http.allow_half_open"}};
 
 REGRESSION_TEST(SDK_API_OVERRIDABLE_CONFIGS)(RegressionTest *test, int /* atype ATS_UNUSED */, int *pstatus)
 {

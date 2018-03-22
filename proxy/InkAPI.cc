@@ -8386,6 +8386,9 @@ _conf_to_memberp(TSOverridableConfigKey conf, OverridableHttpConfigParams *overr
   case TS_CONFIG_HTTP_ALLOW_MULTI_RANGE:
     ret = _memberp_to_generic(&overridableHttpConfig->allow_multi_range, conv);
     break;
+  case TS_CONFIG_HTTP_ALLOW_HALF_OPEN:
+    ret = _memberp_to_generic(&overridableHttpConfig->allow_half_open, conv);
+    break;
   // This helps avoiding compiler warnings, yet detect unhandled enum members.
   case TS_CONFIG_NULL:
   case TS_CONFIG_LAST_ENTRY:
@@ -8644,6 +8647,8 @@ TSHttpTxnConfigFind(const char *name, int length, TSOverridableConfigKey *conf, 
     } else if (!strncmp(name, "proxy.config.ssl.client.cert.path", length)) {
       cnf = TS_CONFIG_SSL_CERT_FILEPATH;
       typ = TS_RECORDDATATYPE_STRING;
+    } else if (!strncmp(name, "proxy.config.http.allow_half_open", length)) {
+      cnf = TS_CONFIG_HTTP_ALLOW_HALF_OPEN;
     }
     break;
 
