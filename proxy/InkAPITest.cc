@@ -8080,7 +8080,7 @@ REGRESSION_TEST(SDK_API_TSSslServerContextCreate)(RegressionTest *test, int leve
   TSSslContext ctx;
 
   // See TS-4769: TSSslServerContextCreate always returns null.
-  ctx = TSSslServerContextCreate();
+  ctx = TSSslServerContextCreate(nullptr, nullptr);
 
   *pstatus = ctx ? REGRESSION_TEST_PASSED : REGRESSION_TEST_FAILED;
   TSSslContextDestroy(ctx);
