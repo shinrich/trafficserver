@@ -65,14 +65,14 @@ ConnectionCount::dump(FILE *fd)
   safelyGetKeys(keys);
 
   if (keys.n) {
-      fprintf(fd, "\n%5s | %24s\n", "Count", "IP:Port");
-      fprintf(fd, "------|-------------------------\n");
+      fprintf(fd, "\n%5s | %24s | %35s\n", "Count", "IP:Port", "Hostname Hash");
+      fprintf(fd, "------|--------------------------|-------------------------------------\n");
 
       for (size_t i = 0; i < keys.n; i++) {
-      fprintf(fd, "%5" PRId32 " | %21s:%-5" PRId16 "\n", _hostCount.get(keys[i]), keys[i].getIpStr().c_str(), keys[i]._addr.host_order_port());
+        fprintf(fd, "%5" PRId32 " | %21s:%" PRId16 " | %35s\n", _hostCount.get(keys[i]), keys[i].getIpStr().c_str(), keys[i]._addr.host_order_port(), keys[i].getHostnameHashStr().c_str());
       }
 
-      fprintf(fd, "--------------------------------\n");
+      fprintf(fd, "-----------------------------------------------------------------------\n");
   }
 }
 
