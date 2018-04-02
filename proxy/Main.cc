@@ -1810,6 +1810,8 @@ main(int /* argc ATS_UNUSED */, const char **argv)
   netProcessor.init();
   prep_HttpProxyServer();
 
+  // If num_accept_threads == 0, let the ET_NET threads to set the condition variable,
+  // Else we set it here so when checking the condition variable later it returns immediately.
   if (num_accept_threads == 0) {
     eventProcessor.schedule_spawn(&init_HttpProxyServer, ET_NET);
   } else {
@@ -1953,15 +1955,17 @@ main(int /* argc ATS_UNUSED */, const char **argv)
       int delay_p = 0;
       REC_ReadConfigInteger(delay_p, "proxy.config.http.wait_for_cache");
 
+      // Check the condition variable.
+      {
+        std::unique_lock<std::mutex> lock(proxyServerMutex);
+        proxyServerCheck.wait(lock, [] { return et_net_threads_ready; });
+      }
+
       // Delay only if config value set and flag value is zero
       // (-1 => cache already initialized)
       if (delay_p && ink_atomic_cas(&delay_listen_for_cache_p, 0, 1)) {
         Debug("http_listen", "Delaying listen, waiting for cache initialization");
       } else {
-        // Use a condition variable to check if we are ready to call
-        // start_HttpProxyServer() when num_accept_threads is set to 0.
-        std::unique_lock<std::mutex> lock(proxyServerMutex);
-        proxyServerCheck.wait(lock, [] { return et_net_threads_ready; });
         start_HttpProxyServer(); // PORTS_READY_HOOK called from in here
       }
       // Start the back door for health checks. This shouldn't wait on cache readiness
