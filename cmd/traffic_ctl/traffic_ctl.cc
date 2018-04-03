@@ -206,6 +206,16 @@ CtrlGenericSubcommand(const char *name, const subcommand *cmds, unsigned ncmds, 
   return CtrlSubcommandUsage(name, cmds, ncmds, nullptr, 0);
 }
 
+const subcommand commands[] = {
+  {subcommand_alarm, "alarm", "Manipulate alarms"},
+  {subcommand_cluster, "cluster", "Stop, restart and examine the cluster"},
+  {subcommand_config, "config", "Manipulate configuration records"},
+  {subcommand_metric, "metric", "Manipulate performance metrics"},
+  {subcommand_server, "server", "Stop, restart and examine the server"},
+  {subcommand_storage, "storage", "Manipulate cache storage"},
+  {subcommand_plugin, "plugin", "Interact with plugins"},
+};
+
 int
 main(int argc, const char **argv)
 {
@@ -217,18 +227,11 @@ main(int argc, const char **argv)
 
   ArgumentDescription argument_descriptions[] = {
     {"debug", '-', "Enable debugging output", "F", &debug, nullptr, nullptr},
-    HELP_ARGUMENT_DESCRIPTION(),
+    {"help", 'h', "Print usage information", nullptr, nullptr, nullptr,
+     [](const ArgumentDescription *args, unsigned nargs, const char *arg_unused) {
+       CtrlSubcommandUsage(nullptr, commands, countof(commands), args, nargs);
+     }},
     VERSION_ARGUMENT_DESCRIPTION(),
-  };
-
-  const subcommand commands[] = {
-    {subcommand_alarm, "alarm", "Manipulate alarms"},
-    {subcommand_cluster, "cluster", "Stop, restart and examine the cluster"},
-    {subcommand_config, "config", "Manipulate configuration records"},
-    {subcommand_metric, "metric", "Manipulate performance metrics"},
-    {subcommand_server, "server", "Stop, restart and examine the server"},
-    {subcommand_storage, "storage", "Manipulate cache storage"},
-    {subcommand_plugin, "plugin", "Interact with plugins"},
   };
 
   BaseLogFile *base_log_file = new BaseLogFile("stderr");
