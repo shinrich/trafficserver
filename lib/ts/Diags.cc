@@ -248,7 +248,7 @@ Diags::print_va(const char *debug_tag, DiagsLevel diags_level, const SourceLocat
     int num_bytes_written =
       snprintf(format_writer.auxBuffer(), format_writer.remaining(), "{0x%" PRIx64 "} ", (uint64_t)ink_thread_self());
     if (num_bytes_written > 0) {
-      format_writer.write(static_cast<size_t>(num_bytes_written));
+      format_writer.fill(static_cast<size_t>(num_bytes_written));
     }
   }
 

@@ -25,12 +25,15 @@
 
 /// Apache Traffic Server commons.
 
-#include "ts/ink_code.h"
+#include <ts/ink_code.h>
+#include <ts/BufferWriter.h>
 
 namespace ats
 {
 /// Crypto hash output.
 union CryptoHash {
+  static constexpr size_t SIZE = 16;
+
   uint64_t b[2]; // Legacy placeholder
   uint64_t u64[2];
   uint32_t u32[4];
@@ -136,6 +139,18 @@ CryptoContext::finalize(CryptoHash *hash)
 }
 
 } // end namespace
+
+namespace ts
+{
+inline BufferWriter &
+bwformat(BufferWriter &w, BWFSpec const &spec, ats::CryptoHash const &hash)
+{
+  BWFSpec local_spec{spec};
+  if ('X' != local_spec._type)
+    local_spec._type = 'x';
+  return bwformat(w, local_spec, ts::string_view(reinterpret_cast<const char *>(hash.u8), ats::CryptoHash::SIZE));
+}
+} // ts
 
 // Promote for the primitives who don't use namespaces...
 using ats::CryptoHash;

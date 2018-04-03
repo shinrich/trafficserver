@@ -106,6 +106,8 @@ struct HttpConfigParams;
 class HttpSM;
 
 #include "ts/InkErrno.h"
+#include "HttpConnectionCount.h"
+
 #define UNKNOWN_INTERNAL_ERROR (INK_START_ERRNO - 1)
 
 enum ViaStringIndex_t {
@@ -841,6 +843,7 @@ public:
     CacheLookupInfo cache_info;
     DNSLookupInfo dns_info;
     RedirectInfo redirect_info;
+    OutboundConnTracker::Group *conn_tracker_info = nullptr;
     unsigned int updated_server_version;
     bool force_dns;
     MgmtByte cache_open_write_fail_action;
@@ -892,8 +895,10 @@ public:
     bool is_websocket;
     bool did_upgrade_succeed;
 
-    // Some queue info
-    bool origin_request_queued;
+    // Track if this SM has reserved (incremented) the outbound connection tracking data.
+    // see conn_track_info
+    bool outbound_conn_reserved = false;
+    bool outbound_conn_queued   = false;
 
     char *internal_msg_buffer;        // out
     char *internal_msg_buffer_type;   // out
@@ -1033,7 +1038,6 @@ public:
         is_upgrade_request(false),
         is_websocket(false),
         did_upgrade_succeed(false),
-        origin_request_queued(false),
         internal_msg_buffer(NULL),
         internal_msg_buffer_type(NULL),
         internal_msg_buffer_size(0),
@@ -1159,6 +1163,7 @@ public:
       arena.reset();
       unmapped_url.clear();
       hostdb_entry.clear();
+      clear_conn_tracking();
 
       delete[] ranges;
       ranges      = NULL;
@@ -1189,6 +1194,18 @@ public:
         internal_msg_buffer = NULL;
       }
       internal_msg_buffer_size = 0;
+    }
+
+    void
+    clear_conn_tracking()
+    {
+      if (conn_tracker_info) {
+        if (outbound_conn_reserved)
+          --(conn_tracker_info->_count);
+        if (outbound_conn_queued)
+          --(conn_tracker_info->_queued);
+        outbound_conn_reserved = outbound_conn_queued = false;
+      }
     }
   }; // End of State struct.
 

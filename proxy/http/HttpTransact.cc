@@ -3276,8 +3276,6 @@ HttpTransact::OriginServerRawOpen(State *s)
   case CONNECTION_CLOSED:
   /* fall through */
   case CONGEST_CONTROL_CONGESTED_ON_F:
-  /* fall through */
-  case CONGEST_CONTROL_CONGESTED_ON_M:
     handle_server_died(s);
 
     ink_assert(s->cache_info.action == CACHE_DO_NO_ACTION);
@@ -3720,7 +3718,7 @@ HttpTransact::handle_response_from_server(State *s)
     s->current.server->clear_connect_fail();
     handle_forward_server_connection_open(s);
     break;
-  case CONGEST_CONTROL_CONGESTED_ON_F:
+  case CONGEST_CONTROL_CONGESTED_ON_F: // from per origin throttling.
   case CONGEST_CONTROL_CONGESTED_ON_M:
     DebugTxn("http_trans", "[handle_response_from_server] Error. congestion control -- congested.");
     SET_VIA_STRING(VIA_DETAIL_SERVER_CONNECT, VIA_DETAIL_SERVER_FAILURE);
@@ -7708,23 +7706,9 @@ HttpTransact::handle_server_died(State *s)
     body_type = "response#bad_response";
     break;
   case CONGEST_CONTROL_CONGESTED_ON_F:
-    status = HTTP_STATUS_SERVICE_UNAVAILABLE;
-    reason = "Origin server congested";
-    if (s->pCongestionEntry) {
-      body_type = s->pCongestionEntry->getErrorPage();
-    } else {
-      body_type = "congestion#retryAfter";
-    }
-    s->hdr_info.response_error = TOTAL_RESPONSE_ERROR_TYPES;
-    break;
-  case CONGEST_CONTROL_CONGESTED_ON_M:
-    status = HTTP_STATUS_SERVICE_UNAVAILABLE;
-    reason = "Too many users";
-    if (s->pCongestionEntry) {
-      body_type = s->pCongestionEntry->getErrorPage();
-    } else {
-      body_type = "congestion#retryAfter";
-    }
+    status                     = HTTP_STATUS_SERVICE_UNAVAILABLE;
+    reason                     = "Origin server congested";
+    body_type                  = "congestion#retryAfter";
     s->hdr_info.response_error = TOTAL_RESPONSE_ERROR_TYPES;
     break;
   case STATE_UNDEFINED:

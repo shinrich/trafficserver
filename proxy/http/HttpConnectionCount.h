@@ -21,250 +21,234 @@
   limitations under the License.
  */
 
-//
-#include "ts/ink_platform.h"
-#include "ts/ink_inet.h"
-#include "ts/Map.h"
-#include "ts/Diags.h"
-#include "ts/INK_MD5.h"
-#include "ts/ink_config.h"
+#pragma once
+
+#include <chrono>
+#include <atomic>
+#include <sstream>
+#include <tuple>
+#include <ts/ink_platform.h>
+#include <ts/ink_config.h>
+#include <ts/ink_mutex.h>
+#include <ts/ink_inet.h>
+#include <ts/Map.h>
+#include <ts/Diags.h>
+#include <ts/CryptoHash.h>
 #include "HttpProxyAPIEnums.h"
 #include "Show.h"
-#include <sstream>
-#include <mutex>
 
-#ifndef _HTTP_CONNECTION_COUNT_H_
-#define _HTTP_CONNECTION_COUNT_H_
+namespace ts
+{
+/// Format the session sharing enum.
+// This needs to be moved elsewhere.
+inline BufferWriter &
+bwformat(BufferWriter &w, BWFSpec const &spec, TSServerSessionSharingMatchType type)
+{
+  static const string_view name[] = {"None"_sv, "Both"_sv, "IP"_sv, "Host"_sv};
+  if (spec.has_numeric_type()) {
+    bwformat(w, spec, static_cast<unsigned int>(type));
+  } else {
+    bwformat(w, spec, name[type]);
+  }
+  return w;
+}
+} // ts
 
 /**
- * Singleton class to keep track of the number of connections per host
+ * Singleton class to keep track of the number of outbound connnections.
+ *
+ * Outbound connections are divided in to equivalence classes (called "groups" here) based on the
+ * session matching setting. Tracking data is stored for each group.
  */
-class ConnectionCount
+class OutboundConnTracker
 {
+  using self_type = OutboundConnTracker; ///< Self reference type.
+
 public:
-  /**
-   * Static method to get the instance of the class
-   * @return Returns a pointer to the instance of the class
-   */
-  static ConnectionCount *
-  getInstance()
-  {
-    return &_connectionCount;
-  }
+  // Non-copyable.
+  OutboundConnTracker(const self_type &) = delete;
+  self_type &operator=(const self_type &) = delete;
+
+  /// A record for the outbound connection count.
+  /// These are stored per outbound session equivalence class, as determined by the session matching.
+  struct Group {
+    /// Equivalence key - two groups are equivalent if their keys are equal.
+    struct Key {
+      IpEndpoint const &_addr; ///< Remote IP address.
+      CryptoHash const &_fqdn_hash; ///< Hash of the FQDN.
+      TSServerSessionSharingMatchType _match_type; ///< Type of matching.
+    };
+
+    /// Time point type, based on the clock to be used.
+    using Time   = std::chrono::high_resolution_clock::time_point;
+    using Ticker = Time::rep; ///< Raw type used to track HR ticks.
+    /// Length of time to suppress alerts for a group.
+    static const std::chrono::seconds ALERT_DELAY;
+
+    IpEndpoint _addr;                            ///< Remote address & port.
+    CryptoHash _fqdn_hash;                       ///< Hash of the host name.
+    TSServerSessionSharingMatchType _match_type; ///< Outbound session matching type.
+    std::atomic<int> _count{0};                  ///< Number of outbound connections.
+    std::atomic<Ticker> _last_alert{0};          ///< Absolute time of the last alert.
+    std::atomic<int> _blocked{0};                ///< Number of outbound connections blocked since last alert.
+    std::atomic<int> _queued{0};                 ///< # of connections queued, waiting for a connection.
+    LINK(Group, _link);                          ///< Intrusive hash table support.
+    Key _key = {_addr, _fqdn_hash, _match_type}; ///< Pre-constructed key for performance on lookup.
+
+    /// Constructor.
+    Group(Key const &key);
+    /// Key equality checker.
+    static bool equal(Key const &lhs, Key const &rhs);
+    /// Hashing function.
+    static uint64_t hash(Key const &);
+    /// Check and clear alert enable.
+    /// This is a modifying call - internal state will be updated to prevent too frequent alerts.
+    /// @param lat The last alert time, in epoch seconds, if the method returns @c true.
+    /// @return @c true if an alert was generated, @c false otherwise.
+    bool should_alert(std::time_t * lat = nullptr);
+    /// Time of the last alert in epoch seconds.
+    std::time_t get_last_alert_epoch_time() const;
+  };
 
   /**
-   * Gets the number of connections for the host
-   * @param ip IP address of the host
+   * Get the @c Group for the specified session properties.
+   * @param ip IP address and port of the host.
+   * @param hostname_hash Hash of the FQDN for the host.
+   * @param match_type Session matching type.
    * @return Number of connections
+   *
+   * This should already return a valid @c Group - if the group does yet exist, it is created.
    */
-  int
-  getCount(const IpEndpoint &addr, const INK_MD5 &hostname_hash, TSServerSessionSharingMatchType match_type)
-  {
-    if (TS_SERVER_SESSION_SHARING_MATCH_NONE == match_type) {
-      return 0; // We can never match a node if match type is NONE
-    }
-
-    std::lock_guard<std::mutex> lock(_mutex);
-    int count = _hostCount.get(ConnAddr(addr, hostname_hash, match_type));
-    return count;
-  }
+  static Group *get(const IpEndpoint &addr, const CryptoHash &hostname_hash, TSServerSessionSharingMatchType match_type);
 
   /**
-   * Change (increment/decrement) the connection count
-   * @param ip IP address of the host
-   * @param delta Default is +1, can be set to negative to decrement
+   * Get groups under lock.
+   * @param groups OUT parameter - pointers to the groups are pushed in to this container.
+   *
+   * The groups are loaded in to @a groups, which is cleared before loading. Note the groups returned will remain valid
+   * although data inside the groups is volatile.
    */
-  void
-  incrementCount(const IpEndpoint &addr, const INK_MD5 &hostname_hash, TSServerSessionSharingMatchType match_type,
-                 const int delta = 1)
-  {
-    if (TS_SERVER_SESSION_SHARING_MATCH_NONE == match_type) {
-      return; // We can never match a node if match type is NONE.
-    }
-
-    ConnAddr caddr(addr, hostname_hash, match_type);
-    std::lock_guard<std::mutex> lock(_mutex);
-    int count = _hostCount.get(caddr);
-    _hostCount.put(caddr, count + delta);
-  }
+  static void get(std::vector<Group const*>& groups);
   /**
-   * dump to JSON for stat page.
-   * @return JSON string for _hostCount
+   * Write the connection tracking data to JSON.
+   * @return string containing a JSON encoding of the table.
    */
-  std::string dumpToJSON();
-
-   /**
-   * dumps current stats to a specified file descriptor in a nice table
-   * @param fd File descriptor to write to
+  static std::string to_json_string();
+  /**
+   * Write the groups to @a f.
+   * @param f Output file.
    */
-  void dump(FILE *fd);
-
-  struct ConnAddr {
-    IpEndpoint _addr;
-    INK_MD5 _hostname_hash;
-    TSServerSessionSharingMatchType _match_type;
-
-    ConnAddr() : _match_type(TS_SERVER_SESSION_SHARING_MATCH_NONE)
-    {
-      ink_zero(_addr);
-      ink_zero(_hostname_hash);
-    }
-
-    ConnAddr(int x) : _match_type(TS_SERVER_SESSION_SHARING_MATCH_NONE)
-    {
-      ink_release_assert(x == 0);
-      ink_zero(_addr);
-      ink_zero(_hostname_hash);
-    }
-
-    ConnAddr(const IpEndpoint &addr, const INK_MD5 &hostname_hash, TSServerSessionSharingMatchType match_type)
-      : _addr(addr), _hostname_hash(hostname_hash), _match_type(match_type)
-    {
-    }
-
-    ConnAddr(const IpEndpoint &addr, const char *hostname, TSServerSessionSharingMatchType match_type)
-      : _addr(addr), _match_type(match_type)
-    {
-      MD5Context md5_ctx;
-      md5_ctx.hash_immediate(_hostname_hash, static_cast<const void *>(hostname), strlen(hostname));
-    }
-
-    operator bool() { return ats_is_ip(&_addr); }
-    std::string
-    getIpStr()
-    {
-      std::string str;
-      if (*this) {
-        ip_text_buffer buf;
-        const char *ret = ats_ip_ntop(&_addr.sa, buf, sizeof(buf));
-        if (ret) {
-          str.assign(ret);
-        }
-      }
-      return str;
-    }
-
-    std::string
-    getHostnameHashStr()
-    {
-      char hashBuffer[33];
-      return std::string(_hostname_hash.toHexStr(hashBuffer));
-    }
-  };
-
-  class ConnAddrHashFns
-  {
-  public:
-    static uintptr_t
-    hash(ConnAddr &addr)
-    {
-      if (addr._match_type == TS_SERVER_SESSION_SHARING_MATCH_IP) {
-        return (uintptr_t)ats_ip_port_hash(&addr._addr.sa);
-      } else if (addr._match_type == TS_SERVER_SESSION_SHARING_MATCH_HOST) {
-        return (uintptr_t)addr._hostname_hash.u64[0];
-      } else if (addr._match_type == TS_SERVER_SESSION_SHARING_MATCH_BOTH) {
-        return ((uintptr_t)ats_ip_port_hash(&addr._addr.sa) ^ (uintptr_t)addr._hostname_hash.u64[0]);
-      } else {
-        return 0; // they will never be equal() because of it returns false for NONE matches.
-      }
-    }
-
-    static int
-    equal(ConnAddr &a, ConnAddr &b)
-    {
-      char addrbuf1[INET6_ADDRSTRLEN];
-      char addrbuf2[INET6_ADDRSTRLEN];
-      char md5buf1[33];
-      char md5buf2[33];
-      ink_code_to_hex_str(md5buf1, a._hostname_hash.u8);
-      ink_code_to_hex_str(md5buf2, b._hostname_hash.u8);
-      Debug("conn_count", "Comparing hostname hash %s dest %s match method %d to hostname hash %s dest %s match method %d", md5buf1,
-            ats_ip_nptop(&a._addr.sa, addrbuf1, sizeof(addrbuf1)), a._match_type, md5buf2,
-            ats_ip_nptop(&b._addr.sa, addrbuf2, sizeof(addrbuf2)), b._match_type);
-
-      if (a._match_type != b._match_type || a._match_type == TS_SERVER_SESSION_SHARING_MATCH_NONE) {
-        Debug("conn_count", "result = 0, a._match_type != b._match_type || a._match_type == TS_SERVER_SESSION_SHARING_MATCH_NONE");
-        return 0;
-      }
-
-      if (a._match_type == TS_SERVER_SESSION_SHARING_MATCH_IP) {
-        if (ats_ip_addr_port_eq(&a._addr.sa, &b._addr.sa)) {
-          Debug("conn_count", "result = 1, a._match_type == TS_SERVER_SESSION_SHARING_MATCH_IP");
-          return 1;
-        } else {
-          Debug("conn_count", "result = 0, a._match_type == TS_SERVER_SESSION_SHARING_MATCH_IP");
-          return 0;
-        }
-      }
-
-      if (a._match_type == TS_SERVER_SESSION_SHARING_MATCH_HOST) {
-        if ((a._hostname_hash.u64[0] == b._hostname_hash.u64[0] && a._hostname_hash.u64[1] == b._hostname_hash.u64[1])) {
-          Debug("conn_count", "result = 1, a._match_type == TS_SERVER_SESSION_SHARING_MATCH_HOST");
-          return 1;
-        } else {
-          Debug("conn_count", "result = 0, a._match_type == TS_SERVER_SESSION_SHARING_MATCH_HOST");
-          return 0;
-        }
-      }
-
-      if (a._match_type == TS_SERVER_SESSION_SHARING_MATCH_BOTH) {
-        if ((ats_ip_addr_port_eq(&a._addr.sa, &b._addr.sa)) &&
-            (a._hostname_hash.u64[0] == b._hostname_hash.u64[0] && a._hostname_hash.u64[1] == b._hostname_hash.u64[1])) {
-          Debug("conn_count", "result = 1, a._match_type == TS_SERVER_SESSION_SHARING_MATCH_BOTH");
-
-          return 1;
-        }
-      }
-
-      Debug("conn_count", "result = 0, a._match_type == TS_SERVER_SESSION_SHARING_MATCH_BOTH");
-      return 0;
-    }
-  };
+  static void dump(FILE *f);
 
 protected:
-  // Hide the constructor and copy constructor
-  ConnectionCount() {}
-  ConnectionCount(const ConnectionCount & /* x ATS_UNUSED */) {}
-  static ConnectionCount _connectionCount;
-  HashMap<ConnAddr, ConnAddrHashFns, int> _hostCount;
-  std::mutex _mutex;
+  /// Types and methods for the hash table.
+  struct HashDescriptor {
+    using ID       = uint64_t;
+    using Key      = Group::Key const &;
+    using Value    = Group;
+    using ListHead = DList(Value, _link);
 
-private:
-  void
-  appendJSONPair(std::ostringstream &oss, const std::string &key, const int value)
-  {
-    oss << '\"' << key << "\": " << value;
-  }
+    static ID
+    hash(Key key)
+    {
+      return Group::hash(key);
+    }
+    static Key
+    key(Value *v)
+    {
+      return v->_key;
+    }
+    static bool
+    equal(Key lhs, Key rhs)
+    {
+      return Group::equal(lhs, rhs);
+    }
+  };
 
-  void
-  appendJSONPair(std::ostringstream &oss, const std::string &key, const std::string &value)
-  {
-    oss << '\"' << key << "\": \"" << value << '"';
-  }
+  /// Container type for the connection groups.
+  using HashTable = TSHashTable<HashDescriptor>;
 
-  void safelyGetKeys(Vec<ConnAddr> &keys) {
-    std::lock_guard<std::mutex> lock(_mutex);
-    _hostCount.get_keys(keys);
-  }
+  /// Internal implementation class instance.
+  struct Imp {
+    Imp();
+
+    HashTable _table; ///< Hash table of upstream groups.
+    ink_mutex _mutex; ///< Lock for insert & find.
+  };
+  static Imp _imp;
+
+  /// Get the implementation instance.
+  /// @note This is done purely to provide subclasses to reuse methods in this class.
+  Imp &instance();
 };
 
-class ConnectionCountQueue : public ConnectionCount
+inline OutboundConnTracker::Imp::Imp()
 {
-public:
-  /**
-   * Static method to get the instance of the class
-   * @return Returns a pointer to the instance of the class
-   */
-  static ConnectionCountQueue *
-  getInstance()
-  {
-    return &_connectionCount;
+  ink_mutex_init(&_mutex, "OutboundConnTrack");
+};
+
+inline OutboundConnTracker::Imp &
+OutboundConnTracker::instance()
+{
+  return _imp;
+}
+
+inline OutboundConnTracker::Group *
+OutboundConnTracker::get(IpEndpoint const &addr, CryptoHash const &fqdn_hash, TSServerSessionSharingMatchType match_type)
+{
+  if (TS_SERVER_SESSION_SHARING_MATCH_NONE == match_type) {
+    return 0; // We can never match a node if match type is NONE
   }
 
-private:
-  static ConnectionCountQueue _connectionCount;
-};
+  Group::Key key{addr, fqdn_hash, match_type};
+  Group *g = nullptr;
+  ink_scoped_mutex_lock lock(_imp._mutex); // TABLE LOCK
+  auto loc = _imp._table.find(key);
+  if (loc.isValid()) {
+    g = loc;
+  } else {
+    g = new Group(key);
+    _imp._table.insert(g);
+  }
+  return g;
+}
+
+inline bool
+OutboundConnTracker::Group::equal(const Key &lhs, const Key &rhs)
+{
+  TSServerSessionSharingMatchType mt = lhs._match_type;
+  bool zret = mt == rhs._match_type && (mt == TS_SERVER_SESSION_SHARING_MATCH_IP || lhs._fqdn_hash == rhs._fqdn_hash) &&
+              (mt == TS_SERVER_SESSION_SHARING_MATCH_HOST || ats_ip_addr_port_eq(&lhs._addr.sa, &rhs._addr.sa));
+
+  if (is_debug_tag_set("conn_count")) {
+    ts::LocalBufferWriter<256> bw;
+    bw.print("Comparing {}:{::p}:{} to {}:{::p}:{} -> {}", lhs._fqdn_hash, lhs._addr, lhs._match_type, rhs._fqdn_hash, rhs._addr,
+             rhs._match_type, zret ? "match" : "fail");
+    Debug("conn_count", "%.*s", static_cast<int>(bw.size()), bw.data());
+  }
+
+  return zret;
+}
+
+inline uint64_t
+OutboundConnTracker::Group::hash(const Key &key)
+{
+  switch (key._match_type) {
+  case TS_SERVER_SESSION_SHARING_MATCH_IP:
+    return ats_ip_port_hash(&key._addr.sa);
+  case TS_SERVER_SESSION_SHARING_MATCH_HOST:
+    return key._fqdn_hash.fold();
+  case TS_SERVER_SESSION_SHARING_MATCH_BOTH:
+    return ats_ip_port_hash(&key._addr.sa) ^ key._fqdn_hash.fold();
+  default:
+    return 0;
+  }
+}
+
+inline OutboundConnTracker::Group::Group(const Key &key) : _fqdn_hash(key._fqdn_hash), _match_type(key._match_type)
+{
+  ats_ip_copy(_addr, &key._addr);
+  _key._match_type = _match_type; // make sure this gets updated.
+}
 
 Action *register_ShowConnectionCount(Continuation *, HTTPHdr *);
-
-#endif

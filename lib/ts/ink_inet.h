@@ -31,6 +31,7 @@
 #include <ts/ink_memory.h>
 #include <ts/ink_apidefs.h>
 #include <ts/string_view.h>
+#include <ts/BufferWriterForward.h>
 
 #define INK_GETHOSTBYNAME_R_DATA_SIZE 1024
 #define INK_GETHOSTBYADDR_R_DATA_SIZE 1024
@@ -1580,5 +1581,16 @@ IpEndpoint::setToLoopback(int family)
   }
   return *this;
 }
+
+// BufferWriter formatting support.
+namespace ts
+{
+BufferWriter &bwformat(BufferWriter &w, BWFSpec const &spec, sockaddr const *addr);
+inline BufferWriter &
+bwformat(BufferWriter &w, BWFSpec const &spec, IpEndpoint const &addr)
+{
+  return bwformat(w, spec, &addr.sa);
+}
+} // ts
 
 #endif // _ink_inet.h
