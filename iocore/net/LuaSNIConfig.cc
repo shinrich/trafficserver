@@ -39,6 +39,8 @@ TsConfigEnumDescriptor LuaSNIConfig::Item::LEVEL_DESCRIPTOR = {TsConfigDescripto
                                                                {{"NONE", 0}, {"MODERATE", 1}, {"STRICT", 2}}};
 TsConfigDescriptor LuaSNIConfig::Item::TUNNEL_DEST_DESCRIPTOR = {TsConfigDescriptor::Type::STRING, "String", TS_tunnel_route,
                                                                  "tunnel route destination"};
+TsConfigDescriptor LuaSNIConfig::Item::IP_ALLOW_DESCRIPTOR = {TsConfigDescriptor::Type::STRING, "String", TS_ip_allow,
+                                                                 "Client IP allowed for this communication"};
 TsConfigDescriptor LuaSNIConfig::Item::CLIENT_CERT_DESCRIPTOR = {TsConfigDescriptor::Type::STRING, "String", TS_client_cert,
                                                                  "Client certificate to present to the next hop server"};
 TsConfigDescriptor LuaSNIConfig::Item::VERIFY_NEXT_SERVER_DESCRIPTOR = {TsConfigDescriptor::Type::INT, "Int",
@@ -105,6 +107,8 @@ LuaSNIConfig::Item::loader(lua_State *L)
       CLIENT_CERT_CONFIG.loader(L);
     } else if (!strncmp(name, TS_tunnel_route, strlen(TS_tunnel_route))) {
       TUNNEL_DEST_CONFIG.loader(L);
+    } else if (!strncmp(name, TS_ip_allow, strlen(TS_ip_allow))) {
+      IP_ALLOW_CONFIG.loader(L);
     } else {
       zret.push(ts::Errata::Message(0, 0, "Invalid Entry at SNI config"));
     }

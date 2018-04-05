@@ -42,6 +42,7 @@ constexpr char TS_fqdn[]                 = "fqdn";
 constexpr char TS_disable_H2[]           = "disable_h2";
 constexpr char TS_verify_client[]        = "verify_client";
 constexpr char TS_tunnel_route[]         = "tunnel_route";
+constexpr char TS_ip_allow[]             = "ip_allow";
 constexpr char TS_verify_origin_server[] = "verify_origin_server";
 constexpr char TS_client_cert[]          = "client_cert";
 
@@ -52,6 +53,7 @@ struct LuaSNIConfig : public TsConfigBase {
     disable_h2 = start,
     verify_client,
     tunnel_route,         // blind tunnel action
+    ip_allow,
     verify_origin_server, // this applies to server side vc only
     client_cert
 
@@ -68,6 +70,7 @@ struct LuaSNIConfig : public TsConfigBase {
         DISABLEH2_CONFIG(DISABLE_h2_DESCRIPTOR, disable_h2),
         VERIFYCLIENT_CONFIG(LEVEL_DESCRIPTOR, (int &)verify_client_level),
         TUNNEL_DEST_CONFIG(TUNNEL_DEST_DESCRIPTOR, tunnel_destination),
+        IP_ALLOW_CONFIG(IP_ALLOW_DESCRIPTOR,ip_allow),
         CLIENT_CERT_CONFIG(CLIENT_CERT_DESCRIPTOR, client_cert),
         VERIFY_NEXT_SERVER_CONFIG(VERIFY_NEXT_SERVER_DESCRIPTOR, (int &)verify_origin_server)
     {
@@ -76,17 +79,13 @@ struct LuaSNIConfig : public TsConfigBase {
     static void
     Initialize()
     {
-      //      ACTION_DESCRIPTOR.values = {
-      //        {TS_disable_H2, 0}, {TS_verify_client, 1}, {TS_tunnel_route, 2}, {TS_verify_origin_server, 3}, {TS_client_cert, 4}};
-      //
-      //      ACTION_DESCRIPTOR.keys = {
-      //        {0, TS_disable_H2}, {1, TS_verify_client}, {2, TS_tunnel_route}, {3, TS_verify_origin_server}, {4, TS_client_cert}};
     }
 
     std::string fqdn;
     bool disable_h2             = false;
     uint8_t verify_client_level = 0;
     std::string tunnel_destination;
+    std::string ip_allow;
     uint8_t verify_origin_server = 0;
     std::string client_cert;
 
@@ -100,6 +99,8 @@ struct LuaSNIConfig : public TsConfigBase {
     TsConfigEnum<self::Level> VERIFYCLIENT_CONFIG;
     static TsConfigDescriptor TUNNEL_DEST_DESCRIPTOR;
     TsConfigString TUNNEL_DEST_CONFIG;
+    static TsConfigDescriptor IP_ALLOW_DESCRIPTOR;
+    TsConfigString IP_ALLOW_CONFIG;
     static TsConfigDescriptor CLIENT_CERT_DESCRIPTOR;
     TsConfigString CLIENT_CERT_CONFIG;
     static TsConfigDescriptor VERIFY_NEXT_SERVER_DESCRIPTOR;
