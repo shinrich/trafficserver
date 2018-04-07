@@ -139,6 +139,24 @@ public:
   // Indicate we are done with a transaction.
   virtual void release(ProxyClientTransaction *trans) = 0;
 
+  virtual in_port_t
+  get_outbound_port() const
+  {
+    return outbound_port;
+  }
+
+  virtual IpAddr
+  get_outbound_ip4() const
+  {
+    return outbound_ip4;
+  }
+
+  virtual IpAddr
+  get_outbound_ip6() const
+  {
+    return outbound_ip6;
+  }
+
   int64_t
   connection_id() const
   {
@@ -223,6 +241,13 @@ public:
     NetVConnection *netvc = get_netvc();
     return netvc ? netvc->get_local_addr() : NULL;
   }
+
+  /// Local address for outbound connection.
+  IpAddr outbound_ip4;
+  /// Local address for outbound connection.
+  IpAddr outbound_ip6;
+  /// Local port for outbound connection.
+  in_port_t outbound_port{0};
 
 protected:
   // XXX Consider using a bitwise flags variable for the following flags, so

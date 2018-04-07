@@ -122,24 +122,6 @@ public:
   // Indicate we are done with a transaction
   virtual void release(ProxyClientTransaction *trans);
 
-  virtual uint16_t
-  get_outbound_port() const
-  {
-    return outbound_port;
-  }
-
-  virtual IpAddr
-  get_outbound_ip4() const
-  {
-    return outbound_ip4;
-  }
-
-  virtual IpAddr
-  get_outbound_ip6() const
-  {
-    return outbound_ip6;
-  }
-
   virtual void attach_server_session(HttpServerSession *ssession, bool transaction_done = true);
 
   virtual HttpServerSession *
@@ -220,12 +202,6 @@ public:
   // Link<Http1ClientSession> debug_link;
   LINK(Http1ClientSession, debug_link);
 
-  /// Local address for outbound connection.
-  IpAddr outbound_ip4;
-  /// Local address for outbound connection.
-  IpAddr outbound_ip6;
-  /// Local port for outbound connection.
-  uint16_t outbound_port;
   /// Set outbound connection to transparent.
   bool f_outbound_transparent;
   /// Transparently pass-through non-HTTP traffic.
