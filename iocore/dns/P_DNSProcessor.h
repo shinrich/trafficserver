@@ -98,6 +98,7 @@ enum DNS_Stats {
   dns_max_retries_exceeded_stat,
   dns_sequence_number_stat,
   dns_in_flight_stat,
+  dns_mutex_retry_stat,
   DNS_Stat_Count
 };
 

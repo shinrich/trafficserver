@@ -39,7 +39,7 @@ EventType ET_DNS = ET_CALL;
 //
 // Config
 //
-int dns_timeout                      = DEFAULT_DNS_TIMEOUT;
+int dns_timeout                      = DEFAULT_DNS_TIMEOUT; ///< seconds
 int dns_retries                      = DEFAULT_DNS_RETRIES;
 int dns_search                       = DEFAULT_DNS_SEARCH;
 int dns_failover_number              = DEFAULT_FAILOVER_NUMBER;
@@ -438,7 +438,7 @@ DNSHandler::open_con(sockaddr const *target, bool failed, int icon)
                                   .setBindRandomPort(true)
                                   .setLocalIpv6(&local_ipv6.sa)
                                   .setLocalIpv4(&local_ipv4.sa)) < 0) {
-    Debug("dns", "opening connection %s FAILED for %d", ip_text, icon);
+    Warning("dns: opening connection %s FAILED for %d", ip_text, icon);
     if (!failed) {
       if (dns_ns_rr)
         rr_failure(icon);
@@ -912,7 +912,10 @@ write_dns(DNSHandler *h)
         break;
       e = n;
     }
+  } else {
+    Warning("dns: hit in flight max of: %i", dns_max_dns_in_flight);
   }
+
   h->in_write_dns = false;
 }
 
@@ -966,7 +969,7 @@ write_dns_event(DNSHandler *h, DNSEntry *e)
   int r = 0;
 
   if ((r = _ink_res_mkquery(h->m_res, e->qname, e->qtype, blob._b)) <= 0) {
-    Debug("dns", "cannot build query: %s", e->qname);
+    Warning("dns: cannot build query: %s", e->qname);
     dns_result(h, e, nullptr, false);
     return true;
   }
@@ -982,7 +985,7 @@ write_dns_event(DNSHandler *h, DNSEntry *e)
 
   int s = socketManager.send(h->con[h->name_server].fd, blob._b, r, 0);
   if (s != r) {
-    Debug("dns", "send() failed: qname = %s, %d != %d, nameserver= %d", e->qname, s, r, h->name_server);
+    Warning("dns: send() failed: qname = %s, %d != %d, nameserver= %d", e->qname, s, r, h->name_server);
     // changed if condition from 'r < 0' to 's < 0' - 8/2001 pas
     if (s < 0) {
       if (dns_ns_rr)
@@ -1070,10 +1073,11 @@ DNSEntry::mainEvent(int event, Event *e)
     return EVENT_DONE;
   }
   case EVENT_INTERVAL:
-    Debug("dns", "timeout for query %s", qname);
+    Warning("dns timeout for query %s", qname);
     if (dnsH->txn_lookup_timeout) {
       timeout = nullptr;
       dns_result(dnsH, this, result_ent.get(), false); // do not retry -- we are over TXN timeout on DNS alone!
+      Warning("DNS is over txn_lookup_timeout ={%ims}", dnsH->txn_lookup_timeout);
       return EVENT_DONE;
     }
     if (written_flag) {
@@ -1084,6 +1088,7 @@ DNSEntry::mainEvent(int event, Event *e)
     }
     timeout = nullptr;
     dns_result(dnsH, this, result_ent.get(), true);
+    Warning("DNS is over proxy.config.dns.lookup_timeout ={%ims}", dns_timeout);
     return EVENT_DONE;
   }
 }
@@ -1132,7 +1137,7 @@ dns_result(DNSHandler *h, DNSEntry *e, HostEnt *ent, bool retry)
 
         // Make sure the next try fits
         if (e->orig_qname_len + strlen(*e->domains) + 2 > MAXDNAME) {
-          Debug("dns", "domain too large %.*s + %s", e->orig_qname_len, e->qname, *e->domains);
+          Warning("dns: error code domain too large %.*s + %s", e->orig_qname_len, e->qname, *e->domains);
         } else {
           e->qname[e->orig_qname_len] = '.';
           e->qname_len =
@@ -1174,18 +1179,17 @@ dns_result(DNSHandler *h, DNSEntry *e, HostEnt *ent, bool retry)
   if (is_debug_tag_set("dns")) {
     if (is_addr_query(e->qtype)) {
       ip_text_buffer buff;
-      const char *ptr    = "<none>";
-      const char *result = "FAIL";
       if (ent) {
-        result = "SUCCESS";
-        ptr    = inet_ntop(e->qtype == T_AAAA ? AF_INET6 : AF_INET, ent->ent.h_addr_list[0], buff, sizeof(buff));
-      }
-      Debug("dns", "%s result for %s = %s retry %d", result, e->qname, ptr, retry);
+        const char *ptr    = inet_ntop(e->qtype == T_AAAA ? AF_INET6 : AF_INET, ent->ent.h_addr_list[0], buff, sizeof(buff));
+        Debug("dns", "SUCCESS result for %s = %s retry %d", e->qname, ptr, retry);
+      } else {
+        Warning("dns: FAIL result for %s = <none> retry %d", e->qname,  retry);
+      }      
     } else {
       if (ent) {
         Debug("dns", "SUCCESS result for %s = %s af=%d retry %d", e->qname, ent->ent.h_name, ent->ent.h_addrtype, retry);
       } else {
-        Debug("dns", "FAIL result for %s = <not found> retry %d", e->qname, retry);
+        Warning("dns: FAIL result for %s = <not found> retry %d", e->qname, retry);
       }
     }
   }
@@ -1213,7 +1217,7 @@ dns_result(DNSHandler *h, DNSEntry *e, HostEnt *ent, bool retry)
   if (h->mutex->thread_holding == e->submit_thread) {
     MUTEX_TRY_LOCK(lock, e->action.mutex, h->mutex->thread_holding);
     if (!lock.is_locked()) {
-      Debug("dns", "failed lock for result %s", e->qname);
+      Warning("dns: failed lock for result %s", e->qname);
       goto Lretry;
     }
     for (int i : e->id) {
@@ -1238,7 +1242,9 @@ Lretry:
   e->retries    = 0;
   if (e->timeout)
     e->timeout->cancel();
-  e->timeout = h->mutex->thread_holding->schedule_in(e, MUTEX_RETRY_DELAY);
+  Warning("dns: %s - mutex retry in %ld", e->qname, DNS_PERIOD);
+  DNS_INCREMENT_DYN_STAT(dns_mutex_retry_stat);
+  e->timeout = h->mutex->thread_holding->schedule_in(e, DNS_PERIOD);
 }
 
 int
@@ -1252,7 +1258,7 @@ DNSEntry::post(DNSHandler *h, HostEnt *ent)
   if (h->mutex->thread_holding == submit_thread) {
     MUTEX_TRY_LOCK(lock, action.mutex, h->mutex->thread_holding);
     if (!lock.is_locked()) {
-      Debug("dns", "failed lock for result %s", qname);
+      Warning("dns: post: failed lock for result %s", qname);
       return 1;
     }
     postEvent(0, nullptr);
@@ -1268,7 +1274,7 @@ int
 DNSEntry::postEvent(int /* event ATS_UNUSED */, Event * /* e ATS_UNUSED */)
 {
   if (!action.cancelled) {
-    Debug("dns", "called back continuation for %s", qname);
+    Debug("dns", "called back continuation for %s {ttl=%u} ", qname, result_ent.get()->ttl);
     action.continuation->handleEvent(DNS_EVENT_LOOKUP, result_ent.get());
   }
   result_ent   = nullptr;
@@ -1293,7 +1299,7 @@ dns_process(DNSHandler *handler, HostEnt *buf, int len)
   // Do we have an entry for this id?
   //
   if (!e || !e->written_flag) {
-    Debug("dns", "unknown DNS id = %u", (uint16_t)ntohs(h->id));
+    Warning("dns: error code unknown DNS id = %u", (uint16_t)ntohs(h->id));
     return false; // cannot count this as a success
   }
   //
@@ -1309,7 +1315,7 @@ dns_process(DNSHandler *handler, HostEnt *buf, int len)
     Debug("dns", "received rcode = %d", h->rcode);
     switch (h->rcode) {
     default:
-      Warning("Unknown DNS error %d for [%s]", h->rcode, e->qname);
+      Warning("Unknown DNS error code %d for [%s]", h->rcode, e->qname);
       retry     = true;
       server_ok = false; // could be server problems
       goto Lerror;
@@ -1319,7 +1325,7 @@ dns_process(DNSHandler *handler, HostEnt *buf, int len)
     case FORMERR: // unrecoverable errors
     case REFUSED:
     case NOTIMP:
-      Debug("dns", "DNS error %d for [%s]", h->rcode, e->qname);
+      Warning("dns: error code %d for [%s]", h->rcode, e->qname);
       server_ok = false; // could be server problems
       goto Lerror;
     case NOERROR:
@@ -1329,7 +1335,7 @@ dns_process(DNSHandler *handler, HostEnt *buf, int len)
     case 8:  // NOTAUTH
     case 9:  // NOTAUTH
     case 10: // NOTZONE
-      Debug("dns", "DNS error %d for [%s]", h->rcode, e->qname);
+      Warning("dns: error code %d for [%s]", h->rcode, e->qname);
       goto Lerror;
     }
   } else {
@@ -1581,8 +1587,15 @@ dns_process(DNSHandler *handler, HostEnt *buf, int len)
           bp += n;
           cp += n;
         }
-      } else
+      } else {
+        //TODO: make this a warning
+        Warning("dns: parse error: type=%i  %*.s", type, int(eom-cp), cp);
+        if (answer) {
+          // got something, lets use it and ignore what we don't understand
+          break;
+        }
         goto Lerror;
+      }
       ++answer;
     }
     if (answer) {
@@ -1654,6 +1667,10 @@ ink_dns_init(ModuleVersion v)
 
   RecRegisterRawStat(dns_rsb, RECT_PROCESS, "proxy.process.dns.in_flight", RECD_INT, RECP_NON_PERSISTENT, (int)dns_in_flight_stat,
                      RecRawStatSyncSum);
+
+  RecRegisterRawStat(dns_rsb, RECT_PROCESS, "proxy.process.dns.handlers_starved", RECD_INT, RECP_NON_PERSISTENT,
+                     (int)dns_mutex_retry_stat, RecRawStatSyncSum);
+
 }
 
 #ifdef TS_HAS_TESTS
