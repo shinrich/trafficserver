@@ -299,7 +299,7 @@ TSRemapDoRemap(void *ih, TSHttpTxn rh, TSRemapRequestInfo *rri)
   }
 
   // How to store plugin private arguments inside Traffic Server request processing block.
-  if (TSHttpArgIndexReserve("remap_example", "Example remap plugin", &arg_index) == TS_SUCCESS) {
+  if (TSHttpTxnArgIndexReserve("remap_example", "Example remap plugin", &arg_index) == TS_SUCCESS) {
     fprintf(stderr, "[TSRemapDoRemap] Save processing counter %lu inside request processing block\n", _processing_counter);
     TSHttpTxnArgSet((TSHttpTxn)rh, arg_index, (void *)_processing_counter); // save counter
   }
