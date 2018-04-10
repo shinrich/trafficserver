@@ -824,6 +824,7 @@ public:
 
   typedef struct _SquidLogInfo {
     SquidLogCode log_code;
+    SquidSubcode subcode = SQUID_SUBCODE_EMPTY;
     SquidHierarchyCode hier_code;
     SquidHitMissCode hit_miss_code;
 
