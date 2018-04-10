@@ -1088,7 +1088,7 @@ DNSEntry::mainEvent(int event, Event *e)
     }
     timeout = nullptr;
     dns_result(dnsH, this, result_ent.get(), true);
-    Warning("DNS is over proxy.config.dns.lookup_timeout ={%ims}", dns_timeout);
+    Warning("DNS is over proxy.config.dns.lookup_timeout ={%is}", dns_timeout);
     return EVENT_DONE;
   }
 }
@@ -1176,7 +1176,8 @@ dns_result(DNSHandler *h, DNSEntry *e, HostEnt *ent, bool retry)
   }
   h->entries.remove(e);
 
-  if (is_debug_tag_set("dns")) {
+  //if (is_debug_tag_set("dns")) 
+  {
     if (is_addr_query(e->qtype)) {
       ip_text_buffer buff;
       if (ent) {
