@@ -42,9 +42,9 @@ EventType ET_DNS = ET_CALL;
 int dns_timeout                      = DEFAULT_DNS_TIMEOUT; ///< seconds
 int dns_retries                      = DEFAULT_DNS_RETRIES;
 int dns_search                       = DEFAULT_DNS_SEARCH;
-int dns_failover_number              = DEFAULT_FAILOVER_NUMBER;
-int dns_failover_period              = DEFAULT_FAILOVER_PERIOD;
-int dns_failover_try_period          = DEFAULT_FAILOVER_TRY_PERIOD;
+int dns_failover_number              = DEFAULT_FAILOVER_NUMBER;     ///< max seq failures to trigger failover
+int dns_failover_period              = DEFAULT_FAILOVER_PERIOD;     ///< delay 60 sec after trigger
+int dns_failover_try_period          = DEFAULT_FAILOVER_TRY_PERIOD; ///<
 int dns_max_dns_in_flight            = MAX_DNS_IN_FLIGHT;
 int dns_validate_qname               = 0;
 unsigned int dns_handler_initialized = 0;
@@ -819,9 +819,9 @@ DNSHandler::mainEvent(int event, Event *e)
     }
   } else {
     if (failover_soon(name_server)) {
-      Debug("dns", "mainEvent: will failover soon");
+      Warning("dns: mainEvent: will failover soon");
       if (failover_now(name_server)) {
-        Debug("dns", "mainEvent: failing over now to another nameserver");
+        Warning("dns: mainEvent: failing over now to another nameserver");
         failover();
       } else {
         try_primary_named(false);
@@ -1330,13 +1330,15 @@ dns_process(DNSHandler *handler, HostEnt *buf, int len)
       server_ok = false; // could be server problems
       goto Lerror;
     case NOERROR:
-    case NXDOMAIN:
     case 6:  // YXDOMAIN
     case 7:  // YXRRSET
     case 8:  // NOTAUTH
     case 9:  // NOTAUTH
     case 10: // NOTZONE
       Warning("dns: error code %d for [%s]", h->rcode, e->qname);
+      goto Lerror;
+    case NXDOMAIN:
+      Warning("dns: NXDOMAIN for [%s]", e->qname);
       goto Lerror;
     }
   } else {
@@ -1392,7 +1394,7 @@ dns_process(DNSHandler *handler, HostEnt *buf, int len)
       if (-1 == rname_len)
         n = strlen((char *)bp) + 1;
       else
-        n             = rname_len + 1;
+        n = rname_len + 1;
       buf->ent.h_name = (char *)bp;
       bp += n;
       buflen -= n;
@@ -1589,8 +1591,8 @@ dns_process(DNSHandler *handler, HostEnt *buf, int len)
           cp += n;
         }
       } else {
-        //TODO: make this a warning
-        Warning("dns: parse error: type=%i  %*.s", type, int(eom-cp), cp);
+        // TODO: make this a warning
+        Warning("dns: parse error: type=%i  %*.s", type, int(eom - cp), cp);
         if (answer) {
           // got something, lets use it and ignore what we don't understand
           break;
