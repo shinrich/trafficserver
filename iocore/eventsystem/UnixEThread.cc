@@ -47,6 +47,8 @@ char const *const EThread::STAT_NAME[] = {"proxy.process.eventloop.count",      
 
 int const EThread::SAMPLE_COUNT[N_EVENT_TIMESCALES] = {10, 100, 1000};
 
+int thread_max_heartbeat_mseconds = THREAD_MAX_HEARTBEAT_MSECONDS;
+
 EThread::EThread()
 {
   memset(thread_private, 0, PER_THREAD_DATA);
@@ -257,7 +259,7 @@ EThread::execute_regular()
     next_time             = EventQueue.earliest_timeout();
     ink_hrtime sleep_time = next_time - Thread::get_hrtime_updated();
     if (sleep_time > 0) {
-      sleep_time = std::min(sleep_time, HRTIME_MSECONDS(THREAD_MAX_HEARTBEAT_MSECONDS));
+      sleep_time = std::min(sleep_time, HRTIME_MSECONDS(thread_max_heartbeat_mseconds));
       ++(current_metric->_wait);
     } else {
       sleep_time = 0;

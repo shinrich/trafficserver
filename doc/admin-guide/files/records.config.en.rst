@@ -396,6 +396,17 @@ Thread Variables
    This setting specifies the number of active client connections
    for use by :option:`traffic_ctl server restart --drain`.
 
+.. ts:cv:: CONFIG proxy.config.thread.max_heartbeat_mseconds INT 60
+   :unit: milliseconds
+
+   Set the maximum heartbeat in milliseconds for threads, ranges from 0 to 1000.
+
+   This controls the maximum amount of time the event loop will wait for I/O activity.
+   On a system that is not busy, this option can be set to a higher value to decrease
+   the spin around overhead. If experiencing unexpected delays, setting a lower value
+   should improve the situation. Note that this setting should only be used by expert
+   system tuners, and will not be beneficial with random fiddling.
+
 Network
 =======
 
