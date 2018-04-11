@@ -104,7 +104,8 @@ struct UserArg {
 /// Table of reservations, indexed by type and then index.
 UserArg UserArgTable[UserArg::Type::COUNT][TS_HTTP_MAX_USER_ARG];
 /// Table of next reserved index.
-std::atomic<int> UserArgIdx[UserArg::Type::COUNT];
+// std::atomic<int> UserArgIdx[UserArg::Type::COUNT];
+std::atomic< std::array<int, UserArg::Type::COUNT> > UserArgIdx;
 
 /* URL schemes */
 tsapi const char *TS_URL_SCHEME_FILE;
@@ -5904,6 +5905,7 @@ TSHttpTxnReenable(TSHttpTxn txnp, TSEvent event)
   }
 }
 
+// New API for split txn/ssn arguments
 TSReturnCode
 TSHttpArgIndexReserve(UserArg::Type type, const char *name, const char *description, int *ptr_idx)
 {
@@ -5911,16 +5913,20 @@ TSHttpArgIndexReserve(UserArg::Type type, const char *name, const char *descript
   sdk_assert(sdk_sanity_check_null_ptr(name) == TS_SUCCESS);
   sdk_assert(0 <= type && type < UserArg::Type::COUNT);
 
-  int idx = UserArgIdx[type]++;
+  std::array<int, UserArg::Type::COUNT> user_idx = UserArgIdx.load();
 
-  if (idx < TS_HTTP_MAX_USER_ARG) {
-    UserArg &arg(UserArgTable[type][idx]);
-    arg.name = name;
-    if (description)
-      arg.description = description;
-    *ptr_idx          = idx;
+  while (user_idx[type] < TS_HTTP_MAX_USER_ARG) {
+    std::array<int, UserArg::Type::COUNT> new_idx = user_idx;
+    new_idx[type] += 1;
+    if (UserArgIdx.compare_exchange_strong(user_idx, new_idx)) {
+      UserArg &arg(UserArgTable[type][idx]);
+      arg.name = name;
+      if (description)
+        arg.description = description;
+      *ptr_idx          = user_idx[type];
 
-    return TS_SUCCESS;
+      return TS_SUCCESS;
+    }
   }
   return TS_ERROR;
 }
@@ -5930,7 +5936,7 @@ TSHttpArgIndexLookup(UserArg::Type type, int idx, const char **name, const char 
 {
   sdk_assert(0 <= type && type < UserArg::Type::COUNT);
   if (sdk_sanity_check_null_ptr(name) == TS_SUCCESS) {
-    if (idx < UserArgIdx[type]) {
+    if (idx < UserArgIdx.load()[type]) {
       UserArg &arg(UserArgTable[type][idx]);
       *name = arg.name.c_str();
       if (description) {
@@ -5950,7 +5956,7 @@ TSHttpArgIndexNameLookup(UserArg::Type type, const char *name, int *arg_idx, con
 
   ts::string_view n{name};
 
-  for (UserArg *arg = UserArgTable[type], *limit = arg + UserArgIdx[type]; arg < limit; ++arg) {
+  for (UserArg *arg = UserArgTable[type], *limit = arg + UserArgIdx.load()[type]; arg < limit; ++arg) {
     if (arg->name == n) {
       if (description) {
         *description = arg->description.c_str();
@@ -5962,6 +5968,45 @@ TSHttpArgIndexNameLookup(UserArg::Type type, const char *name, int *arg_idx, con
   return TS_ERROR;
 }
 
+// Old APIs with tweaks to work with split txn/ssn arg
+// Reserve in both txn/ssn and store only in UserArg::TXN array
+// Later lookups can simply call new APIs with type=UserArg::TXN
+TSReturnCode
+TSHttpArgIndexReserve(const char *name, const char *description, int *arg_idx)
+{
+  sdk_assert(sdk_sanity_check_null_ptr(arg_idx) == TS_SUCCESS);
+  sdk_assert(sdk_sanity_check_null_ptr(name) == TS_SUCCESS);
+
+  std::array<int, UserArg::Type::COUNT> user_idx = UserArgIdx.load();
+  int idx = user_idx[UserArg::TXN] > user_idx[UserArg::SSN]?user_idx[UserArg::TXN]:user_idx[UserArg::SSN];
+  while (idx < TS_HTTP_MAX_USER_ARG) {
+    std::array<int, UserArg::Type::COUNT> new_idx = user_idx;
+    new_idx[UserArg::TXN] = idx+1;
+    new_idx[UserArg::SSN] = idx+1;
+    if (UserArgIdx.compare_exchange_strong(user_idx, new_idx)) {
+      UserArg &arg(UserArgTable[UserArg::TXN][idx]);
+      arg.name = name;
+      if (description)
+        arg.description = description;
+      *ptr_idx          = idx;
+      return TS_SUCCESS;
+    }
+    idx = (user_idx[UserArg::TXN] > user_idx[UserArg::SSN]?user_idx[UserArg::TXN]:user_idx[UserArg::SSN]);
+  }
+  return TS_ERROR;
+}
+
+TSReturnCode
+TSHttpArgIndexLookup(int arg_idx, const char **name, const char **description)
+{
+  return TSHttpArgIndexLookup(UserArg::TXN, arg_idx, name, description);
+}
+
+TSReturnCode
+TSHttpArgIndexNameLookup(const char *name, int *arg_idx, const char **description)
+{
+  return TSHttpArgIndexNameLookup(UserArg::TXN, name, arg_idx, description);
+}
 // -------------
 TSReturnCode
 TSHttpTxnArgIndexReserve(const char *name, const char *description, int *arg_idx)
