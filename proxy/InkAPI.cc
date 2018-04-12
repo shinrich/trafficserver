@@ -5919,7 +5919,7 @@ TSHttpArgIndexReserve(UserArg::Type type, const char *name, const char *descript
     std::array<int, UserArg::Type::COUNT> new_idx = user_idx;
     new_idx[type] += 1;
     if (UserArgIdx.compare_exchange_strong(user_idx, new_idx)) {
-      UserArg &arg(UserArgTable[type][idx]);
+      UserArg &arg(UserArgTable[type][user_idx[type]]);
       arg.name = name;
       if (description)
         arg.description = description;
@@ -5988,7 +5988,7 @@ TSHttpArgIndexReserve(const char *name, const char *description, int *arg_idx)
       arg.name = name;
       if (description)
         arg.description = description;
-      *ptr_idx          = idx;
+      *arg_idx          = idx;
       return TS_SUCCESS;
     }
     idx = (user_idx[UserArg::TXN] > user_idx[UserArg::SSN]?user_idx[UserArg::TXN]:user_idx[UserArg::SSN]);
