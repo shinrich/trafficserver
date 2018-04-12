@@ -25,6 +25,9 @@ Synopsis
 
 `#include <ts/ts.h>`
 
+.. function:: TSReturnCode TSHttpArgIndexReserve(const char * name, const char * description, int * arg_idx)
+.. function:: TSReturnCode TSHttpArgIndexNameLookup(const char * name, int * arg_idx, const char **description)
+.. function:: TSReturnCode TSHttpArgIndexLookup(int arg_idx, const char ** name, const char **description)
 .. function:: TSReturnCode TSHttpTxnArgIndexReserve(const char * name, const char * description, int * arg_idx)
 .. function:: TSReturnCode TSHttpTxnArgIndexNameLookup(const char * name, int * arg__idx, const char ** description)
 .. function:: TSReturnCode TSHttpTxnArgIndexLookup(int arg_idx, const char ** name, const char ** description)
