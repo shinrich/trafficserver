@@ -5989,6 +5989,7 @@ TSHttpArgIndexReserve(const char *name, const char *description, int *arg_idx)
       if (description)
         arg.description = description;
       *arg_idx          = idx;
+      UserArgTable[UserArg::SSN][idx] = arg;
       return TS_SUCCESS;
     }
     idx = (user_idx[UserArg::TXN] > user_idx[UserArg::SSN]?user_idx[UserArg::TXN]:user_idx[UserArg::SSN]);
