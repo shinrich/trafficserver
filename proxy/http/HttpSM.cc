@@ -5690,15 +5690,12 @@ HttpSM::handle_server_setup_error(int event, void *data)
     }
   }
 
-  if (event == VC_EVENT_ERROR) {
-    t_state.cause_of_death_errno = server_session->get_netvc()->lerrno;
-  }
-
   switch (event) {
   case VC_EVENT_EOS:
     t_state.current.state = HttpTransact::CONNECTION_CLOSED;
     break;
   case VC_EVENT_ERROR:
+    t_state.cause_of_death_errno = server_session->get_netvc()->lerrno;
     t_state.current.state = HttpTransact::CONNECTION_ERROR;
     break;
   case VC_EVENT_ACTIVE_TIMEOUT:
@@ -5717,7 +5714,13 @@ HttpSM::handle_server_setup_error(int event, void *data)
     } else {
       t_state.current.state = HttpTransact::INACTIVE_TIMEOUT;
     }
-    // Clean up the vc_table entry so any events in play to the timed out server vio
+    break;
+  default:
+    ink_release_assert(0);
+  }
+
+  if (event == VC_EVENT_INACTIVITY_TIMEOUT || event == VC_EVENT_ERROR) {
+    // Clean up the vc_table entry so any events in play to the timed out or error'ed server vio
     // don't get handled.  The connection isn't there.
     if (server_entry) {
       ink_assert(server_entry->vc_type == HTTP_SERVER_VC);
@@ -5725,9 +5728,6 @@ HttpSM::handle_server_setup_error(int event, void *data)
       server_entry   = nullptr;
       server_session = nullptr;
     }
-    break;
-  default:
-    ink_release_assert(0);
   }
 
   // Closedown server connection and deallocate buffers
