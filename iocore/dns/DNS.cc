@@ -1275,7 +1275,8 @@ int
 DNSEntry::postEvent(int /* event ATS_UNUSED */, Event * /* e ATS_UNUSED */)
 {
   if (!action.cancelled) {
-    Debug("dns", "called back continuation for %s {ttl=%u} ", qname, result_ent.get()->ttl);
+    Debug("dns", "called back continuation for %s {ttl=%u} ", qname,
+        (result_ent.get() != nullptr ? result_ent.get()->ttl : 0));
     action.continuation->handleEvent(DNS_EVENT_LOOKUP, result_ent.get());
   }
   result_ent   = nullptr;
