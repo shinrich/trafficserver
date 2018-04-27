@@ -22,7 +22,6 @@
  */
 
 #include <cstdio>
-#include <atomic>
 
 #include "ts/ink_platform.h"
 #include "ts/ink_base64.h"
@@ -87,25 +86,14 @@
 static volatile int api_rsb_index = 0;
 static RecRawStatBlock *api_rsb;
 
-/** Reservation for a user arg.
- */
-struct UserArg {
-  /// Types of user args.
-  enum Type {
-    TXN,  ///< Transaction based.
-    SSN,  ///< Session based
-    COUNT ///< Fake enum, # of valid entries.
-  };
+// Globals for the Sessions/Transaction index registry
+static volatile int next_argv_index = 0;
 
-  std::string name;        ///< Name of reserving plugin.
-  std::string description; ///< Description of use for this arg.
-};
-
-/// Table of reservations, indexed by type and then index.
-UserArg UserArgTable[UserArg::Type::COUNT][TS_HTTP_MAX_USER_ARG];
-/// Table of next reserved index.
-// std::atomic<int> UserArgIdx[UserArg::Type::COUNT];
-std::atomic< std::array<int, UserArg::Type::COUNT> > UserArgIdx;
+static struct _STATE_ARG_TABLE {
+  char *name;
+  size_t name_len;
+  char *description;
+} state_arg_table[HTTP_SSN_TXN_MAX_USER_ARG];
 
 /* URL schemes */
 tsapi const char *TS_URL_SCHEME_FILE;
@@ -677,9 +665,12 @@ sdk_sanity_check_ssl_hook_id(TSHttpHookID id)
 }
 
 TSReturnCode
-sdk_sanity_check_null_ptr(void const *ptr)
+sdk_sanity_check_null_ptr(void *ptr)
 {
-  return ptr == nullptr ? TS_ERROR : TS_SUCCESS;
+  if (ptr == nullptr) {
+    return TS_ERROR;
+  }
+  return TS_SUCCESS;
 }
 
 // Plugin metric IDs index the plugin RSB, so bounds check against that.
@@ -1665,6 +1656,8 @@ api_init()
     } else {
       api_rsb = nullptr;
     }
+
+    memset(state_arg_table, 0, sizeof(state_arg_table));
 
     // Setup the version string for returning to plugins
     ink_strlcpy(traffic_server_version, appVersionInfo.VersionStr, sizeof(traffic_server_version));
@@ -5905,94 +5898,22 @@ TSHttpTxnReenable(TSHttpTxn txnp, TSEvent event)
   }
 }
 
-// New API for split txn/ssn arguments
-TSReturnCode
-TSHttpArgIndexReserve(UserArg::Type type, const char *name, const char *description, int *ptr_idx)
-{
-  sdk_assert(sdk_sanity_check_null_ptr(ptr_idx) == TS_SUCCESS);
-  sdk_assert(sdk_sanity_check_null_ptr(name) == TS_SUCCESS);
-  sdk_assert(0 <= type && type < UserArg::Type::COUNT);
-
-  std::array<int, UserArg::Type::COUNT> user_idx = UserArgIdx.load();
-
-  while (user_idx[type] < TS_HTTP_MAX_USER_ARG) {
-    std::array<int, UserArg::Type::COUNT> new_idx = user_idx;
-    new_idx[type] += 1;
-    if (UserArgIdx.compare_exchange_strong(user_idx, new_idx)) {
-      UserArg &arg(UserArgTable[type][user_idx[type]]);
-      arg.name = name;
-      if (description)
-        arg.description = description;
-      *ptr_idx          = user_idx[type];
-
-      return TS_SUCCESS;
-    }
-  }
-  return TS_ERROR;
-}
-
-TSReturnCode
-TSHttpArgIndexLookup(UserArg::Type type, int idx, const char **name, const char **description)
-{
-  sdk_assert(0 <= type && type < UserArg::Type::COUNT);
-  if (sdk_sanity_check_null_ptr(name) == TS_SUCCESS) {
-    if (idx < UserArgIdx.load()[type]) {
-      UserArg &arg(UserArgTable[type][idx]);
-      *name = arg.name.c_str();
-      if (description) {
-        *description = arg.description.c_str();
-      }
-      return TS_SUCCESS;
-    }
-  }
-  return TS_ERROR;
-}
-
-TSReturnCode
-TSHttpArgIndexNameLookup(UserArg::Type type, const char *name, int *arg_idx, const char **description)
-{
-  sdk_assert(sdk_sanity_check_null_ptr(arg_idx) == TS_SUCCESS);
-  sdk_assert(0 <= type && type < UserArg::Type::COUNT);
-
-  ts::string_view n{name};
-
-  for (UserArg *arg = UserArgTable[type], *limit = arg + UserArgIdx.load()[type]; arg < limit; ++arg) {
-    if (arg->name == n) {
-      if (description) {
-        *description = arg->description.c_str();
-      }
-      *arg_idx = arg - UserArgTable[type];
-      return TS_SUCCESS;
-    }
-  }
-  return TS_ERROR;
-}
-
-// Old APIs with tweaks to work with split txn/ssn arg
-// Reserve in both txn/ssn and store only in UserArg::TXN array
-// Later lookups can simply call new APIs with type=UserArg::TXN
 TSReturnCode
 TSHttpArgIndexReserve(const char *name, const char *description, int *arg_idx)
 {
   sdk_assert(sdk_sanity_check_null_ptr(arg_idx) == TS_SUCCESS);
-  sdk_assert(sdk_sanity_check_null_ptr(name) == TS_SUCCESS);
 
-  std::array<int, UserArg::Type::COUNT> user_idx = UserArgIdx.load();
-  int idx = user_idx[UserArg::TXN] > user_idx[UserArg::SSN]?user_idx[UserArg::TXN]:user_idx[UserArg::SSN];
-  while (idx < TS_HTTP_MAX_USER_ARG) {
-    std::array<int, UserArg::Type::COUNT> new_idx = user_idx;
-    new_idx[UserArg::TXN] = idx+1;
-    new_idx[UserArg::SSN] = idx+1;
-    if (UserArgIdx.compare_exchange_strong(user_idx, new_idx)) {
-      UserArg &arg(UserArgTable[UserArg::TXN][idx]);
-      arg.name = name;
-      if (description)
-        arg.description = description;
-      *arg_idx          = idx;
-      UserArgTable[UserArg::SSN][idx] = arg;
-      return TS_SUCCESS;
+  int ix = ink_atomic_increment(&next_argv_index, 1);
+
+  if (ix < HTTP_SSN_TXN_MAX_USER_ARG) {
+    state_arg_table[ix].name     = ats_strdup(name);
+    state_arg_table[ix].name_len = strlen(state_arg_table[ix].name);
+    if (description) {
+      state_arg_table[ix].description = ats_strdup(description);
     }
-    idx = (user_idx[UserArg::TXN] > user_idx[UserArg::SSN]?user_idx[UserArg::TXN]:user_idx[UserArg::SSN]);
+    *arg_idx = ix;
+
+    return TS_SUCCESS;
   }
   return TS_ERROR;
 }
@@ -6000,76 +5921,63 @@ TSHttpArgIndexReserve(const char *name, const char *description, int *arg_idx)
 TSReturnCode
 TSHttpArgIndexLookup(int arg_idx, const char **name, const char **description)
 {
-  return TSHttpArgIndexLookup(UserArg::TXN, arg_idx, name, description);
+  if (sdk_sanity_check_null_ptr(name) == TS_SUCCESS) {
+    if (state_arg_table[arg_idx].name) {
+      *name = state_arg_table[arg_idx].name;
+      if (description) {
+        *description = state_arg_table[arg_idx].description;
+      }
+      return TS_SUCCESS;
+    }
+  }
+  return TS_ERROR;
 }
 
+// Not particularly efficient, but good enough for now.
 TSReturnCode
 TSHttpArgIndexNameLookup(const char *name, int *arg_idx, const char **description)
 {
-  return TSHttpArgIndexNameLookup(UserArg::TXN, name, arg_idx, description);
-}
-// -------------
-TSReturnCode
-TSHttpTxnArgIndexReserve(const char *name, const char *description, int *arg_idx)
-{
-  return TSHttpArgIndexReserve(UserArg::TXN, name, description, arg_idx);
-}
+  sdk_assert(sdk_sanity_check_null_ptr(arg_idx) == TS_SUCCESS);
 
-TSReturnCode
-TSHttpTxnArgIndexLookup(int arg_idx, const char **name, const char **description)
-{
-  return TSHttpArgIndexLookup(UserArg::TXN, arg_idx, name, description);
-}
+  size_t len = strlen(name);
 
-TSReturnCode
-TSHttpTxnArgIndexNameLookup(const char *name, int *arg_idx, const char **description)
-{
-  return TSHttpArgIndexNameLookup(UserArg::TXN, name, arg_idx, description);
-}
-
-TSReturnCode
-TSHttpSsnArgIndexReserve(const char *name, const char *description, int *arg_idx)
-{
-  return TSHttpArgIndexReserve(UserArg::SSN, name, description, arg_idx);
-}
-
-TSReturnCode
-TSHttpSsnArgIndexLookup(int arg_idx, const char **name, const char **description)
-{
-  return TSHttpArgIndexLookup(UserArg::SSN, arg_idx, name, description);
-}
-
-TSReturnCode
-TSHttpSsnArgIndexNameLookup(const char *name, int *arg_idx, const char **description)
-{
-  return TSHttpArgIndexNameLookup(UserArg::SSN, name, arg_idx, description);
+  for (int ix = 0; ix < next_argv_index; ++ix) {
+    if ((len == state_arg_table[ix].name_len) && (0 == strcmp(name, state_arg_table[ix].name))) {
+      if (description) {
+        *description = state_arg_table[ix].description;
+      }
+      *arg_idx = ix;
+      return TS_SUCCESS;
+    }
+  }
+  return TS_ERROR;
 }
 
 void
 TSHttpTxnArgSet(TSHttpTxn txnp, int arg_idx, void *arg)
 {
-sdk_assert(sdk_sanity_check_txn(txnp) == TS_SUCCESS);
-sdk_assert(arg_idx >= 0 && arg_idx < TS_HTTP_MAX_USER_ARG);
+  sdk_assert(sdk_sanity_check_txn(txnp) == TS_SUCCESS);
+  sdk_assert(arg_idx >= 0 && arg_idx < HTTP_SSN_TXN_MAX_USER_ARG);
 
-HttpSM *sm                     = reinterpret_cast<HttpSM *>(txnp);
-sm->t_state.user_args[arg_idx] = arg;
+  HttpSM *sm                     = (HttpSM *)txnp;
+  sm->t_state.user_args[arg_idx] = arg;
 }
 
 void *
 TSHttpTxnArgGet(TSHttpTxn txnp, int arg_idx)
 {
-sdk_assert(sdk_sanity_check_txn(txnp) == TS_SUCCESS);
-sdk_assert(arg_idx >= 0 && arg_idx < TS_HTTP_MAX_USER_ARG);
+  sdk_assert(sdk_sanity_check_txn(txnp) == TS_SUCCESS);
+  sdk_assert(arg_idx >= 0 && arg_idx < HTTP_SSN_TXN_MAX_USER_ARG);
 
-HttpSM *sm = reinterpret_cast<HttpSM *>(txnp);
-return sm->t_state.user_args[arg_idx];
+  HttpSM *sm = (HttpSM *)txnp;
+  return sm->t_state.user_args[arg_idx];
 }
 
 void
 TSHttpSsnArgSet(TSHttpSsn ssnp, int arg_idx, void *arg)
 {
   sdk_assert(sdk_sanity_check_http_ssn(ssnp) == TS_SUCCESS);
-  sdk_assert(arg_idx >= 0 && arg_idx < TS_HTTP_MAX_USER_ARG);
+  sdk_assert(arg_idx >= 0 && arg_idx < HTTP_SSN_TXN_MAX_USER_ARG);
 
   ProxyClientSession *cs = reinterpret_cast<ProxyClientSession *>(ssnp);
 
@@ -6080,11 +5988,12 @@ void *
 TSHttpSsnArgGet(TSHttpSsn ssnp, int arg_idx)
 {
   sdk_assert(sdk_sanity_check_http_ssn(ssnp) == TS_SUCCESS);
-  sdk_assert(arg_idx >= 0 && arg_idx < TS_HTTP_MAX_USER_ARG);
+  sdk_assert(arg_idx >= 0 && arg_idx < HTTP_SSN_TXN_MAX_USER_ARG);
 
   ProxyClientSession *cs = reinterpret_cast<ProxyClientSession *>(ssnp);
   return cs->get_user_arg(arg_idx);
 }
+
 void
 TSHttpTxnSetHttpRetStatus(TSHttpTxn txnp, TSHttpStatus http_retstatus)
 {
@@ -6093,6 +6002,7 @@ TSHttpTxnSetHttpRetStatus(TSHttpTxn txnp, TSHttpStatus http_retstatus)
   HttpSM *sm                   = (HttpSM *)txnp;
   sm->t_state.http_return_code = (HTTPStatus)http_retstatus;
 }
+
 /* control channel for HTTP */
 TSReturnCode
 TSHttpTxnCntl(TSHttpTxn txnp, TSHttpCntlType cntl, void *data)

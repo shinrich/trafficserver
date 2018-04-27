@@ -272,7 +272,7 @@ private:
   TSHttpHookID api_hookid;
   APIHook *api_current;
   HttpAPIHooks api_hooks;
-  void *user_args[TS_HTTP_MAX_USER_ARG];
+  void *user_args[HTTP_SSN_TXN_MAX_USER_ARG];
 
   // for DI. An active connection is one that a request has
   // been successfully parsed (PARSE_DONE) and it remains to

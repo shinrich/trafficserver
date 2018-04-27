@@ -935,7 +935,7 @@ public:
 
     // INK API/Remap API plugin interface
     void *remap_plugin_instance;
-    void *user_args[TS_HTTP_MAX_USER_ARG];
+    void *user_args[HTTP_SSN_TXN_MAX_USER_ARG];
     remap_plugin_info::_tsremap_os_response *fp_tsremap_os_response;
     HTTPStatus http_return_code;
 
