@@ -27,7 +27,8 @@
 #include "ts/ts.h"
 #include "ts/ink_defs.h"
 
-#define DEBUG_TAG_LOG_HEADERS "xdebug.headers"
+#include "xdebug_headers.cc"
+#include "xdebug_transforms.cc"
 
 static struct {
   const char *str;
@@ -315,44 +316,6 @@ InjectTxnUuidHeader(TSHttpTxn txn, TSMBuffer buffer, TSMLoc hdr)
   }
 }
 
-///////////////////////////////////////////////////////////////////////////
-// Dump a header on stderr, useful together with TSDebug().
-void
-log_headers(TSHttpTxn txn, TSMBuffer bufp, TSMLoc hdr_loc, const char *msg_type)
-{
-  TSIOBuffer output_buffer;
-  TSIOBufferReader reader;
-  TSIOBufferBlock block;
-  const char *block_start;
-  int64_t block_avail;
-
-  std::stringstream ss;
-  ss << "TxnID:" << TSHttpTxnIdGet(txn) << " " << msg_type << " Headers are...";
-
-  output_buffer = TSIOBufferCreate();
-  reader        = TSIOBufferReaderAlloc(output_buffer);
-
-  /* This will print  just MIMEFields and not the http request line */
-  TSMimeHdrPrint(bufp, hdr_loc, output_buffer);
-
-  /* We need to loop over all the buffer blocks, there can be more than 1 */
-  block = TSIOBufferReaderStart(reader);
-  do {
-    block_start = TSIOBufferBlockReadStart(block, reader, &block_avail);
-    if (block_avail > 0) {
-      ss << "\n" << std::string(block_start, static_cast<int>(block_avail));
-    }
-    TSIOBufferReaderConsume(reader, block_avail);
-    block = TSIOBufferReaderStart(reader);
-  } while (block && block_avail != 0);
-
-  /* Free up the TSIOBuffer that we used to print out the header */
-  TSIOBufferReaderFree(reader);
-  TSIOBufferDestroy(output_buffer);
-
-  TSDebug(DEBUG_TAG_LOG_HEADERS, "%s", ss.str().c_str());
-}
-
 static int
 XInjectResponseHeaders(TSCont /* contp */, TSEvent event, void *edata)
 {
@@ -497,6 +460,25 @@ XScanRequestHeaders(TSCont /* contp */, TSEvent event, void *edata)
         };
         TSHttpTxnHookAdd(txn, TS_HTTP_READ_RESPONSE_HDR_HOOK, TSContCreate(read_resp_dump, nullptr));
 
+      } else if (header_field_eq("probe", value, vsize)) {
+        // prefix request headers and postfix response headers
+        BodyBuilder *data = new BodyBuilder();
+        data->txn         = txn;
+
+        TSVConn connp = TSTransformCreate(body_transform, txn);
+        TSContDataSet(connp, data);
+        TSHttpTxnHookAdd(txn, TS_HTTP_RESPONSE_TRANSFORM_HOOK, connp);
+
+        TSCont client_hdr_handler = TSContCreate(client_resp_handler, nullptr);
+        TSContDataSet(client_hdr_handler, data);
+        TSHttpTxnHookAdd(txn, TS_HTTP_SEND_RESPONSE_HDR_HOOK, client_hdr_handler);
+
+        // disable writing to cache because we are injecting data into the body.
+        TSHttpTxnReqCacheableSet(txn, 0);
+        TSHttpTxnRespCacheableSet(txn, 0);
+        TSHttpTxnServerRespNoStoreSet(txn, 1);
+        TSHttpTxnTransformedRespCache(txn, 0);
+        TSHttpTxnUntransformedRespCache(txn, 0);
       } else {
         TSDebug("xdebug", "ignoring unrecognized debug tag '%.*s'", vsize, value);
       }
@@ -567,4 +549,6 @@ TSPluginInit(int argc, const char *argv[])
   TSReleaseAssert(TSHttpArgIndexReserve("xdebug", "xdebug header requests", &XArgIndex) == TS_SUCCESS);
   TSReleaseAssert(XInjectHeadersCont = TSContCreate(XInjectResponseHeaders, nullptr));
   TSHttpHookAdd(TS_HTTP_READ_REQUEST_HDR_HOOK, TSContCreate(XScanRequestHeaders, nullptr));
+
+  gethostname(Hostname, 1024);
 }
