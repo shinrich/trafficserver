@@ -22,13 +22,20 @@ AM_CPPFLAGS += \
   -I$(abs_top_srcdir)/lib \
   -I$(abs_top_srcdir)/lib/records \
   -I$(abs_top_srcdir)/mgmt \
-  -I$(abs_top_srcdir)/mgmt/utils
+  -I$(abs_top_srcdir)/mgmt/utils \
+  $(TS_INCLUDES)
 
 AM_LDFLAGS += \
   @OPENSSL_LDFLAGS@
 
 traffic_layout_SOURCES = \
-  traffic_layout.cc
+  traffic_layout.cc \
+  file_system.cc \
+  file_system.h \
+  engine.cc \
+  engine.h \
+  info.cc \
+  info.h
 
 traffic_layout_LDADD = \
   $(top_builddir)/lib/records/librecords_p.a \

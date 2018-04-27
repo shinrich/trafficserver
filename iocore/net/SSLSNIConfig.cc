@@ -145,7 +145,7 @@ SNIConfigParams::printSNImap() const
 int
 SNIConfigParams::Initialize()
 {
-  sni_filename = ats_strdup(RecConfigReadConfigPath("proxy.config.ssl.servername.filename"));
+  sni_filename = ats_stringdup(RecConfigReadConfigPath("proxy.config.ssl.servername.filename"));
   lua_State *L = lua_open(); /* opens Lua */
   luaL_openlibs(L);
   luaL_loadfile(L, sni_filename);

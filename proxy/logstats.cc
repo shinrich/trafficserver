@@ -29,6 +29,7 @@
 #include "ts/HashFNV.h"
 #include "ts/ink_args.h"
 #include "ts/MatcherUtils.h"
+#include "ts/runroot.cc"
 
 // Includes and namespaces etc.
 #include "LogStandalone.cc"
@@ -661,7 +662,8 @@ static ArgumentDescription argument_descriptions[] = {
   {"debug_tags", 'T', "Colon-Separated Debug Tags", "S1023", &error_tags, NULL, NULL},
   {"report_per_user", 'r', "Report stats per user instead of host", "T", &cl.report_per_user, NULL, NULL},
   HELP_ARGUMENT_DESCRIPTION(),
-  VERSION_ARGUMENT_DESCRIPTION()};
+  VERSION_ARGUMENT_DESCRIPTION(),
+  RUNROOT_ARGUMENT_DESCRIPTION()};
 
 static const char *USAGE_LINE = "Usage: " PROGRAM_NAME " [-f logfile] [-o origin[,...]] [-O originfile] [-m minhits] [-binshv]";
 
@@ -2418,6 +2420,7 @@ main(int /* argc ATS_UNUSED */, const char *argv[])
   // build the application information structure
   appVersionInfo.setup(PACKAGE_NAME, PROGRAM_NAME, PACKAGE_VERSION, __DATE__, __TIME__, BUILD_MACHINE, BUILD_PERSON, "");
 
+  runroot_handler(argv);
   // Before accessing file system initialize Layout engine
   Layout::create();
 
@@ -2480,7 +2483,7 @@ main(int /* argc ATS_UNUSED */, const char *argv[])
         if (end > start) {
           char *buf;
 
-          buf = ats_strdup(line.substr(start, end).c_str());
+          buf = ats_stringdup(line.substr(start, end));
           if (buf) {
             origin_set->insert(buf);
           }
@@ -2508,7 +2511,7 @@ main(int /* argc ATS_UNUSED */, const char *argv[])
   // Do the incremental parse of the default squid log.
   if (cl.incremental) {
     // Change directory to the log dir
-    if (chdir(Layout::get()->logdir) < 0) {
+    if (chdir(Layout::get()->logdir.c_str()) < 0) {
       exit_status.set(EXIT_CRITICAL, " can't chdir to ");
       exit_status.append(Layout::get()->logdir);
       my_exit(exit_status);
@@ -2611,7 +2614,7 @@ main(int /* argc ATS_UNUSED */, const char *argv[])
       last_state.st_ino = stat_buf.st_ino;
 
       // Find the old log file.
-      dirp = opendir(Layout::get()->logdir);
+      dirp = opendir(Layout::get()->logdir.c_str());
       if (NULL == dirp) {
         exit_status.set(EXIT_WARNING, " can't read log directory");
       } else {

@@ -27,6 +27,20 @@
 #include "ts/I_Layout.h"
 #include "I_RecProcess.h"
 #include "RecordsConfig.h"
+#include "ts/runroot.h"
+#include "engine.h"
+#include "file_system.h"
+#include "info.h"
+
+#include <iostream>
+#include <fstream>
+#include <set>
+
+struct subcommand {
+  int (*handler)(int, const char **);
+  const std::string name;
+  const std::string help;
+};
 
 // Command line arguments (parsing)
 struct CommandLineArgs {
@@ -41,155 +55,124 @@ const ArgumentDescription argument_descriptions[] = {
   {"layout", 'l', "Show the layout (this is the default with no options given)", "T", &cl.layout, nullptr, nullptr},
   {"features", 'f', "Show the compiled features", "T", &cl.features, nullptr, nullptr},
   {"json", 'j', "Produce output in JSON format (when supported)", "T", &cl.json, nullptr, nullptr},
+  VERSION_ARGUMENT_DESCRIPTION(),
+  RUNROOT_ARGUMENT_DESCRIPTION()};
 
-  HELP_ARGUMENT_DESCRIPTION(),
-  VERSION_ARGUMENT_DESCRIPTION()};
-
-// Produce output about compile time features, useful for checking how things were built, as well
-// as for our TSQA test harness.
+// the usage help message for subcommand
 static void
-print_feature(const char *name, int value, bool json, bool last = false)
+help_usage()
 {
-  if (json) {
-    printf("    \"%s\": %d%s", name, value, last ? "\n" : ",\n");
-  } else {
-    printf("#define %s %d\n", name, value);
-  }
-}
-
-static void
-print_feature(const char *name, const char *value, bool json, bool last = false)
-{
-  if (json) {
-    printf(R"(    "%s": "%s"%s)", name, value, last ? "\n" : ",\n");
-  } else {
-    printf("#define %s \"%s\"\n", name, value);
-  }
-}
-
-static void
-produce_features(bool json)
-{
-  if (json) {
-    printf("{\n");
-  }
-  print_feature("BUILD_MACHINE", BUILD_MACHINE, json);
-  print_feature("BUILD_PERSON", BUILD_PERSON, json);
-  print_feature("BUILD_GROUP", BUILD_GROUP, json);
-  print_feature("BUILD_NUMBER", BUILD_NUMBER, json);
-  print_feature("TS_HAS_LIBZ", TS_HAS_LIBZ, json);
-  print_feature("TS_HAS_LZMA", TS_HAS_LZMA, json);
-#ifdef HAVE_BROTLI_ENCODE_H 
-  print_feature("TS_HAS_BROTLI", 1, json); 
-#else 
-  print_feature("TS_HAS_BROTLI", 0, json); 
-#endif 
-  print_feature("TS_HAS_JEMALLOC", TS_HAS_JEMALLOC, json);
-  print_feature("TS_HAS_TCMALLOC", TS_HAS_TCMALLOC, json);
-  print_feature("TS_HAS_IN6_IS_ADDR_UNSPECIFIED", TS_HAS_IN6_IS_ADDR_UNSPECIFIED, json);
-  print_feature("TS_HAS_BACKTRACE", TS_HAS_BACKTRACE, json);
-  print_feature("TS_HAS_PROFILER", TS_HAS_PROFILER, json);
-  print_feature("TS_USE_FAST_SDK", TS_USE_FAST_SDK, json);
-  print_feature("TS_USE_DIAGS", TS_USE_DIAGS, json);
-  print_feature("TS_USE_EPOLL", TS_USE_EPOLL, json);
-  print_feature("TS_USE_KQUEUE", TS_USE_KQUEUE, json);
-  print_feature("TS_USE_PORT", TS_USE_PORT, json);
-  print_feature("TS_USE_POSIX_CAP", TS_USE_POSIX_CAP, json);
-  print_feature("TS_USE_TPROXY", TS_USE_TPROXY, json);
-  print_feature("TS_HAS_SO_MARK", TS_HAS_SO_MARK, json);
-  print_feature("TS_HAS_IP_TOS", TS_HAS_IP_TOS, json);
-  print_feature("TS_USE_HWLOC", TS_USE_HWLOC, json);
-  print_feature("TS_USE_TLS_NPN", TS_USE_TLS_NPN, json);
-  print_feature("TS_USE_TLS_ALPN", TS_USE_TLS_ALPN, json);
-  print_feature("TS_USE_TLS_SNI", TS_USE_TLS_SNI, json);
-  print_feature("TS_USE_CERT_CB", TS_USE_CERT_CB, json);
-  print_feature("TS_USE_SET_RBIO", TS_USE_SET_RBIO, json);
-  print_feature("TS_USE_TLS_ECKEY", TS_USE_TLS_ECKEY, json);
-  print_feature("TS_USE_LINUX_NATIVE_AIO", TS_USE_LINUX_NATIVE_AIO, json);
-  print_feature("TS_HAS_SO_PEERCRED", TS_HAS_SO_PEERCRED, json);
-  print_feature("TS_USE_REMOTE_UNWINDING", TS_USE_REMOTE_UNWINDING, json);
-  print_feature("GETHOSTBYNAME_R_GLIBC2", GETHOSTBYNAME_R_GLIBC2, json);
-  print_feature("SIZEOF_VOID_POINTER", SIZEOF_VOID_POINTER, json);
-  print_feature("TS_IP_TRANSPARENT", TS_IP_TRANSPARENT, json);
-  print_feature("TS_HAS_128BIT_CAS", TS_HAS_128BIT_CAS, json);
-  print_feature("TS_HAS_TESTS", TS_HAS_TESTS, json);
-  print_feature("TS_HAS_WCCP", TS_HAS_WCCP, json);
-  print_feature("TS_MAX_THREADS_IN_EACH_THREAD_TYPE", TS_MAX_THREADS_IN_EACH_THREAD_TYPE, json);
-  print_feature("TS_MAX_NUMBER_EVENT_THREADS", TS_MAX_NUMBER_EVENT_THREADS, json);
-  print_feature("TS_MAX_HOST_NAME_LEN", TS_MAX_HOST_NAME_LEN, json);
-  print_feature("TS_MAX_API_STATS", TS_MAX_API_STATS, json);
-  print_feature("SPLIT_DNS", SPLIT_DNS, json);
-  print_feature("HTTP_CACHE", HTTP_CACHE, json);
-  print_feature("TS_PKGSYSUSER", TS_PKGSYSUSER, json);
-  print_feature("TS_PKGSYSGROUP", TS_PKGSYSGROUP, json, true);
-  if (json) {
-    printf("}\n");
-  }
-}
-
-static void
-print_var(const char *name, char *value, bool json, bool free = true, bool last = false)
-{
-  if (json) {
-    printf(R"(    "%s": "%s"%s)", name, value, last ? "\n" : ",\n");
-  } else {
-    printf("%s: %s\n", name, value);
-  }
-
-  if (free) {
-    ats_free(value);
-  }
-}
-
-static void
-produce_layout(bool json)
-{
-  Layout::create();
-
-  RecProcessInit(RECM_STAND_ALONE, nullptr /* diags */);
-  LibRecordsConfigInit();
-
-  if (json) {
-    printf("{\n");
-  }
-  print_var("PREFIX", Layout::get()->prefix, json, false); // Don't free this
-  print_var("BINDIR", RecConfigReadBinDir(), json);
-  print_var("SYSCONFDIR", RecConfigReadConfigDir(), json);
-  print_var("LIBDIR", Layout::get()->libdir, json, false); // Don't free this
-  print_var("LOGDIR", RecConfigReadLogDir(), json);
-  print_var("RUNTIMEDIR", RecConfigReadRuntimeDir(), json);
-  print_var("PLUGINDIR", RecConfigReadPrefixPath("proxy.config.plugin.plugin_dir"), json);
-  print_var("INCLUDEDIR", Layout::get()->includedir, json, false); // Dont' free this
-  print_var("SNAPSHOTDIR", RecConfigReadSnapshotDir(), json);
-
-  print_var("records.config", RecConfigReadConfigPath(nullptr, REC_CONFIG_FILE), json);
-  print_var("remap.config", RecConfigReadConfigPath("proxy.config.url_remap.filename"), json);
-  print_var("plugin.config", RecConfigReadConfigPath(nullptr, "plugin.config"), json);
-  print_var("ssl_multicert.config", RecConfigReadConfigPath("proxy.config.ssl.server.multicert.filename"), json);
-  print_var("ssl_server_name.config", RecConfigReadConfigPath("proxy.config.ssl.servername.filename"), json);
-  print_var("storage.config", RecConfigReadConfigPath("proxy.config.cache.storage_filename"), json);
-  print_var("hosting.config", RecConfigReadConfigPath("proxy.config.cache.hosting_filename"), json);
-  print_var("volume.config", RecConfigReadConfigPath("proxy.config.cache.volume_filename"), json);
-  print_var("ip_allow.config", RecConfigReadConfigPath("proxy.config.cache.ip_allow.filename"), json, true, true);
-  if (json) {
-    printf("}\n");
-  }
+  std::cout << "\nSubcommands:\n"
+               "info         Show the layout as default\n"
+               "init         Initialize the ts_runroot sandbox\n"
+               "remove       Remove the ts_runroot sandbox\n"
+               "verify       Verify the ts_runroot paths\n"
+            << std::endl;
+  std::cout << "Switches of runroot:\n"
+               "--path:      Specify the path of the runroot\n"
+               "--force:     Force to create or remove ts_runroot\n"
+               "--absolute:  Produce absolute path in the yaml file during init\n"
+               "--run-root(=/path):  Using specified TS_RUNROOT as sandbox\n"
+               "--fix:       fix the premission issues that verify found"
+            << std::endl;
+  printf("Detailed usage and description in traffic_layout.en.rst\n");
+  printf("\nGeneral Usage:\n");
+  usage(argument_descriptions, countof(argument_descriptions), nullptr);
 }
 
 int
-main(int /* argc ATS_UNUSED */, const char **argv)
+info(int argc, const char **argv)
 {
+  // take the "info" out from command line
+  if (argv[1] && argv[1] == "info"_sv) {
+    for (int i = 1; i < argc; i++) {
+      argv[i] = argv[i + 1];
+    }
+  }
+  // detect help command
+  int i = 1;
+  while (argv[i]) {
+    if (argv[i] == "--help"_sv || argv[i] == "-h"_sv) {
+      help_usage();
+    }
+    ++i;
+  }
+
   AppVersionInfo appVersionInfo;
-
   appVersionInfo.setup(PACKAGE_NAME, "traffic_layout", PACKAGE_VERSION, __DATE__, __TIME__, BUILD_MACHINE, BUILD_PERSON, "");
-
   // Process command line arguments and dump into variables
-  process_args(&appVersionInfo, argument_descriptions, countof(argument_descriptions), argv);
+  if (!process_args_ex(&appVersionInfo, argument_descriptions, countof(argument_descriptions), argv) ||
+      file_arguments[0] != nullptr) {
+    help_usage();
+  }
+
+  runroot_handler(argv, 0 != cl.json);
 
   if (cl.features) {
     produce_features(0 != cl.json);
   } else {
     produce_layout(0 != cl.json);
   }
-  exit(0);
+  return 0;
+}
+
+// handle everything with runroot using engine
+int
+traffic_runroot(int argc, const char **argv)
+{
+  // runroot engine for operations
+  RunrootEngine engine;
+
+  int i = 0;
+  while (argv[i]) {
+    engine._argv.push_back(argv[i]);
+    ++i;
+  }
+  // parse the command line & put into global variable
+  if (!engine.runroot_parse()) {
+    engine.runroot_help_message(true, true, true);
+    return 0;
+  }
+  // check sanity of the command about the runroot program
+  engine.sanity_check();
+
+  // create layout for runroot handling
+  runroot_handler(argv);
+  Layout::create();
+
+  // check the command to execute
+  if (engine.run_flag) {
+    engine.create_runroot();
+  } else if (engine.clean_flag) {
+    engine.clean_runroot();
+  } else if (engine.verify_flag) {
+    engine.verify_runroot();
+  }
+
+  return 0;
+}
+
+int
+main(int argc, const char **argv)
+{
+  const subcommand commands[] = {
+    {info, "info", "Show the layout"},
+    {traffic_runroot, "init", "Initialize the ts_runroot sandbox"},
+    {traffic_runroot, "remove", "Remove the ts_runroot sandbox"},
+    {traffic_runroot, "verify", "verify the ts_runroot paths"},
+    {traffic_runroot, "fix", "fix permmision issue of the ts_runroot"},
+  };
+
+  // with command (info, init, remove)
+  for (unsigned i = 0; i < countof(commands); ++i) {
+    if (!argv[1]) {
+      break;
+    }
+    if (strcmp(argv[1], commands[i].name.c_str()) == 0) {
+      return commands[i].handler(argc, argv);
+    }
+  }
+
+  // without command (info, init, remove), default behavior
+  return info(argc, argv);
 }

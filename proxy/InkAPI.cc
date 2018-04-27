@@ -1775,21 +1775,22 @@ TShrtime()
 const char *
 TSInstallDirGet(void)
 {
-  return Layout::get()->prefix;
+  static std::string prefix = Layout::get()->prefix;
+  return prefix.c_str();
 }
 
 const char *
 TSConfigDirGet(void)
 {
-  static const char *sysconfdir = RecConfigReadConfigDir();
-  return sysconfdir;
+  static std::string sysconfdir = RecConfigReadConfigDir();
+  return sysconfdir.c_str();
 }
 
 const char *
 TSRuntimeDirGet(void)
 {
-  static const char *runtimedir = RecConfigReadRuntimeDir();
-  return runtimedir;
+  static std::string runtimedir = RecConfigReadRuntimeDir();
+  return runtimedir.c_str();
 }
 
 const char *
@@ -1817,8 +1818,8 @@ TSTrafficServerVersionGetPatch()
 const char *
 TSPluginDirGet(void)
 {
-  static const char *path = RecConfigReadPrefixPath("proxy.config.plugin.plugin_dir");
-  return path;
+  static std::string path = RecConfigReadPrefixPath("proxy.config.plugin.plugin_dir");
+  return path.c_str();
 }
 
 ////////////////////////////////////////////////////////////////////

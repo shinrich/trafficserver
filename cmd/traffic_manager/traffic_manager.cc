@@ -27,6 +27,7 @@
 #include "ts/ink_sock.h"
 #include "ts/ink_args.h"
 #include "ts/ink_syslog.h"
+#include "ts/runroot.h"
 
 #include "WebMgmtUtils.h"
 #include "WebOverview.h"
@@ -166,7 +167,7 @@ is_server_idle()
 static void
 check_lockfile()
 {
-  ats_scoped_str rundir(RecConfigReadRuntimeDir());
+  std::string rundir(RecConfigReadRuntimeDir());
   char lockfile[PATH_NAME_MAX];
   int err;
   pid_t holding_pid;
@@ -302,17 +303,17 @@ initSignalHandlers()
 static void
 init_dirs()
 {
-  ats_scoped_str rundir(RecConfigReadRuntimeDir());
-  ats_scoped_str sysconfdir(RecConfigReadConfigDir());
+  std::string rundir(RecConfigReadRuntimeDir());
+  std::string sysconfdir(RecConfigReadConfigDir());
 
-  if (access(sysconfdir, R_OK) == -1) {
-    mgmt_elog(0, "unable to access() config directory '%s': %d, %s\n", (const char *)sysconfdir, errno, strerror(errno));
+  if (access(sysconfdir.c_str(), R_OK) == -1) {
+    mgmt_elog(0, "unable to access() config directory '%s': %d, %s\n", sysconfdir.c_str(), errno, strerror(errno));
     mgmt_elog(0, "please set the 'TS_ROOT' environment variable\n");
     ::exit(1);
   }
 
-  if (access(rundir, R_OK) == -1) {
-    mgmt_elog(0, "unable to access() local state directory '%s': %d, %s\n", (const char *)rundir, errno, strerror(errno));
+  if (access(rundir.c_str(), R_OK) == -1) {
+    mgmt_elog(0, "unable to access() local state directory '%s': %d, %s\n", rundir.c_str(), errno, strerror(errno));
     mgmt_elog(0, "please set 'proxy.config.local_state_dir'\n");
     ::exit(1);
   }
@@ -321,14 +322,14 @@ init_dirs()
 static void
 chdir_root()
 {
-  const char *prefix = Layout::get()->prefix;
+  std::string prefix = Layout::get()->prefix;
 
-  if (chdir(prefix) < 0) {
-    mgmt_elog(0, "unable to change to root directory \"%s\" [%d '%s']\n", prefix, errno, strerror(errno));
+  if (chdir(prefix.c_str()) < 0) {
+    mgmt_elog(0, "unable to change to root directory \"%s\" [%d '%s']\n", prefix.c_str(), errno, strerror(errno));
     mgmt_elog(0, " please set correct path in env variable TS_ROOT \n");
     exit(1);
   } else {
-    mgmt_log("[TrafficManager] using root directory '%s'\n", prefix);
+    mgmt_log("[TrafficManager] using root directory '%s'\n", prefix.c_str());
   }
 }
 
@@ -419,9 +420,11 @@ main(int argc, const char **argv)
 {
   const long MAX_LOGIN = ink_login_name_max();
 
+  runroot_handler(argv);
+  
   // Before accessing file system initialize Layout engine
   Layout::create();
-  mgmt_path = Layout::get()->sysconfdir;
+  mgmt_path = Layout::get()->sysconfdir.c_str();
 
   // Set up the application version info
   appVersionInfo.setup(PACKAGE_NAME, "traffic_manager", PACKAGE_VERSION, __DATE__, __TIME__, BUILD_MACHINE, BUILD_PERSON, "");
@@ -462,7 +465,8 @@ main(int argc, const char **argv)
 #endif
     {"nosyslog", '-', "Do not log to syslog", "F", &disable_syslog, nullptr, nullptr},
     HELP_ARGUMENT_DESCRIPTION(),
-    VERSION_ARGUMENT_DESCRIPTION()
+    VERSION_ARGUMENT_DESCRIPTION(),
+    RUNROOT_ARGUMENT_DESCRIPTION()
   };
 
   // Process command line arguments and dump into variables
@@ -681,7 +685,7 @@ main(int argc, const char **argv)
   Debug("lm", "Created Web Agent thread (%" PRId64 ")", (int64_t)synthThrId);
 
   // Setup the API and event sockets
-  ats_scoped_str rundir(RecConfigReadRuntimeDir());
+  std::string rundir(RecConfigReadRuntimeDir());
   ats_scoped_str apisock(Layout::relative_to(rundir, MGMTAPI_MGMT_SOCKET_NAME));
   ats_scoped_str eventsock(Layout::relative_to(rundir, MGMTAPI_EVENT_SOCKET_NAME));
 
