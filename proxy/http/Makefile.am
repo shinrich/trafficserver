@@ -81,7 +81,18 @@ if BUILD_TESTS
     RegressionHttpTransact.cc
 endif
 
-check_PROGRAMS=
+check_PROGRAMS = \
+test_ForwardedConfig
+
+test_ForwardedConfig_CPPFLAGS = $(AM_CPPFLAGS)\
+  -I$(abs_top_srcdir)/tests/include
+
+test_ForwardedConfig_SOURCES = \
+  unit-tests/test_ForwardedConfig.cc \
+  ForwardedConfig.cc \
+  unit-tests/test_BufferWriterFormat.cc \
+  unit-tests/test_ForwardedConfig_mocks.cc
+
 
 TESTS = $(check_PROGRAMS)
 
