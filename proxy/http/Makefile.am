@@ -81,19 +81,9 @@ if BUILD_TESTS
     RegressionHttpTransact.cc
 endif
 
-check_PROGRAMS = \
-test_ForwardedConfig
+check_PROGRAMS=
 
 TESTS = $(check_PROGRAMS)
-
-test_ForwardedConfig_CPPFLAGS = $(AM_CPPFLAGS)\
-  -I$(abs_top_srcdir)/tests/include
-
-test_ForwardedConfig_SOURCES = \
-  unit-tests/test_ForwardedConfig.cc \
-  ForwardedConfig.cc \
-  unit-tests/test_ForwardedConfig_mocks.cc \
-  ../../lib/ts/TextView.cc
 
 tidy-local: $(libhttp_a_SOURCES) $(noinst_HEADERS)
 	$(CXX_Clang_Tidy)
