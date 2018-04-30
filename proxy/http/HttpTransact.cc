@@ -1568,9 +1568,6 @@ HttpTransact::ReDNSRoundRobin(State *s)
   } else {
     // Our ReDNS failed so output the DNS failure error message
     build_error_response(s, HTTP_STATUS_BAD_GATEWAY, "Cannot find server.", "connect#dns_failed");
-    if (strcmp(s->dns_info.lookup_name, "sc.yimg.com") == 0) {
-      ink_fatal("Cannot find super cache! Core dump.");
-    }
 
     s->cache_info.action = CACHE_DO_NO_ACTION;
     s->next_action       = SM_ACTION_SEND_ERROR_CACHE_NOOP;
@@ -1673,9 +1670,6 @@ HttpTransact::OSDNSLookup(State *s)
         SET_VIA_STRING(VIA_DETAIL_TUNNEL, VIA_DETAIL_TUNNEL_NO_FORWARD);
         build_error_response(s, HTTP_STATUS_BAD_GATEWAY, "Cannot find server.", "connect#dns_failed");
         // s->cache_info.action = CACHE_DO_NO_ACTION;
-        if (strcmp(s->dns_info.lookup_name, "sc.yimg.com") == 0) {
-          ink_fatal("Cannot find super cache! Core dump.");
-        }
         TRANSACT_RETURN(SM_ACTION_SEND_ERROR_CACHE_NOOP, nullptr);
       }
       break;
