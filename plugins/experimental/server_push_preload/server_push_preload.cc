@@ -53,8 +53,8 @@ public:
     LinkServerPushPlugin::registerHook(HOOK_SEND_RESPONSE_HEADERS);
   }
 
-  virtual void
-  handleSendResponseHeaders(Transaction &transaction)
+  void
+  handleSendResponseHeaders(Transaction &transaction) override
   {
     serverPush(transaction);
     transaction.resume();
@@ -126,8 +126,8 @@ public:
     string s;
     set<string> tokens;
     while (getline(ss, s, delim)) {
-      s.erase(find_if(s.rbegin(), s.rend(), not1(std::ptr_fun<int, int>(isspace))).base(), s.end()); // trim left
-      s.erase(s.begin(), find_if(s.begin(), s.end(), not1(std::ptr_fun<int, int>(isspace))));        // trim right
+      s.erase(find_if(s.rbegin(), s.rend(), [](unsigned char c) { return !std::isspace(c); }).base(), s.end()); // trim left
+      s.erase(s.begin(), find_if(s.begin(), s.end(), [](unsigned char c) { return !std::isspace(c); }));        // trim right
       tokens.insert(s);
     }
     return tokens;

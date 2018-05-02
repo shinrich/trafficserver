@@ -30,8 +30,7 @@
  *
  ****************************************************************************/
 
-#ifndef _REVERSE_PROXY_H_
-#define _REVERSE_PROXY_H_
+#pragma once
 
 #include "P_RecProcess.h"
 
@@ -53,12 +52,10 @@ extern remap_plugin_info *remap_pi_list;
 // API Functions
 int init_reverse_proxy();
 
-mapping_type request_url_remap_redirect(HTTPHdr *request_header, URL *redirect_url);
-bool response_url_remap(HTTPHdr *response_header);
+mapping_type request_url_remap_redirect(HTTPHdr *request_header, URL *redirect_url, UrlRewrite *table);
+bool response_url_remap(HTTPHdr *response_header, UrlRewrite *table);
 
 // Reload Functions
 bool reloadUrlRewrite();
 
 int url_rewrite_CB(const char *name, RecDataT data_type, RecData data, void *cookie);
-
-#endif

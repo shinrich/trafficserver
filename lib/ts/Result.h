@@ -21,8 +21,7 @@
  *  limitations under the License.
  */
 
-#ifndef RESULT_H_77147E59_67CF_4DD7_A58D_ED3502981E87
-#define RESULT_H_77147E59_67CF_4DD7_A58D_ED3502981E87
+#pragma once
 
 #include "TextBuffer.h"
 
@@ -32,7 +31,21 @@
 // the success case. Arguably it ought to just be Error(), but Diags.h
 // already owns that name.
 
+#include <utility>
 struct Result {
+  Result() {}
+
+  Result &
+  operator=(Result &&other)
+  {
+    if (this != &other) {
+      buf = std::move(other.buf);
+    }
+    return *this;
+  }
+
+  Result(Result &&other) { *this = std::move(other); }
+
   bool
   failed() const
   {
@@ -67,5 +80,3 @@ struct Result {
 private:
   TextBuffer buf;
 };
-
-#endif /* RESULT_H_77147E59_67CF_4DD7_A58D_ED3502981E87 */

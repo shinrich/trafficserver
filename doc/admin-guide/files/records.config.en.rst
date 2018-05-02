@@ -432,6 +432,17 @@ Thread Variables
    HTTP/2 graceful shutdown for now. Stopping Traffic Server here means sending
    `traffic_server` a signal either by `bin/trafficserver stop` or `kill`.
 
+.. ts:cv:: CONFIG proxy.config.thread.max_heartbeat_mseconds INT 60
+   :units: milliseconds
+
+   Set the maximum heartbeat in milliseconds for threads, ranges from 0 to 1000.
+
+   This controls the maximum amount of time the event loop will wait for I/O activity.
+   On a system that is not busy, this option can be set to a higher value to decrease
+   the spin around overhead. If experiencing unexpected delays, setting a lower value
+   should improve the situation. Note that this setting should only be used by expert
+   system tuners, and will not be beneficial with random fiddling.
+
 Network
 =======
 
@@ -1306,6 +1317,11 @@ Parent Proxy Configuration
 
 .. ts:cv:: CONFIG proxy.local.http.parent_proxy.disable_connect_tunneling INT 0
 
+.. ts:cv:: CONFIG proxy.config.http.parent_proxy.self_detect INT 1
+
+   Filter out hosts that are determined to be the same as the current host, e.g., localhost,
+   that have been specified in any parent and secondary_parent lists in the parent.config file.
+
 HTTP Connection Timeouts
 ========================
 
@@ -1654,7 +1670,15 @@ Proxy User Variables
    :reloadable:
    :overridable:
 
-   When enabled (``1``), Traffic Server inserts ``Client-IP`` headers to retain the client IP address.
+   Specifies whether Traffic Server inserts ``Client-IP`` headers to retain the client IP address:
+
+   ===== ======================================================================
+   Value Description
+   ===== ======================================================================
+   ``0`` Don't insert the ``Client-ip`` header
+   ``1`` Insert the ``Client-ip`` header, but only if the UA did not send one
+   ``2`` Always insert the ``Client-ip`` header
+   ===== ======================================================================
 
 .. ts:cv:: CONFIG proxy.config.http.anonymize_other_header_list STRING NULL
    :reloadable:
@@ -3124,6 +3148,10 @@ SSL Termination
 
    ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:DHE-RSA-AES256-GCM-SHA384:DHE-DSS-AES256-GCM-SHA384:DHE-RSA-AES128-GCM-SHA256:DHE-DSS-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-SHA384:ECDHE-RSA-AES256-SHA384:ECDHE-ECDSA-AES256-SHA:ECDHE-RSA-AES256-SHA:ECDHE-ECDSA-AES128-SHA256:ECDHE-RSA-AES128-SHA256:ECDHE-ECDSA-AES128-SHA:ECDHE-RSA-AES128-SHA:DHE-RSA-AES256-SHA256:DHE-DSS-AES256-SHA256:DHE-RSA-AES128-SHA256:DHE-DSS-AES128-SHA256:DHE-RSA-AES256-SHA:DHE-DSS-AES256-SHA:DHE-RSA-AES128-SHA:DHE-DSS-AES128-SHA:AES256-GCM-SHA384:AES128-GCM-SHA256:AES256-SHA256:AES128-SHA256:AES256-SHA:AES128-SHA:DES-CBC3-SHA:!aNULL:!eNULL:!EXPORT:!DES:!RC4:!MD5:!PSK:!aECDH:!EDH-DSS-DES-CBC3-SHA:!EDH-RSA-DES-CBC3-SHA:!KRB5-DES-CBC3-SHA
 
+.. ts:cv:: CONFIG proxy.config.ssl.client.cipher_suite STRING <See notes under proxy.config.ssl.server.cipher_suite.>
+
+   Configures the cipher_suite which |TS| will use for SSL connections to origin or next hop.
+
 .. ts:cv:: CONFIG proxy.config.ssl.TLSv1 INT 1
 
    Enables (``1``) or disables (``0``) TLSv1.
@@ -3366,6 +3394,7 @@ Client-Related Configuration
 :2: The provided certificate will be verified and the connection will be established irrespective of the verification result. If verification fails the name of the server will be logged.
 
 .. ts:cv:: CONFIG proxy.config.ssl.client.cert.filename STRING NULL
+   :overridable:
 
    The filename of SSL client certificate installed on Traffic Server.
 
@@ -3395,6 +3424,37 @@ Client-Related Configuration
 
    Specifies the location of the certificate authority file against
    which the origin server will be verified.
+
+.. ts:cv:: CONFIG proxy.config.ssl.client.SSLv3 INT 0
+
+   Enables (``1``) or disables (``0``) SSLv3 in the ATS client context. Disabled by default
+
+.. ts:cv:: CONFIG proxy.config.ssl.client.TLSv1 INT 1
+
+   Enables (``1``) or disables (``0``) TLSv1 in the ATS client context. If not specified, enabled by default
+
+.. ts:cv:: CONFIG proxy.config.ssl.client.TLSv1_1 INT 1
+
+   Enables (``1``) or disables (``0``) TLSv1_1 in the ATS client context. If not specified, enabled by default
+
+.. ts:cv:: CONFIG proxy.config.ssl.client.TLSv1_2 INT 1
+
+   Enables (``1``) or disables (``0``) TLSv1_2 in the ATS client context. If not specified, enabled by default
+
+.. ts:cv:: CONFIG proxy.config.ssl.async.handshake.enabled INT 0
+
+   Enables the use of openssl async job during the TLS handshake.  Traffic
+   Server must be build against openssl 1.1 or greater or this to take affect.
+   Can be useful if using a crypto engine that communicates off chip.  The
+   thread will be rescheduled for other work until the crypto engine operation
+   completes. A test crypto engine that inserts a 5 second delay on private key
+   operations can be found at :ts:git:`contrib/openssl/async_engine.c`.
+
+.. ts:cv:: CONFIG proxy.config.ssl.engine.conf_file STRING NULL
+
+   Specify the location of the openssl config file used to load dynamic crypto
+   engines. This setting assumes an absolute path.  An example config file is at
+   :ts:git:`contrib/openssl/load_engine.cnf`.
 
 OCSP Stapling Configuration
 ===========================

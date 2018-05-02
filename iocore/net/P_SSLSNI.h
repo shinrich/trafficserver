@@ -28,8 +28,7 @@
    Description:
    SNI based Configuration in ATS
  ****************************************************************************/
-#ifndef __P_SSL_SNI_H__
-#define __P_SSL_SNI_H__
+#pragma once
 
 #include "ProxyConfig.h"
 #include "ts/Map.h"
@@ -61,7 +60,7 @@ struct SNIConfigParams : public ConfigInfo {
   LuaSNIConfig L_sni;
   NextHopProperty *getPropertyConfig(cchar *servername) const;
   SNIConfigParams();
-  virtual ~SNIConfigParams();
+  ~SNIConfigParams() override;
   void cleanup();
   int Initialize();
   void loadSNIConfig();
@@ -81,5 +80,3 @@ struct SNIConfig {
 private:
   static int configid;
 };
-
-#endif

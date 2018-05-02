@@ -262,7 +262,7 @@ PluginVC::do_io_read(Continuation *c, int64_t nbytes, MIOBuffer *buf)
 
   // Note: we set vio.op last because process_read_side looks at it to
   //  tell if the VConnection is active.
-  read_state.vio.mutex     = c->mutex;
+  read_state.vio.mutex     = c ? c->mutex : this->mutex;
   read_state.vio._cont     = c;
   read_state.vio.nbytes    = nbytes;
   read_state.vio.ndone     = 0;
@@ -1005,9 +1005,7 @@ PluginVC::set_data(int id, void *data)
 
 int32_t PluginVCCore::nextid;
 
-PluginVCCore::~PluginVCCore()
-{
-}
+PluginVCCore::~PluginVCCore() {}
 
 PluginVCCore *
 PluginVCCore::alloc(Continuation *acceptor)
@@ -1254,9 +1252,7 @@ private:
   unsigned completions_received;
 };
 
-PVCTestDriver::PVCTestDriver() : NetTestDriver(), i(0), completions_received(0)
-{
-}
+PVCTestDriver::PVCTestDriver() : NetTestDriver(), i(0), completions_received(0) {}
 
 PVCTestDriver::~PVCTestDriver()
 {

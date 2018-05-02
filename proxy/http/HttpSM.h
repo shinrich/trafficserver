@@ -30,13 +30,13 @@
 
  ****************************************************************************/
 
-#ifndef _HTTP_SM_H_
-#define _HTTP_SM_H_
+#pragma once
 
 #include "ts/ink_platform.h"
 #include "P_EventSystem.h"
 #include "HttpCacheSM.h"
 #include "HttpTransact.h"
+#include "UrlRewrite.h"
 #include "HttpTunnel.h"
 #include "InkAPIInternal.h"
 #include "../ProxyClientTransaction.h"
@@ -128,8 +128,8 @@ private:
 inline bool
 HttpVCTable::is_table_clear() const
 {
-  for (int i = 0; i < vc_table_max_entries; i++) {
-    if (vc_table[i].vc != nullptr) {
+  for (const auto &i : vc_table) {
+    if (i.vc != nullptr) {
       return false;
     }
   }
@@ -140,7 +140,7 @@ struct HttpTransformInfo {
   HttpVCTableEntry *entry;
   VConnection *vc;
 
-  HttpTransformInfo() : entry(NULL), vc(NULL) {}
+  HttpTransformInfo() : entry(nullptr), vc(nullptr) {}
 };
 
 enum {
@@ -184,10 +184,27 @@ public:
   MIOBuffer *postdata_copy_buffer            = nullptr;
   IOBufferReader *postdata_copy_buffer_start = nullptr;
   IOBufferReader *ua_buffer_reader           = nullptr;
+  bool post_data_buffer_done                 = false;
 
   void clear();
   void init(IOBufferReader *ua_reader);
   void copy_partial_post_data();
+  IOBufferReader *get_post_data_buffer_clone_reader();
+  void
+  set_post_data_buffer_done(bool done)
+  {
+    post_data_buffer_done = done;
+  }
+  bool
+  get_post_data_buffer_done()
+  {
+    return post_data_buffer_done;
+  }
+  bool
+  is_valid()
+  {
+    return postdata_copy_buffer_start != nullptr;
+  }
 
   ~PostDataBuffers();
 };
@@ -311,6 +328,10 @@ public:
 
   HttpTransact::State t_state;
 
+  // This unfortunately can't go into the t_state, beacuse of circular dependencies. We could perhaps refactor
+  // this, with a lot of work, but this is easier for now.
+  UrlRewrite *m_remap;
+
   // _postbuf api
   int64_t postbuf_reader_avail();
   int64_t postbuf_buffer_avail();
@@ -318,6 +339,10 @@ public:
   void disable_redirect();
   void postbuf_copy_partial_data();
   void postbuf_init(IOBufferReader *ua_reader);
+  void set_postbuf_done(bool done);
+  bool get_postbuf_done();
+  bool is_postbuf_valid();
+  IOBufferReader *get_postbuf_clone_reader();
 
 protected:
   int reentrancy_count = 0;
@@ -384,9 +409,6 @@ protected:
 
   int tunnel_handler_100_continue(int event, void *data);
   int tunnel_handler_cache_fill(int event, void *data);
-#ifdef PROXY_DRAIN
-  int state_drain_client_request_body(int event, void *data);
-#endif /* PROXY_DRAIN */
   int state_read_client_request_header(int event, void *data);
   int state_watch_for_client_abort(int event, void *data);
   int state_read_push_response_header(int event, void *data);
@@ -450,9 +472,9 @@ protected:
   void do_api_callout_internal();
   void do_redirect();
   void redirect_request(const char *redirect_url, const int redirect_len);
-#ifdef PROXY_DRAIN
   void do_drain_request_body();
-#endif
+
+  void wait_for_full_body();
 
   virtual void handle_api_return();
   void handle_server_setup_error(int event, void *data);
@@ -493,7 +515,7 @@ protected:
   HttpTunnelProducer *setup_transfer_from_transform_to_cache_only();
   void setup_plugin_agents(HttpTunnelProducer *p);
 
-  HttpTransact::StateMachineAction_t last_action = HttpTransact::SM_ACTION_UNDEFINED;
+  HttpTransact::StateMachineAction_t last_action     = HttpTransact::SM_ACTION_UNDEFINED;
   int (HttpSM::*m_last_state)(int event, void *data) = nullptr;
   virtual void set_next_state();
   void call_transact_and_set_next_state(TransactEntryFunc_t f);
@@ -528,6 +550,8 @@ public:
   const char *client_cipher_suite = "-";
   int server_transact_count       = 0;
   bool server_connection_is_ssl   = false;
+  bool is_waiting_for_full_body   = false;
+  bool is_using_post_buffer       = false;
 
   TransactionMilestones milestones;
   ink_hrtime api_timer = 0;
@@ -624,7 +648,7 @@ inline void
 HttpSM::remove_ua_entry()
 {
   vc_table.remove_entry(ua_entry);
-  ua_entry = NULL;
+  ua_entry = nullptr;
 }
 
 inline void
@@ -632,7 +656,7 @@ HttpSM::remove_server_entry()
 {
   if (server_entry) {
     vc_table.remove_entry(server_entry);
-    server_entry = NULL;
+    server_entry = nullptr;
   }
 }
 
@@ -656,14 +680,14 @@ inline void
 HttpSM::txn_hook_append(TSHttpHookID id, INKContInternal *cont)
 {
   api_hooks.append(id, cont);
-  hooks_set = 1;
+  hooks_set = true;
 }
 
 inline void
 HttpSM::txn_hook_prepend(TSHttpHookID id, INKContInternal *cont)
 {
   api_hooks.prepend(id, cont);
-  hooks_set = 1;
+  hooks_set = true;
 }
 
 inline APIHook *
@@ -675,15 +699,15 @@ HttpSM::txn_hook_get(TSHttpHookID id)
 inline void
 HttpSM::add_cache_sm()
 {
-  if (second_cache_sm == NULL) {
+  if (second_cache_sm == nullptr) {
     second_cache_sm = new HttpCacheSM;
     second_cache_sm->init(this, mutex);
-    if (t_state.cache_info.object_read != NULL) {
+    if (t_state.cache_info.object_read != nullptr) {
       second_cache_sm->cache_read_vc        = cache_sm.cache_read_vc;
-      cache_sm.cache_read_vc                = NULL;
+      cache_sm.cache_read_vc                = nullptr;
       second_cache_sm->read_locked          = cache_sm.read_locked;
       t_state.cache_info.second_object_read = t_state.cache_info.object_read;
-      t_state.cache_info.object_read        = NULL;
+      t_state.cache_info.object_read        = nullptr;
     }
   }
 }
@@ -731,4 +755,26 @@ HttpSM::postbuf_init(IOBufferReader *ua_reader)
   this->_postbuf.init(ua_reader);
 }
 
-#endif
+inline void
+HttpSM::set_postbuf_done(bool done)
+{
+  this->_postbuf.set_post_data_buffer_done(done);
+}
+
+inline bool
+HttpSM::get_postbuf_done()
+{
+  return this->_postbuf.get_post_data_buffer_done();
+}
+
+inline bool
+HttpSM::is_postbuf_valid()
+{
+  return this->_postbuf.is_valid();
+}
+
+inline IOBufferReader *
+HttpSM::get_postbuf_clone_reader()
+{
+  return this->_postbuf.get_post_data_buffer_clone_reader();
+}

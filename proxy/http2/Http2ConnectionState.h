@@ -21,8 +21,7 @@
   limitations under the License.
  */
 
-#ifndef __HTTP2_CONNECTION_STATE_H__
-#define __HTTP2_CONNECTION_STATE_H__
+#pragma once
 
 #include "HTTP2.h"
 #include "HPACK.h"
@@ -152,6 +151,10 @@ public:
 
     delete dependency_tree;
     this->ua_session = nullptr;
+
+    if (fini_event) {
+      fini_event->cancel();
+    }
   }
 
   // Event handlers
@@ -307,6 +310,5 @@ private:
   int recursion                     = 0;
   Http2ShutdownState shutdown_state = HTTP2_SHUTDOWN_NONE;
   Event *shutdown_cont_event        = nullptr;
+  Event *fini_event                 = nullptr;
 };
-
-#endif // __HTTP2_CONNECTION_STATE_H__

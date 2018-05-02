@@ -28,8 +28,7 @@
 
 
  ****************************************************************************/
-#ifndef __UNIXUDPCONNECTION_H_
-#define __UNIXUDPCONNECTION_H_
+#pragma once
 
 #include "P_UDPConnection.h"
 #include "P_UDPPacket.h"
@@ -53,11 +52,11 @@ public:
   EventIO ep;
 
   UnixUDPConnection(int the_fd);
-  virtual ~UnixUDPConnection();
+  ~UnixUDPConnection() override;
 
 private:
   int m_errno;
-  virtual void UDPConnection_is_abstract(){};
+  void UDPConnection_is_abstract() override{};
 };
 
 TS_INLINE
@@ -106,7 +105,5 @@ UDPConnection::recv(Continuation *c)
 TS_INLINE UDPConnection *
 new_UDPConnection(int fd)
 {
-  return (fd >= 0) ? new UnixUDPConnection(fd) : 0;
+  return (fd >= 0) ? new UnixUDPConnection(fd) : nullptr;
 }
-
-#endif //__UNIXUDPCONNECTION_H_

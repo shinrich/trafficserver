@@ -106,7 +106,7 @@ namespace
 {
 int handleEvents(TSCont cont, TSEvent event, void *edata);
 void destroyCont(InterceptPlugin::State *state);
-}
+} // namespace
 
 InterceptPlugin::InterceptPlugin(Transaction &transaction, InterceptPlugin::Type type) : TransactionPlugin(transaction)
 {
@@ -135,7 +135,7 @@ InterceptPlugin::~InterceptPlugin()
 bool
 InterceptPlugin::produce(const void *data, int data_size)
 {
-  ScopedSharedMutexLock lock(getMutex());
+  std::lock_guard<Mutex> lock(*getMutex());
   if (!state_->net_vc_) {
     LOG_ERROR("Intercept not operational");
     return false;
@@ -159,7 +159,7 @@ InterceptPlugin::produce(const void *data, int data_size)
 bool
 InterceptPlugin::setOutputComplete()
 {
-  ScopedSharedMutexLock scopedLock(getMutex());
+  std::lock_guard<Mutex> scopedLock(*getMutex());
   if (!state_->net_vc_) {
     LOG_ERROR("Intercept not operational");
     return false;
@@ -294,7 +294,7 @@ InterceptPlugin::handleEvent(int abstract_event, void *edata)
     }
     // else fall through into the next shut down cases
     LOG_ERROR("Error while reading request!");
-  // fallthrough
+    // fallthrough
 
   case TS_EVENT_VCONN_READ_COMPLETE: // fall throughs intentional
   case TS_EVENT_VCONN_WRITE_COMPLETE:
@@ -317,6 +317,29 @@ InterceptPlugin::handleEvent(int abstract_event, void *edata)
 
 namespace
 {
+class TryLockGuard
+{
+public:
+  TryLockGuard(Mutex &m) : _m(m), _isLocked(m.try_lock()) {}
+
+  bool
+  isLocked() const
+  {
+    return _isLocked;
+  }
+
+  ~TryLockGuard()
+  {
+    if (_isLocked) {
+      _m.unlock();
+    }
+  }
+
+private:
+  std::recursive_mutex &_m;
+  const bool _isLocked;
+};
+
 int
 handleEvents(TSCont cont, TSEvent pristine_event, void *pristine_edata)
 {
@@ -329,8 +352,8 @@ handleEvents(TSCont cont, TSEvent pristine_event, void *pristine_edata)
     return 0;
   }
 
-  ScopedSharedMutexTryLock scopedTryLock(state->plugin_mutex_);
-  if (!scopedTryLock.hasLock()) {
+  TryLockGuard scopedTryLock(*(state->plugin_mutex_));
+  if (!scopedTryLock.isLocked()) {
     LOG_ERROR("Couldn't get plugin lock. Will retry");
     if (event != TS_EVENT_TIMEOUT) { // save only "non-retry" info
       state->saved_event_ = event;
@@ -374,4 +397,4 @@ destroyCont(InterceptPlugin::State *state)
     state->cont_ = nullptr;
   }
 }
-}
+} // namespace

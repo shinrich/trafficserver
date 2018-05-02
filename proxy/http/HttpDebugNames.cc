@@ -168,9 +168,9 @@ HttpDebugNames::get_event_name(int event)
   case DNS_EVENT_LOOKUP:
     return ("DNS_EVENT_LOOKUP");
 
-  ////////////////////
-  // CACHE   EVENTS //
-  ////////////////////
+    ////////////////////
+    // CACHE   EVENTS //
+    ////////////////////
 
   case CACHE_EVENT_LOOKUP:
     return ("CACHE_EVENT_LOOKUP");
@@ -347,11 +347,11 @@ HttpDebugNames::get_action_name(HttpTransact::StateMachineAction_t e)
   case HttpTransact::SM_ACTION_TRANSFORM_READ:
     return ("SM_ACTION_TRANSFORM_READ");
 
-#ifdef PROXY_DRAIN
-  case HttpTransact::SM_ACTION_DRAIN_REQUEST_BODY:
-    return ("SM_ACTION_DRAIN_REQUEST_BODY");
-#endif /* PROXY_DRAIN */
+  case HttpTransact::SM_ACTION_WAIT_FOR_FULL_BODY:
+    return ("SM_ACTION_WAIT_FOR_FULL_BODY");
 
+  case HttpTransact::SM_ACTION_REQUEST_BUFFER_READ_COMPLETE:
+    return ("SM_ACTION_REQUEST_BUFFER_READ_COMPLETE");
   case HttpTransact::SM_ACTION_API_SM_START:
     return ("SM_ACTION_API_SM_START");
   case HttpTransact::SM_ACTION_REDIRECT_READ:
@@ -438,6 +438,8 @@ HttpDebugNames::get_api_hook_name(TSHttpHookID t)
     return "TS_HTTP_SEND_RESPONSE_HDR_HOOK";
   case TS_HTTP_REQUEST_TRANSFORM_HOOK:
     return "TS_HTTP_REQUEST_TRANSFORM_HOOK";
+  case TS_HTTP_REQUEST_BUFFER_READ_COMPLETE_HOOK:
+    return "TS_HTTP_REQUEST_BUFFER_READ_COMPLETE_HOOK";
   case TS_HTTP_RESPONSE_TRANSFORM_HOOK:
     return "TS_HTTP_RESPONSE_TRANSFORM_HOOK";
   case TS_HTTP_SELECT_ALT_HOOK:
@@ -458,14 +460,18 @@ HttpDebugNames::get_api_hook_name(TSHttpHookID t)
     return "TS_HTTP_RESPONSE_CLIENT_HOOK";
   case TS_HTTP_LAST_HOOK:
     return "TS_HTTP_LAST_HOOK";
-  case TS_VCONN_PRE_ACCEPT_HOOK:
-    return "TS_VCONN_PRE_ACCEPT_HOOK";
+  case TS_VCONN_START_HOOK:
+    return "TS_VCONN_START_HOOK";
+  case TS_VCONN_CLOSE_HOOK:
+    return "TS_VCONN_CLOSE_HOOK";
   case TS_SSL_CERT_HOOK:
     return "TS_SSL_CERT_HOOK";
   case TS_SSL_SERVERNAME_HOOK:
     return "TS_SSL_SERVERNAME_HOOK";
   case TS_SSL_SERVER_VERIFY_HOOK:
     return "TS_SSL_SERVER_VERIFY_HOOK";
+  case TS_SSL_VERIFY_CLIENT_HOOK:
+    return "TS_SSL_VERIFY_CLIENT_HOOK";
   case TS_SSL_SESSION_HOOK:
     return "TS_SSL_SESSION_HOOK";
   }

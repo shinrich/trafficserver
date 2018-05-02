@@ -5540,12 +5540,15 @@ typedef enum {
   ORIG_TS_HTTP_POST_REMAP_HOOK,
   ORIG_TS_HTTP_RESPONSE_CLIENT_HOOK,
   ORIG_TS_SSL_FIRST_HOOK,
-  ORIG_TS_VCONN_PRE_ACCEPT_HOOK = ORIG_TS_SSL_FIRST_HOOK,
+  ORIG_TS_VCONN_START_HOOK = ORIG_TS_SSL_FIRST_HOOK,
+  ORIG_TS_VCONN_CLOSE_HOOK,
   ORIG_TS_SSL_SNI_HOOK,
   ORIG_TS_SSL_SERVERNAME_HOOK,
   ORIG_TS_SSL_SERVER_VERIFY_HOOK,
+  ORIG_TS_SSL_VERIFY_CLIENT_HOOK,
   ORIG_TS_SSL_SESSION_HOOK,
-  ORIG_TS_SSL_LAST_HOOK = ORIG_TS_SSL_SESSION_HOOK,
+  ORIG_TS_SSL_LAST_HOOK                          = ORIG_TS_SSL_SESSION_HOOK,
+  ORIG_TS_HTTP_REQUEST_BUFFER_READ_COMPLETE_HOOK = 24,
   ORIG_TS_HTTP_LAST_HOOK
 } ORIG_TSHttpHookID;
 
@@ -6537,8 +6540,9 @@ struct AppendTransformTestData {
 
   ~AppendTransformTestData()
   {
-    if (output_buffer)
+    if (output_buffer) {
       TSIOBufferDestroy(output_buffer);
+    }
   }
 };
 
@@ -7603,7 +7607,8 @@ const char *SDK_Overridable_Configs[TS_CONFIG_LAST_ENTRY] = {"proxy.config.url_r
                                                              "proxy.config.http.parent_proxy.connect_attempts_timeout",
                                                              "proxy.config.http.normalize_ae",
                                                              "proxy.config.http.insert_forwarded",
-                                                             "proxy.config.http.allow_multi_range"};
+                                                             "proxy.config.http.allow_multi_range",
+                                                             "proxy.config.http.request_buffer_enabled"};
 
 REGRESSION_TEST(SDK_API_OVERRIDABLE_CONFIGS)(RegressionTest *test, int /* atype ATS_UNUSED */, int *pstatus)
 {
@@ -8068,7 +8073,7 @@ REGRESSION_TEST(SDK_API_TSSslServerContextCreate)(RegressionTest *test, int leve
   TSSslContext ctx;
 
   // See TS-4769: TSSslServerContextCreate always returns null.
-  ctx = TSSslServerContextCreate();
+  ctx = TSSslServerContextCreate(nullptr, nullptr);
 
   *pstatus = ctx ? REGRESSION_TEST_PASSED : REGRESSION_TEST_FAILED;
   TSSslContextDestroy(ctx);

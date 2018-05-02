@@ -21,8 +21,7 @@
   limitations under the License.
  */
 
-#ifndef __INK_API_PRIVATE_IOCORE_H__
-#define __INK_API_PRIVATE_IOCORE_H__
+#pragma once
 #if !defined(__GNUC__)
 #include "I_EventSystem.h"
 #include "I_Cache.h"
@@ -71,28 +70,28 @@ public:
   INKVConnInternal();
   INKVConnInternal(TSEventFunc funcp, TSMutex mutexp);
 
-  virtual void destroy();
+  void destroy() override;
 
-  VIO *do_io_read(Continuation *c, int64_t nbytes, MIOBuffer *buf);
+  VIO *do_io_read(Continuation *c, int64_t nbytes, MIOBuffer *buf) override;
 
-  VIO *do_io_write(Continuation *c, int64_t nbytes, IOBufferReader *buf, bool owner = false);
+  VIO *do_io_write(Continuation *c, int64_t nbytes, IOBufferReader *buf, bool owner = false) override;
 
   void do_io_transform(VConnection *vc);
 
-  void do_io_close(int lerrno = -1);
+  void do_io_close(int lerrno = -1) override;
 
-  void do_io_shutdown(ShutdownHowTo_t howto);
+  void do_io_shutdown(ShutdownHowTo_t howto) override;
 
-  void reenable(VIO *vio);
+  void reenable(VIO *vio) override;
 
   void retry(unsigned int delay);
 
-  bool get_data(int id, void *data);
-  bool set_data(int id, void *data);
+  bool get_data(int id, void *data) override;
+  bool set_data(int id, void *data) override;
 
 protected:
-  virtual void clear();
-  virtual void free();
+  void clear() override;
+  void free() override;
 
 public:
   VIO m_read_vio;
@@ -201,5 +200,3 @@ tsapi INKUDPPacket INKUDPPacketGet(INKUDPacketQueue queuep);
 #ifdef __cplusplus
 }
 #endif /* __cplusplus */
-
-#endif /* __INK_API_PRIVATE_IOCORE_H__ */

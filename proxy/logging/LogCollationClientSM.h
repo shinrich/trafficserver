@@ -21,8 +21,7 @@
   limitations under the License.
  */
 
-#ifndef LOG_COLLATION_CLIENT_SM_H
-#define LOG_COLLATION_CLIENT_SM_H
+#pragma once
 
 //-------------------------------------------------------------------------
 // includes
@@ -46,7 +45,7 @@ class LogCollationClientSM : public LogCollationBase, public Continuation
 {
 public:
   LogCollationClientSM(LogHost *log_host);
-  ~LogCollationClientSM();
+  ~LogCollationClientSM() override;
 
   int client_handler(int event, void *data);
 
@@ -115,5 +114,3 @@ private:
 };
 
 typedef int (LogCollationClientSM::*LogCollationClientSMHandler)(int, void *);
-
-#endif // LOG_COLLATION_CLIENT_SM_H

@@ -28,8 +28,7 @@
 
  */
 
-#if !defined(_I_OneWayMultiTunnel_h_)
-#define _I_OneWayMultiTunnel_h_
+#pragma once
 
 #include "I_OneWayTunnel.h"
 
@@ -139,8 +138,8 @@ struct OneWayMultiTunnel : public OneWayTunnel {
   //
   int startEvent(int event, void *data);
 
-  virtual void reenable_all();
-  virtual void close_target_vio(int result, VIO *vio = nullptr);
+  void reenable_all() override;
+  void close_target_vio(int result, VIO *vio = nullptr) override;
 
   int n_vioTargets                      = 0;
   bool source_read_previously_completed = false;
@@ -149,4 +148,3 @@ struct OneWayMultiTunnel : public OneWayTunnel {
 };
 
 extern ClassAllocator<OneWayMultiTunnel> OneWayMultiTunnelAllocator;
-#endif

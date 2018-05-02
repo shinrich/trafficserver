@@ -21,8 +21,7 @@
   limitations under the License.
  */
 
-#ifndef P_SSLNextProtocolAccept_H_
-#define P_SSLNextProtocolAccept_H_
+#pragma once
 
 #include "P_Net.h"
 #include "P_EventSystem.h"
@@ -35,9 +34,9 @@ class SSLNextProtocolAccept : public SessionAccept
 {
 public:
   SSLNextProtocolAccept(Continuation *, bool);
-  ~SSLNextProtocolAccept();
+  ~SSLNextProtocolAccept() override;
 
-  bool accept(NetVConnection *, MIOBuffer *, IOBufferReader *);
+  bool accept(NetVConnection *, MIOBuffer *, IOBufferReader *) override;
 
   // Register handler as an endpoint for the specified protocol. Neither
   // handler nor protocol are copied, so the caller must guarantee their
@@ -57,7 +56,7 @@ public:
   SSLNextProtocolAccept &operator=(const SSLNextProtocolAccept &) = delete; // disabled
 
 private:
-  int mainEvent(int event, void *netvc);
+  int mainEvent(int event, void *netvc) override;
 
   MIOBuffer *buffer; // XXX do we really need this?
   Continuation *endpoint;
@@ -66,5 +65,3 @@ private:
 
   friend struct SSLNextProtocolTrampoline;
 };
-
-#endif /* P_SSLNextProtocolAccept_H_ */

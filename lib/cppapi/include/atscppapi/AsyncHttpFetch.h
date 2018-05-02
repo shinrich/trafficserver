@@ -21,8 +21,6 @@
  */
 
 #pragma once
-#ifndef ATSCPPAPI_ASYNCHTTPFETCH_H_
-#define ATSCPPAPI_ASYNCHTTPFETCH_H_
 
 #include <string>
 #include <memory>
@@ -123,10 +121,10 @@ public:
   /**
    * Starts a HTTP fetch of the Request contained.
    */
-  virtual void run();
+  void run() override;
 
 protected:
-  virtual ~AsyncHttpFetch();
+  ~AsyncHttpFetch() override;
 
 private:
   AsyncHttpFetchState *state_;
@@ -134,6 +132,4 @@ private:
   friend class utils::internal;
 };
 
-} /* atscppapi */
-
-#endif /* ATSCPPAPI_ASYNCHTTPFETCH_H_ */
+} // namespace atscppapi

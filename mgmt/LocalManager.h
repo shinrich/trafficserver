@@ -37,10 +37,13 @@
 #include "Alarms.h"
 #include "BaseManager.h"
 #include <records/I_RecHttp.h>
+#include <syslog.h>
 #if TS_HAS_WCCP
 #include <wccp/Wccp.h>
 #endif
-#include <syslog.h>
+#if HAVE_EVENTFD
+#include <sys/eventfd.h>
+#endif
 
 class FileManager;
 
@@ -48,8 +51,13 @@ enum ManagementPendingOperation {
   MGMT_PENDING_NONE,         // Do nothing
   MGMT_PENDING_RESTART,      // Restart TS and TM
   MGMT_PENDING_BOUNCE,       // Restart TS
+  MGMT_PENDING_STOP,         // Stop TS
+  MGMT_PENDING_DRAIN,        // Drain TS
   MGMT_PENDING_IDLE_RESTART, // Restart TS and TM when TS is idle
-  MGMT_PENDING_IDLE_BOUNCE   // Restart TS when TS is idle
+  MGMT_PENDING_IDLE_BOUNCE,  // Restart TS when TS is idle
+  MGMT_PENDING_IDLE_STOP,    // Stop TS when TS is idle
+  MGMT_PENDING_IDLE_DRAIN,   // Drain TS when TS is idle from new connections
+  MGMT_PENDING_UNDO_DRAIN,   // Recover TS from drain
 };
 
 class LocalManager : public BaseManager
@@ -70,7 +78,7 @@ public:
   void signalFileChange(const char *var_name, bool incVersion = true);
   void signalEvent(int msg_id, const char *data_str);
   void signalEvent(int msg_id, const char *data_raw, int data_len);
-  void signalAlarm(int alarm_id, const char *desc = NULL, const char *ip = NULL);
+  void signalAlarm(int alarm_id, const char *desc = nullptr, const char *ip = nullptr);
 
   void processEventQueue();
   bool startProxy(const char *onetime_options);
@@ -83,8 +91,11 @@ public:
   void processShutdown(bool mainThread = false);
   void processRestart();
   void processBounce();
+  void processDrain(int to_drain = 1);
   void rollLogFiles();
-  void clearStats(const char *name = NULL);
+  void clearStats(const char *name = nullptr);
+  void hostStatusSetDown(const char *name);
+  void hostStatusSetUp(const char *name);
 
   bool processRunning();
 
@@ -95,7 +106,9 @@ public:
   int proxy_launch_count                               = 0;
   bool proxy_launch_outstanding                        = false;
   ManagementPendingOperation mgmt_shutdown_outstanding = MGMT_PENDING_NONE;
-  int proxy_running                                    = 0;
+  time_t mgmt_shutdown_triggered_at;
+  time_t mgmt_drain_triggered_at;
+  int proxy_running = 0;
   HttpProxyPort::Group m_proxy_ports;
   // Local inbound addresses to bind, if set.
   IpAddr m_inbound_ip4;
@@ -112,7 +125,10 @@ public:
 
   int process_server_sockfd = ts::NO_FD;
   int watched_process_fd    = ts::NO_FD;
-  pid_t proxy_launch_pid    = -1;
+#if HAVE_EVENTFD
+  int wakeup_fd = ts::NO_FD; // external trigger to stop polling
+#endif
+  pid_t proxy_launch_pid = -1;
 
   Alarms *alarm_keeper     = nullptr;
   FileManager *configFiles = nullptr;

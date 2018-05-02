@@ -196,6 +196,22 @@ We should write this TAG in records.config(If TAG is missing, default TAG will b
 
 `TOP <#ts-lua-plugin>`_
 
+ts.error
+--------
+**syntax:** *ts.error(MESSAGE)*
+
+**context:** global
+
+**description**: Log the MESSAGE to error.log
+
+Here is an example:
+
+::
+
+       ts.error('This is an error message')
+
+`TOP <#ts-lua-plugin>`_
+
 Remap status constants
 ----------------------
 **context:** do_remap
@@ -1523,6 +1539,29 @@ Here is an example:
 
 `TOP <#ts-lua-plugin>`_
 
+ts.server_request.server_addr.get_nexthop_addr
+----------------------------------------------
+**syntax:** *ts.server_request.server_addr.get_nexthop_addr()*
+
+**context:** function @ TS_LUA_HOOK_SEND_REQUEST_HDR hook point or later
+
+**description**: This function can be used to get socket address of the next hop to the origin server.
+
+The ts.server_request.server_addr.get_nexthop_addr function returns three values, ip is a string, port and family is number.
+
+Here is an example:
+
+::
+
+    function do_global_send_request()
+        ip, port, family = ts.server_request.server_addr.get_nexthop_addr()
+        print(ip)               -- 192.168.231.17
+        print(port)             -- 80
+        print(family)           -- 2(AF_INET)
+    end
+
+`TOP <#ts-lua-plugin>`_
+
 ts.server_request.server_addr.get_ip
 ------------------------------------
 **syntax:** *ts.server_request.server_addr.get_ip()*
@@ -1582,6 +1621,26 @@ Here is an example:
     function do_global_send_request()
         port = ts.server_request.server_addr.get_outgoing_port()
         print(port)             -- 50880
+    end
+
+`TOP <#ts-lua-plugin>`_
+
+ts.server_request.server_addr.set_outgoing_addr
+-----------------------------------------------
+**syntax:** *ts.server_request.server_addr.set_outgoing_addr()*
+
+**context:** earlier than or inside function @ TS_LUA_HOOK_SEND_REQUEST_HDR hook point
+
+**description**: This function can be used to set outgoing socket address for the request to origin.
+
+The ts.server_request.server_addr.set_outgoing_addr function requires three inputs, ip is a string, port and family is number.
+
+Here is an example:
+
+::
+
+    function do_global_send_request()
+        ts.server_request.server_addr.set_outgoing_addr("192.168.231.17", 80, TS_LUA_AF_INET)
     end
 
 `TOP <#ts-lua-plugin>`_
@@ -2369,6 +2428,44 @@ Here is an example
         if result == TS_LUA_SRVSTATE_CONNECTION_ALIVE then
           ts.debug('Alive')
         end
+    end
+
+`TOP <#ts-lua-plugin>`_
+
+ts.http.get_remap_from_url
+--------------------------
+**syntax:** *ts.http.get_remap_from_url()*
+
+**context:** do_global_post_remap
+
+**description:** This function can be used to get the *from* URL in the matching line in :file:`remap.config`.
+
+Here is an example
+
+::
+
+    function do_global_post_remap()
+        local from_url = ts.http.get_remap_from_url()
+        ts.debug(from_url)
+    end
+
+`TOP <#ts-lua-plugin>`_
+
+ts.http.get_remap_to_url
+------------------------
+**syntax:** *ts.http.get_remap_to_url()*
+
+**context:** do_global_post_remap
+
+**description:** This function can be used to get the *to* URL in the matching line in :file:`remap.config`.
+
+Here is an example
+
+::
+
+    function do_global_post_remap()
+        local to_url = ts.http.get_remap_to_url()
+        ts.debug(to_url)
     end
 
 `TOP <#ts-lua-plugin>`_

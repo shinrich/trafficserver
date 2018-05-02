@@ -47,7 +47,6 @@ except NameError:
     def is_string_type(s):
         return isinstance(s, str)
 
-
 class TSConfVar(std.Target):
     """
     Description of a traffic server configuration variable.
@@ -189,7 +188,7 @@ class TSStat(std.Target):
 
     option_spec = {
         'type': metrictypes,
-        'unit': metricunits,
+        'units': metricunits,
         'introduced': rst.directives.unchanged,
         'deprecated': rst.directives.unchanged,
         'ungathered': rst.directives.flag
@@ -408,7 +407,7 @@ def xref_cleanup(app, env, node, contnode):
 # get the branch this documentation is building for in X.X.x form
 with open('../configure.ac', 'r') as f:
     contents = f.read()
-    match = re.compile('m4_define\(\[TS_VERSION_S],\[(.*?)]\)').search(contents)
+    match = re.compile(r'm4_define\(\[TS_VERSION_S],\[(.*?)]\)').search(contents)
     autoconf_version = '.'.join(match.group(1).split('.', 2)[:2] + ['x'])
 
 # get the current branch the local repository is on

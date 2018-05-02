@@ -34,8 +34,7 @@
 
  ****************************************************************************/
 
-#ifndef _P_NET_VC_TEST_H_
-#define _P_NET_VC_TEST_H_
+#pragma once
 
 #include "ts/ink_platform.h"
 
@@ -71,7 +70,7 @@ class NetTestDriver : public Continuation
 {
 public:
   NetTestDriver();
-  ~NetTestDriver();
+  ~NetTestDriver() override;
 
   int errors;
 
@@ -84,7 +83,7 @@ class NetVCTest : public Continuation
 {
 public:
   NetVCTest();
-  ~NetVCTest();
+  ~NetVCTest() override;
   NetVcTestType_t test_cont_type;
 
   int main_handler(int event, void *data);
@@ -141,5 +140,3 @@ public:
   const char *module_name;
   const char *debug_tag;
 };
-
-#endif

@@ -28,8 +28,7 @@
 
  */
 
-#if !defined(_I_OneWayTunnel_h_)
-#define _I_OneWayTunnel_h_
+#pragma once
 
 #include "I_EventSystem.h"
 
@@ -87,7 +86,7 @@ struct OneWayTunnel : public Continuation {
 
   static void SetupTwoWayTunnel(OneWayTunnel *east, OneWayTunnel *west);
   OneWayTunnel();
-  virtual ~OneWayTunnel();
+  ~OneWayTunnel() override;
 
   // Use One of the following init functions to start the tunnel.
   /**
@@ -210,5 +209,3 @@ struct OneWayTunnel : public Continuation {
   OneWayTunnel(const OneWayTunnel &) = delete;
   OneWayTunnel &operator=(const OneWayTunnel &) = delete;
 };
-
-#endif

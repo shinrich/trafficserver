@@ -31,8 +31,7 @@
 
  ****************************************************************************/
 
-#ifndef _HTTP_PAGES_H_
-#define _HTTP_PAGES_H_
+#pragma once
 
 #include "ts/ink_platform.h"
 #include "P_EventSystem.h"
@@ -57,7 +56,7 @@ class HttpPagesHandler : public BaseStatPagesHandler
 {
 public:
   HttpPagesHandler(Continuation *cont, HTTPHdr *header);
-  ~HttpPagesHandler();
+  ~HttpPagesHandler() override;
 
   int handle_smlist(int event, void *edata);
   int handle_smdetails(int event, void *edata);
@@ -86,5 +85,3 @@ private:
 };
 
 void http_pages_init();
-
-#endif

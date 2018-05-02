@@ -22,7 +22,8 @@
 */
 
 // funciton for file system management
-// including: make directory (with parents), copy directory (recursively), remove directory (recursively)
+// including: make directory (with parents), copy directory (recursively), remove directory (recursively), remove all directories
+// inside
 
 #include "ts/ink_error.h"
 #include "ts/I_Layout.h"
@@ -43,15 +44,17 @@ static std::string remove_path;
 void
 append_slash(std::string &path)
 {
-  if (path.back() != '/')
+  if (path.back() != '/') {
     path.append("/");
+  }
 }
 
 void
 remove_slash(std::string &path)
 {
-  if (path.back() == '/')
+  if (path.back() == '/') {
     path.pop_back();
+  }
 }
 
 bool
@@ -89,17 +92,19 @@ create_directory(const std::string &dir)
   ret  = mkdir(s.substr(0, pos).c_str(), S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
   pos1 = pos + 1;
   // create directory one layer by one layer
-  while (1) {
+  while (true) {
     pos = s.find("/", pos1);
-    if ((size_t)pos == s.npos)
+    if ((size_t)pos == s.npos) {
       break;
+    }
     ret  = mkdir(s.substr(0, pos).c_str(), S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
     pos1 = pos + 1;
   }
-  if (ret)
+  if (ret) {
     return false;
-  else
+  } else {
     return true;
+  }
 }
 
 static int
@@ -149,10 +154,11 @@ remove_directory(const std::string &dir)
 {
   std::string path = dir;
   remove_slash(path);
-  if (nftw(path.c_str(), remove_function, OPEN_MAX_FILE, FTW_DEPTH))
+  if (nftw(path.c_str(), remove_function, OPEN_MAX_FILE, FTW_DEPTH)) {
     return false;
-  else
+  } else {
     return true;
+  }
 }
 
 // remove everything inside this directory
@@ -162,10 +168,11 @@ remove_inside_directory(const std::string &dir)
   std::string path = dir;
   remove_slash(path);
   remove_path = path;
-  if (nftw(path.c_str(), remove_inside_function, OPEN_MAX_FILE, FTW_DEPTH))
+  if (nftw(path.c_str(), remove_inside_function, OPEN_MAX_FILE, FTW_DEPTH)) {
     return false;
-  else
+  } else {
     return true;
+  }
 }
 
 static int
@@ -174,8 +181,9 @@ copy_function(const char *src_path, const struct stat *sb, int flag)
   // src path no slash
   std::string full_src_path = src_path;
   if (full_src_path == src_root) {
-    if (!create_directory(dst_root))
+    if (!create_directory(dst_root)) {
       ink_fatal("create directory failed during copy");
+    }
     return 0;
   }
   std::string src_back = full_src_path.substr(src_root.size() + 1);
@@ -184,8 +192,9 @@ copy_function(const char *src_path, const struct stat *sb, int flag)
   switch (flag) {
   case FTW_D:
     // create directory for FTW_D type
-    if (!create_directory(dst_path))
+    if (!create_directory(dst_path)) {
       ink_fatal("create directory failed during copy");
+    }
     break;
   case FTW_F:
     // if the file already exist, overwrite it
@@ -194,11 +203,12 @@ copy_function(const char *src_path, const struct stat *sb, int flag)
         ink_error("overwrite file falied during copy");
       }
     }
-    // for files if bin executable mode, symlink
-    if (sb->st_mode == BIN_MODE) {
-      if (symlink(src_path, dst_path.c_str()) != 0) {
-        if (errno != EEXIST)
-          ink_warning("failed to create symbolic link - %s", strerror(errno));
+    // hardlink bin executable
+    if (sb->st_mode & S_IEXEC) {
+      if (link(src_path, dst_path.c_str()) != 0) {
+        if (errno != EEXIST) {
+          ink_warning("failed to create hard link - %s", strerror(errno));
+        }
       }
     } else {
       // for normal other files
@@ -222,8 +232,9 @@ copy_directory(const std::string &src, const std::string &dst)
   remove_slash(src_root);
   append_slash(dst_root);
 
-  if (ftw(src_root.c_str(), copy_function, OPEN_MAX_FILE))
+  if (ftw(src_root.c_str(), copy_function, OPEN_MAX_FILE)) {
     return false;
-  else
+  } else {
     return true;
+  }
 }

@@ -51,6 +51,7 @@
 #include "ts/ink_align.h"
 #include "ts/hugepages.h"
 #include "ts/Diags.h"
+#include "ts/JeAllocator.h"
 
 #define DEBUG_TAG "freelist"
 
@@ -64,6 +65,8 @@
 #define SANITY
 #define DEADBEEF
 #endif
+
+static auto jna = jearena::globalJemallocNodumpAllocator();
 
 struct ink_freelist_ops {
   void *(*fl_new)(InkFreeList *);
@@ -226,7 +229,7 @@ freelist_new(InkFreeList *f)
 #ifdef DEADBEEF
         const char str[4] = {(char)0xde, (char)0xad, (char)0xbe, (char)0xef};
         for (int j = 0; j < (int)f->type_size; j++)
-          a[j]     = str[j % 4];
+          a[j] = str[j % 4];
 #endif
         freelist_free(f, a);
       }
@@ -258,10 +261,7 @@ malloc_new(InkFreeList *f)
   void *newp = nullptr;
 
   if (f->alignment) {
-    newp = ats_memalign(f->alignment, f->type_size);
-    if (f->advice && (INK_ALIGN((uint64_t)newp, ats_pagesize()) == (uint64_t)newp)) {
-      ats_madvise((caddr_t)newp, INK_ALIGN(f->type_size, f->alignment), f->advice);
-    }
+    newp = jna.allocate(f);
   } else {
     newp = ats_malloc(f->type_size);
   }
@@ -287,14 +287,14 @@ freelist_free(InkFreeList *f, void *item)
   head_p item_pair;
   int result = 0;
 
-// ink_assert(!((long)item&(f->alignment-1))); XXX - why is this no longer working? -bcall
+  // ink_assert(!((long)item&(f->alignment-1))); XXX - why is this no longer working? -bcall
 
 #ifdef DEADBEEF
   {
     static const char str[4] = {(char)0xde, (char)0xad, (char)0xbe, (char)0xef};
 
     // set the entire item to DEADBEEF
-    for (int j          = 0; j < (int)f->type_size; j++)
+    for (int j = 0; j < (int)f->type_size; j++)
       ((char *)item)[j] = str[j % 4];
   }
 #endif /* DEADBEEF */
@@ -320,12 +320,7 @@ static void
 malloc_free(InkFreeList *f, void *item)
 {
   if (f->alignment) {
-#ifdef MADV_DODUMP
-    if (f->advice && (INK_ALIGN((uint64_t)item, ats_pagesize()) == (uint64_t)item)) {
-      ats_madvise((caddr_t)item, INK_ALIGN(f->type_size, f->alignment), MADV_DODUMP);
-    }
-#endif
-    ats_memalign_free(item);
+    jna.deallocate(f, item);
   } else {
     ats_free(item);
   }
@@ -348,7 +343,7 @@ freelist_bulkfree(InkFreeList *f, void *head, void *tail, size_t num_item)
   head_p item_pair;
   int result = 0;
 
-// ink_assert(!((long)item&(f->alignment-1))); XXX - why is this no longer working? -bcall
+  // ink_assert(!((long)item&(f->alignment-1))); XXX - why is this no longer working? -bcall
 
 #ifdef DEADBEEF
   {
@@ -357,10 +352,10 @@ freelist_bulkfree(InkFreeList *f, void *head, void *tail, size_t num_item)
     // set the entire item to DEADBEEF;
     void *temp = head;
     for (size_t i = 0; i < num_item; i++) {
-      for (int j          = sizeof(void *); j < (int)f->type_size; j++)
+      for (int j = sizeof(void *); j < (int)f->type_size; j++)
         ((char *)temp)[j] = str[j % 4];
       *ADDRESS_OF_NEXT(temp, 0) = FROM_PTR(*ADDRESS_OF_NEXT(temp, 0));
-      temp = TO_PTR(*ADDRESS_OF_NEXT(temp, 0));
+      temp                      = TO_PTR(*ADDRESS_OF_NEXT(temp, 0));
     }
   }
 #endif /* DEADBEEF */
@@ -394,12 +389,7 @@ malloc_bulkfree(InkFreeList *f, void *head, void *tail, size_t num_item)
   if (f->alignment) {
     for (size_t i = 0; i < num_item && item; ++i, item = next) {
       next = *(void **)item; // find next item before freeing current item
-#ifdef MADV_DODUMP
-      if (f->advice && (INK_ALIGN((uint64_t)item, ats_pagesize()) == (uint64_t)item)) {
-        ats_madvise((caddr_t)item, INK_ALIGN(f->type_size, f->alignment), MADV_DODUMP);
-      }
-#endif
-      ats_memalign_free(item);
+      jna.deallocate(f, item);
     }
   } else {
     for (size_t i = 0; i < num_item && item; ++i, item = next) {
@@ -496,7 +486,7 @@ ink_atomiclist_pop(InkAtomicList *l)
     result = ink_atomic_cas(&l->head.data, item.data, next.data);
   } while (result == 0);
   {
-    void *ret = TO_PTR(FREELIST_POINTER(item));
+    void *ret                        = TO_PTR(FREELIST_POINTER(item));
     *ADDRESS_OF_NEXT(ret, l->offset) = nullptr;
     return ret;
   }
@@ -521,9 +511,9 @@ ink_atomiclist_popall(InkAtomicList *l)
     void *e   = ret;
     /* fixup forward pointers */
     while (e) {
-      void *n = TO_PTR(*ADDRESS_OF_NEXT(e, l->offset));
+      void *n                        = TO_PTR(*ADDRESS_OF_NEXT(e, l->offset));
       *ADDRESS_OF_NEXT(e, l->offset) = n;
-      e = n;
+      e                              = n;
     }
     return ret;
   }

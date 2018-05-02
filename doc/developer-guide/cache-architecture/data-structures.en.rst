@@ -22,6 +22,54 @@
 Data Structures
 ***************
 
+.. uml::
+   :align: center
+
+   hide empty members
+
+   CacheHostRecord *-- "*" Stripe : Vol >
+   CacheHostRecord *-- "*" CacheVol : cp >
+   CacheVol *-- "*" Stripe : Vol >
+
+.. var:: size_t STORE_BLOCK_SIZE = 8192
+
+   The storage unit for span and stripe metadata.
+
+.. class:: CacheHostTable
+
+   A container that maps from a FQDN to a :class:`CacheHostRecord`. This is constructed from
+   the contents of :file:`hosting.config`.
+
+   .. function:: void Match(char const * fqdn, int len, CacheHostResult * result)
+
+      Search the table for a match for the hostname :arg:`fqdn`, a string of length :arg:`len`.
+      If found the result is placed in :arg:`result`.
+
+.. class:: CacheHostResult
+
+   A wrapper for :class:`CacheHostRecord` used by :func:`CacheHostTable::Match`. This contains
+   the set of cache volumes for the cache host record and is used to perform stripe assignment.
+
+.. class:: CacheHostRecord
+
+   A cache hosting record from :file:`hosting.config`.
+
+   .. member:: CacheVol ** cp
+
+      The cache volumes that are part of this cache host record.
+
+   .. member:: Vol ** vols
+
+      The stripes that are part of the cache volumes. This is the union over the stripes of
+      :member:`CacheHostRecord::cp`
+
+   .. member:: unsigned short * vol_hash_table
+
+      The stripe assignment table. This is an array of indices in to
+      :member:`CacheHostRecord::vols`.
+
+   .. see: :class:`CacheHostTable`.
+
 .. class:: OpenDir
 
    An open directory entry. It contains all the information of a
@@ -31,13 +79,13 @@ Data Structures
 
    A virtual connection class which accepts input for writing to cache.
 
-.. function:: int CacheVC::openReadStartHead(int event, Event* e)
+   .. function:: int openReadStartHead(int event, Event* e)
 
-   Performs the initial read for a cached object.
+      Performs the initial read for a cached object.
 
-.. function:: int CacheVC::openReadStartEarliest(int event, Event* e)
+   .. function:: int openReadStartEarliest(int event, Event* e)
 
-   Performs the initial read for an :term:`alternate` of an object.
+      Performs the initial read for an :term:`alternate` of an object.
 
 .. class:: HttpTunnel
 
@@ -85,28 +133,32 @@ Data Structures
 
    * Timestamps for request and response from :term:`origin server`.
 
-.. class:: EvacuationBlock
-
-    Record for evacuation.
-
 .. class:: Vol
 
    This represents a :term:`storage unit` inside a :term:`cache volume`.
 
-   .. member:: off_t Vol::segments
+   .. cpp:member:: off_t data_blocks
+
+      The number of blocks of storage in the stripe.
+
+   .. cpp:member:: int aggWrite(int event, void * e)
+
+      Schedule the aggregation buffer to be written to disk.
+
+   .. member:: off_t segments
 
       The number of segments in the volume. This will be roughly the total
       number of entries divided by the number of entries in a segment. It will
       be rounded up to cover all entries.
 
-   .. member:: off_t Vol::buckets
+   .. member:: off_t buckets
 
       The number of buckets in the volume. This will be roughly the number of
       entries in a segment divided by ``DIR_DEPTH``. For currently defined
       values this is around 16,384 (2^16 / 4). Buckets are used as the targets
       of the index hash.
 
-   .. member:: DLL\<EvacuationBlock\> Vol::evacuate
+   .. member:: DLL<EvacuationBlock> evacuate
 
       Array of of :class:`EvacuationBlock` buckets. This is sized so there
       is one bucket for every evacuation span.
@@ -121,49 +173,48 @@ Data Structures
          from :arg:`low` to :arg:`high`. Return ``0`` if no evacuation was started,
          non-zero otherwise.
 
-
 .. class:: Doc
 
    Defined in :ts:git:`iocore/cache/P_CacheVol.h`.
 
-   .. member:: uint32_t Doc::magic
+   .. member:: uint32_t magic
 
       Validity check value. Set to ``DOC_MAGIC`` for a valid document.
 
-   .. member:: uint32_t Doc::len
+   .. member:: uint32_t len
 
       The length of this segment including the header length, fragment table,
       and this structure.
 
-   .. member:: uint64_t Doc::total_len
+   .. member:: uint64_t total_len
 
       Total length of the entire document not including meta data but including
       headers.
 
-   .. member:: INK_MD5 Doc::first_key
+   .. member:: INK_MD5 first_key
 
       First index key in the document (the index key used to locate this object
       in the volume index).
 
-   .. member:: INK_MD5 Doc::key
+   .. member:: INK_MD5 key
 
       The index key for this fragment. Fragment keys are computationally
       chained so that the key for the next and previous fragments can be
       computed from this key.
 
-   .. member:: uint32_t Doc::hlen
+   .. member:: uint32_t hlen
 
       Document header (metadata) length. This is not the length of the HTTP
       headers.
 
-   .. member:: uint8_t Doc::ftype
+   .. member:: uint8_t ftype
 
       Fragment type. Currently only ``CACHE_FRAG_TYPE_HTTP`` is used. Other
       types may be used for cache extensions if those are ever implemented.
 
-   .. member:: uint24_t Doc::flen
+   .. member:: uint24_t flen
 
-      Fragment table length, if any. Only the first ``Doc`` in an object should
+      Fragment table length, if any. Only the first :class:`Doc` in an object should
       contain a fragment table.
 
       The fragment table is a list of offsets relative to the HTTP content (not
@@ -177,11 +228,11 @@ Data Structures
 
       Removed as of version 3.3.0. [#fragment-offset-table]_
 
-   .. member:: uint32_t Doc::sync_serial
+   .. member:: uint32_t sync_serial
 
       Unknown.
 
-   .. member:: uint32_t Doc::write_serial
+   .. member:: uint32_t write_serial
 
       Unknown.
 
@@ -302,7 +353,7 @@ Data Structures
 .. class:: DiskVolBlockQueue
 
    .. member:: DiskVolBlock* b
-   
+
    .. member:: int new_block
 
       Indicates if this is a new stripe rather than an existing one. In case a stripe is new ATS decides to clear that stripe(:class:`Vol`)
@@ -332,11 +383,11 @@ Data Structures
       The disk containing the stripe
 
    .. member:: Queue<DiskVolBlockQueue> dpb_queue
-      
+
 .. enum:: CacheType
 
    .. enumerator:: HTTP
-   
+
    .. enumerator:: Stream
 
 .. class:: CacheVol
@@ -344,7 +395,7 @@ Data Structures
    A :term:`cache volume` as described in :file:`volume.config`. This class represents a single volume. :class:`CacheVol` comprises of stripes spread across Spans(disks)
 
    .. member:: int volume_number
-      
+
       indentification number of this volume
 
    .. member:: int scheme
@@ -359,17 +410,17 @@ Data Structures
       Number of stripes(:class:`Vol`) contained in this volume
 
    .. member:: Vol** vols
-      
+
       :class:`Vol` represents a single stripe in the disk. vols contains all the stripes this volume is made up of
-   
+
    .. member:: DiskVol** disk_vols
 
       disk_vols contain references to the disks of all the stripes in this volume
-      
+
    .. member:: LINK<CacheVol> link
 
    .. member:: RecRawStatBlock vol_rsb
-      
+
       per volume stat
 
 .. class:: ConfigVol
@@ -383,13 +434,13 @@ Data Structures
    .. member:: CacheType scheme
 
    .. member:: off_t size
-   
+
    .. member:: bool in_percent
 
       Used as an indicator if the volume is part of the overall volumes created by ATS
 
    .. member:: int percent
-      
+
    .. member:: CacheVol* cachep
 
    .. member:: LINK<ConfigVol> link
@@ -404,11 +455,24 @@ Data Structures
 
        Total number of volumes scpecified in volume.config for HTTP scheme
 
-    .. member:: int num_stream_volumes
-
-       Total number of volumes scpecified in volume.config for stream
-
     .. member:: Queue<ConfigVol> cp_queue
+
+.. class:: Cache
+
+   Base object for a cache.
+
+   .. member:: CacheHostRecord hosttable
+
+      A generic class:`CacheHostRecord` that contains all cache volumes that are not explicitly
+      assigned in :file:`hosting.config`.
+
+   .. function:: Vol * key_to_vol(const char * key, const char * host, int host_len)
+
+      Compute the stripe (:code:`Vol*`) for a cache :arg:`key` and :arg:`host`. The :arg:`host` is
+      used to find the appropriate :class:`CacheHostRecord` instance. From there the stripe
+      assignment slot is determined by taking bits 64..83 (20 bits) of the cache :arg:`key` modulo
+      the stripe assignment array count (:code:`VOL_HASH_TABLE_SIZE`). These bits are the third 32
+      bit slice of the :arg:`key` less the bottom :code:`DIR_TAG_WIDTH` (12) bits.
 
 .. rubric:: Footnotes
 

@@ -17,6 +17,7 @@
  */
 
 #include <iostream>
+#include <ts/string_view.h>
 #include <atscppapi/GlobalPlugin.h>
 #include <atscppapi/TransactionPlugin.h>
 #include <atscppapi/TransformationPlugin.h>
@@ -24,13 +25,12 @@
 #include <atscppapi/Logger.h>
 
 using namespace atscppapi;
-using std::string;
 
 namespace
 {
 #define TAG "null_transformation"
 GlobalPlugin *plugin;
-}
+} // namespace
 
 class NullTransformationPlugin : public TransformationPlugin
 {
@@ -57,7 +57,7 @@ public:
   }
 
   void
-  consume(const string &data) override
+  consume(ts::string_view data) override
   {
     produce(data);
   }

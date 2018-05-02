@@ -28,8 +28,7 @@
    Description:
    SSL Configurations
  ****************************************************************************/
-#ifndef __P_SSLCONFIG_H__
-#define __P_SSLCONFIG_H__
+#pragma once
 
 #include "ProxyConfig.h"
 #include "SSLSessionCache.h"
@@ -58,7 +57,7 @@ struct SSLConfigParams : public ConfigInfo {
   };
 
   SSLConfigParams();
-  virtual ~SSLConfigParams();
+  ~SSLConfigParams() override;
 
   char *serverCertPathOnly;
   char *serverCertChainFilename;
@@ -86,7 +85,7 @@ struct SSLConfigParams : public ConfigInfo {
   int8_t clientVerify;
   int client_verify_depth;
   long ssl_ctx_options;
-  long ssl_client_ctx_protocols;
+  long ssl_client_ctx_options;
 
   static int ssl_maxrecord;
   static bool ssl_allow_client_renegotiation;
@@ -111,6 +110,9 @@ struct SSLConfigParams : public ConfigInfo {
 
   static init_ssl_ctx_func init_ssl_ctx_cb;
   static load_ssl_file_func load_ssl_file_cb;
+
+  static int async_handshake_enabled;
+  static char *engine_conf_file;
 
   SSL_CTX *client_ctx;
 
@@ -167,7 +169,7 @@ struct SSLTicketParams : public ConfigInfo {
   void LoadTicketData(char *ticket_data, int ticket_data_len);
   void cleanup();
 
-  ~SSLTicketParams() { cleanup(); }
+  ~SSLTicketParams() override { cleanup(); }
 };
 
 struct SSLTicketKeyConfig {
@@ -196,5 +198,3 @@ private:
 };
 
 extern SSLSessionCache *session_cache;
-
-#endif

@@ -25,6 +25,7 @@ libatscppapi_la_SOURCES = \
 	AsyncTimer.cc \
 	CaseInsensitiveStringComparator.cc \
 	ClientRequest.cc \
+	Continuation.cc \
 	GlobalPlugin.cc \
 	GzipDeflateTransformation.cc \
 	GzipInflateTransformation.cc \
@@ -33,7 +34,6 @@ libatscppapi_la_SOURCES = \
 	HttpVersion.cc \
 	InterceptPlugin.cc \
 	Logger.cc \
-	Mutex.cc \
 	Plugin.cc \
 	RemapPlugin.cc \
 	Request.cc \
@@ -55,6 +55,7 @@ library_include_HEADERS = \
 	$(base_include_folder)/AsyncTimer.h \
 	$(base_include_folder)/CaseInsensitiveStringComparator.h \
 	$(base_include_folder)/ClientRequest.h \
+	$(base_include_folder)/Continuation.h \
 	$(base_include_folder)/GlobalPlugin.h \
 	$(base_include_folder)/GzipDeflateTransformation.h \
 	$(base_include_folder)/GzipInflateTransformation.h \
@@ -64,7 +65,6 @@ library_include_HEADERS = \
 	$(base_include_folder)/HttpVersion.h \
 	$(base_include_folder)/InterceptPlugin.h \
 	$(base_include_folder)/Logger.h \
-	$(base_include_folder)/Mutex.h \
 	$(base_include_folder)/Plugin.h \
 	$(base_include_folder)/PluginInit.h \
 	$(base_include_folder)/RemapPlugin.h \
@@ -80,5 +80,5 @@ library_include_HEADERS = \
 
 include $(top_srcdir)/build/tidy.mk
 
-tidy-local: $(DIST_SOURCES)
+clang-tidy-local: $(DIST_SOURCES)
 	$(CXX_Clang_Tidy)

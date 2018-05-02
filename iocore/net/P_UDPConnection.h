@@ -28,8 +28,7 @@
 
 
  ****************************************************************************/
-#ifndef __P_UDPCONNECTION_H_
-#define __P_UDPCONNECTION_H_
+#pragma once
 
 #include "I_UDPNet.h"
 
@@ -37,7 +36,7 @@ class UDPConnectionInternal : public UDPConnection
 {
 public:
   UDPConnectionInternal();
-  virtual ~UDPConnectionInternal();
+  ~UDPConnectionInternal() override;
 
   Continuation *continuation;
   int recvActive; // interested in receiving
@@ -170,5 +169,3 @@ UDPConnection::setContinuation(Continuation *c)
   mutex                                         = c->mutex;
   ((UDPConnectionInternal *)this)->continuation = c;
 }
-
-#endif //__P_UDPCONNECTION_H_

@@ -21,8 +21,7 @@
   limitations under the License.
  */
 
-#ifndef LOG_OBJECT_H
-#define LOG_OBJECT_H
+#pragma once
 
 #include "ts/ink_platform.h"
 #include "Log.h"
@@ -102,7 +101,7 @@ public:
             Log::RollingEnabledValues rolling_enabled, int flush_threads, int rolling_interval_sec = 0, int rolling_offset_hr = 0,
             int rolling_size_mb = 0, bool auto_created = false);
   LogObject(LogObject &);
-  virtual ~LogObject();
+  ~LogObject() override;
 
   void add_filter(LogFilter *filter, bool copy = true);
   void set_filter_list(const LogFilterList &list, bool copy = true);
@@ -139,8 +138,9 @@ public:
   {
     size_t nfb;
 
-    if (idx == -1)
+    if (idx == -1) {
       idx = m_buffer_manager_idx++ % m_flush_threads;
+    }
 
     if (m_logFile) {
       nfb = m_buffer_manager[idx].preproc_buffers(m_logFile.get());
@@ -445,12 +445,11 @@ LogObject::get_file_size_bytes()
       LogFile *orphan_logfile = host->get_orphan_logfile();
       if (orphan_logfile) {
         off_t s = orphan_logfile->get_size_bytes();
-        if (s > max_size)
+        if (s > max_size) {
           max_size = s;
+        }
       }
     }
     return max_size;
   }
 }
-
-#endif

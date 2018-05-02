@@ -56,14 +56,14 @@ if [ "${JOB_NAME#*-github}" != "${JOB_NAME}" ]; then
     ATS_BRANCH="github"
     if [ -w "${OUTPUT_BASE}/${ATS_BRANCH}" ]; then
 	output="${OUTPUT_BASE}/${ATS_BRANCH}/${ghprbPullId}"
-	[ ! -d "${output}}"] && mkdir "${output}"
+	[ ! -d "${output}"] && mkdir "${output}"
     fi
     github_pr=" PR #${ghprbPullId}"
-    results_url="https://ci.trafficserver.apache.org/files/clang-analyzer/${ATS_BRANCH}/${ghprbPullId}/"
+    results_url="https://ci.trafficserver.apache.org/clang-analyzer/${ATS_BRANCH}/${ghprbPullId}/"
 else
     test -w "${OUTPUT_BASE}/${ATS_BRANCH}" && output="${OUTPUT_BASE}/${ATS_BRANCH}"
     github_pr=""
-    results_url="https://ci.trafficserver.apache.org/files/clang-analyzer/${ATS_BRANCH}/"
+    results_url="https://ci.trafficserver.apache.org/clang-analyzer/${ATS_BRANCH}/"
 fi
 
 # Tell scan-build to use clang as the underlying compiler to actually build
@@ -77,7 +77,9 @@ export CCC_CXX=${LLVM_BASE}/bin/clang++
 # Start the build / scan
 [ "$output" != "/tmp" ] && echo "Results (if any) can be found at ${results_url}"
 autoreconf -fi
-${LLVM_BASE}/bin/scan-build ./configure ${configure}
+${LLVM_BASE}/bin/scan-build ./configure ${configure} \
+    CXXFLAGS="-stdlib=libc++ -I/opt/llvm/include/c++/v1 -std=c++17" \
+    LDFLAGS="-L/opt/llvm/lib64 -Wl,-rpath=/opt/llvm/lib64"
 
 # Since we don't want the analyzer to look at LuaJIT, build it first
 # without scan-build. The subsequent make will then skip it.

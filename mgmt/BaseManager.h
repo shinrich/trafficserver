@@ -70,6 +70,9 @@
 // case statement.
 #define MGMT_EVENT_STORAGE_DEVICE_CMD_OFFLINE 10011
 #define MGMT_EVENT_LIFECYCLE_MESSAGE 10012
+#define MGMT_EVENT_DRAIN 10013
+#define MGMT_EVENT_HOST_STATUS_UP 10014
+#define MGMT_EVENT_HOST_STATUS_DOWN 10015
 
 /***********************************************************************
  *
@@ -121,10 +124,7 @@ public:
   BaseManager();
   ~BaseManager();
 
-  int registerMgmtCallback(int msg_id, MgmtCallback func, void *opaque_callback_data = NULL);
-
-  int signalMgmtEntity(int msg_id, char *data_str = NULL);
-  int signalMgmtEntity(int msg_id, char *data_raw, int data_len);
+  int registerMgmtCallback(int msg_id, MgmtCallback func, void *opaque_callback_data = nullptr);
 
   LLQ *mgmt_event_queue;
   InkHashTable *mgmt_callback_table;

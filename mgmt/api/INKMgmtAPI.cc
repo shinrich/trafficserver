@@ -414,6 +414,19 @@ TSRecordEleDestroy(TSRecordEle *ele)
  * API Core
  ***************************************************************************/
 
+/*--- host status operations ----------------------------------------------- */
+tsapi TSMgmtError
+TSHostStatusSetUp(const char *name)
+{
+  return HostStatusSetUp(name);
+}
+
+tsapi TSMgmtError
+TSHostStatusSetDown(const char *name)
+{
+  return HostStatusSetDown(name);
+}
+
 /*--- statistics operations ----------------------------------------------- */
 tsapi TSMgmtError
 TSStatsReset(const char *name)
@@ -810,6 +823,18 @@ tsapi TSMgmtError
 TSBounce(unsigned options)
 {
   return Bounce(options);
+}
+
+tsapi TSMgmtError
+TSStop(unsigned options)
+{
+  return Stop(options);
+}
+
+tsapi TSMgmtError
+TSDrain(unsigned options)
+{
+  return Drain(options);
 }
 
 tsapi TSMgmtError

@@ -22,8 +22,7 @@
 
  */
 
-#if !defined(_I_VConnection_h_)
-#define _I_VConnection_h_
+#pragma once
 
 #include "ts/ink_platform.h"
 #include "I_EventSystem.h"
@@ -31,6 +30,10 @@
 #if !defined(I_VIO_h)
 #error "include I_VIO.h"
 #endif
+
+#include <array>
+
+static constexpr int TS_VCONN_MAX_USER_ARG = 4;
 
 //
 // Data Types
@@ -149,7 +152,7 @@ typedef struct tsapi_vio *TSVIO;
 class VConnection : public Continuation
 {
 public:
-  virtual ~VConnection();
+  ~VConnection() override;
 
   /**
     Read data from the VConnection.
@@ -197,7 +200,7 @@ public:
     @return VIO representing the scheduled IO operation.
 
   */
-  virtual VIO *do_io_read(Continuation *c = nullptr, int64_t nbytes = INT64_MAX, MIOBuffer *buf = 0) = 0;
+  virtual VIO *do_io_read(Continuation *c = nullptr, int64_t nbytes = INT64_MAX, MIOBuffer *buf = nullptr) = 0;
 
   /**
     Write data to the VConnection.
@@ -247,7 +250,8 @@ public:
     @return VIO representing the scheduled IO operation.
 
   */
-  virtual VIO *do_io_write(Continuation *c = nullptr, int64_t nbytes = INT64_MAX, IOBufferReader *buf = 0, bool owner = false) = 0;
+  virtual VIO *do_io_write(Continuation *c = nullptr, int64_t nbytes = INT64_MAX, IOBufferReader *buf = nullptr,
+                           bool owner = false) = 0;
 
   /**
     Indicate that the VConnection is no longer needed.
@@ -374,38 +378,67 @@ public:
   int lerrno;
 };
 
-struct DummyVConnection : public VConnection {
-  virtual VIO *
+/**
+  Subclass of VConnection to provide support for user arguments
+
+  Inherited by DummyVConnection (down to INKContInternal) and NetVConnection
+*/
+class AnnotatedVConnection : public VConnection
+{
+  using self_type  = AnnotatedVConnection;
+  using super_type = VConnection;
+
+public:
+  AnnotatedVConnection(ProxyMutex *aMutex) : super_type(aMutex){};
+  AnnotatedVConnection(Ptr<ProxyMutex> &aMutex) : super_type(aMutex){};
+
+  void *
+  get_user_arg(unsigned ix) const
+  {
+    ink_assert(ix < user_args.size());
+    return this->user_args[ix];
+  };
+  void
+  set_user_arg(unsigned ix, void *arg)
+  {
+    ink_assert(ix < user_args.size());
+    user_args[ix] = arg;
+  };
+
+protected:
+  std::array<void *, TS_VCONN_MAX_USER_ARG> user_args;
+};
+
+struct DummyVConnection : public AnnotatedVConnection {
+  VIO *
   do_io_write(Continuation * /* c ATS_UNUSED */, int64_t /* nbytes ATS_UNUSED */, IOBufferReader * /* buf ATS_UNUSED */,
-              bool /* owner ATS_UNUSED */)
+              bool /* owner ATS_UNUSED */) override
   {
     ink_assert(!"VConnection::do_io_write -- "
                 "cannot use default implementation");
     return nullptr;
   }
 
-  virtual VIO *
-  do_io_read(Continuation * /* c ATS_UNUSED */, int64_t /* nbytes ATS_UNUSED */, MIOBuffer * /* buf ATS_UNUSED */)
+  VIO *
+  do_io_read(Continuation * /* c ATS_UNUSED */, int64_t /* nbytes ATS_UNUSED */, MIOBuffer * /* buf ATS_UNUSED */) override
   {
     ink_assert(!"VConnection::do_io_read -- "
                 "cannot use default implementation");
     return nullptr;
   }
 
-  virtual void
-  do_io_close(int /* alerrno ATS_UNUSED */)
+  void
+  do_io_close(int /* alerrno ATS_UNUSED */) override
   {
     ink_assert(!"VConnection::do_io_close -- "
                 "cannot use default implementation");
   }
 
-  virtual void do_io_shutdown(ShutdownHowTo_t /* howto ATS_UNUSED */)
+  void do_io_shutdown(ShutdownHowTo_t /* howto ATS_UNUSED */) override
   {
     ink_assert(!"VConnection::do_io_shutdown -- "
                 "cannot use default implementation");
   }
 
-  DummyVConnection(ProxyMutex *m) : VConnection(m) {}
+  DummyVConnection(ProxyMutex *m) : AnnotatedVConnection(m) {}
 };
-
-#endif /*_I_VConnection_h_*/

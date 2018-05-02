@@ -19,8 +19,7 @@
 // Public interface for creating all operators. Don't user the operator.h interface
 // directly!
 //
-#ifndef __OPERATOR_H__
-#define __OPERATOR_H__ 1
+#pragma once
 
 #include <string>
 
@@ -46,13 +45,13 @@ class Operator : public Statement
 public:
   Operator() : _mods(OPER_NONE) { TSDebug(PLUGIN_NAME_DBG, "Calling CTOR for Operator"); }
   OperModifiers get_oper_modifiers() const;
-  virtual void initialize(Parser &p);
+  void initialize(Parser &p) override;
 
   void
   do_exec(const Resources &res) const
   {
     exec(res);
-    if (NULL != _next) {
+    if (nullptr != _next) {
       static_cast<Operator *>(_next)->do_exec(res);
     }
   }
@@ -74,7 +73,7 @@ class OperatorHeaders : public Operator
 {
 public:
   OperatorHeaders() : _header("") { TSDebug(PLUGIN_NAME_DBG, "Calling CTOR for OperatorHeaders"); }
-  void initialize(Parser &p);
+  void initialize(Parser &p) override;
 
 protected:
   std::string _header;
@@ -91,7 +90,7 @@ class OperatorCookies : public Operator
 {
 public:
   OperatorCookies() : _cookie("") { TSDebug(PLUGIN_NAME_DBG, "Calling CTOR for OperatorCookies"); }
-  void initialize(Parser &p);
+  void initialize(Parser &p) override;
 
 protected:
   std::string _cookie;
@@ -99,5 +98,3 @@ protected:
 private:
   DISALLOW_COPY_AND_ASSIGN(OperatorCookies);
 };
-
-#endif // __OPERATOR_H

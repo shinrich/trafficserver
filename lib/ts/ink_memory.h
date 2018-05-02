@@ -20,8 +20,7 @@
   See the License for the specific language governing permissions and
   limitations under the License.
  */
-#ifndef _ink_memory_h_
-#define _ink_memory_h_
+#pragma once
 
 #include <ctype.h>
 #include <string.h>
@@ -206,7 +205,7 @@ template <typename T>
 inline void
 ink_zero(T &t)
 {
-  memset(&t, 0, sizeof(t));
+  memset(static_cast<void *>(&t), 0, sizeof(t));
 }
 
 /** Scoped resources.
@@ -387,27 +386,39 @@ struct SCOPED_FD_TRAITS {
     close(fd);
   }
 };
-}
+} // namespace detail
 /** File descriptor as a scoped resource.
  */
 class ats_scoped_fd : public ats_scoped_resource<detail::SCOPED_FD_TRAITS>
 {
 public:
-  typedef ats_scoped_resource<detail::SCOPED_FD_TRAITS> super; ///< Super type.
-  typedef ats_scoped_fd self;                                  ///< Self reference type.
+  typedef ats_scoped_resource<detail::SCOPED_FD_TRAITS> super_type; ///< Super type.
+  typedef ats_scoped_fd self_type;                                  ///< Self reference type.
 
   /// Default constructor - an empty container.
-  ats_scoped_fd() : super() {}
+  ats_scoped_fd() : super_type() {}
   /// Construct with contained resource.
-  explicit ats_scoped_fd(value_type rt) : super(rt) {}
+  explicit ats_scoped_fd(value_type rt) : super_type(rt) {}
+  /// Move ownership constructor.
+  ats_scoped_fd(self_type &&that) : super_type(that.release()) {}
   /** Place a new resource @a rt in the container.
       Any resource currently contained is destroyed.
       This object becomes the owner of @a rt.
   */
-  self &
+  self_type &
   operator=(value_type rt)
   {
-    super::operator=(rt);
+    super_type::operator=(rt);
+    return *this;
+  }
+  /** Move the resource from @a that to @a this.
+      If @a this has a resource, that resource is destroyed.
+      This object becomes the owner of the resource in @a that.
+  */
+  self_type &
+  operator=(self_type &&that)
+  {
+    super_type::operator=(that.release());
     return *this;
   }
 };
@@ -428,7 +439,7 @@ struct SCOPED_MALLOC_TRAITS {
   static bool
   isValid(T *t)
   {
-    return 0 != t;
+    return nullptr != t;
   }
   static void
   destroy(T *t)
@@ -450,7 +461,7 @@ struct SCOPED_OBJECT_TRAITS {
   static bool
   isValid(T *t)
   {
-    return 0 != t;
+    return nullptr != t;
   }
   static void
   destroy(T *t)
@@ -458,7 +469,7 @@ struct SCOPED_OBJECT_TRAITS {
     delete t;
   }
 };
-}
+} // namespace detail
 
 /** Specialization of @c ats_scoped_resource for strings.
     This contains an allocated string that is cleaned up if not explicitly released.
@@ -591,5 +602,3 @@ path_join(ats_scoped_str const &lhs, ats_scoped_str const &rhs)
   return x.release();
 }
 #endif /* __cplusplus */
-
-#endif

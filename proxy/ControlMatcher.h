@@ -84,8 +84,7 @@
 //     ControlMatcher.cc
 //
 
-#ifndef _CONTROL_MATCHER_H_
-#define _CONTROL_MATCHER_H_
+#pragma once
 
 #include "ts/DynArray.h"
 #include "ts/ink_hash_table.h"
@@ -133,21 +132,21 @@ public:
 class HttpRequestData : public RequestData
 {
 public:
-  inkcoreapi char *get_string();
-  inkcoreapi const char *get_host();
-  inkcoreapi sockaddr const *get_ip();
-  inkcoreapi sockaddr const *get_client_ip();
+  inkcoreapi char *get_string() override;
+  inkcoreapi const char *get_host() override;
+  inkcoreapi sockaddr const *get_ip() override;
+  inkcoreapi sockaddr const *get_client_ip() override;
 
   HttpRequestData()
-    : hdr(NULL),
-      hostname_str(NULL),
-      api_info(NULL),
+    : hdr(nullptr),
+      hostname_str(nullptr),
+      api_info(nullptr),
       xact_start(0),
       incoming_port(0),
-      tag(NULL),
+      tag(nullptr),
       internal_txn(false),
-      cache_info_lookup_url(NULL),
-      cache_info_parent_selection_url(NULL)
+      cache_info_lookup_url(nullptr),
+      cache_info_parent_selection_url(nullptr)
   {
     ink_zero(src_ip);
     ink_zero(dest_ip);
@@ -367,5 +366,3 @@ public:
   int m_numEntries         = 0;
   const char *matcher_name = "unknown"; // Used for Debug/Warning/Error messages
 };
-
-#endif /* _CONTROL_MATCHER_H_ */

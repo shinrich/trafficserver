@@ -58,10 +58,10 @@ verify_callback(int preverify_ok, X509_STORE_CTX *ctx)
     // Don't bother to check the hostname if we failed openssl's verification
     SSLDebug("verify error:num=%d:%s:depth=%d", err, X509_verify_cert_error_string(err), depth);
     if (netvc && netvc->options.clientVerificationFlag == 2) {
-      if (netvc->options.sni_servername)
+      if (netvc->options.sni_servername) {
         Warning("Hostname verification failed for (%s) but still continuing with the connection establishment",
                 netvc->options.sni_servername.get());
-      else {
+      } else {
         char buff[INET6_ADDRSTRLEN];
         ats_ip_ntop(netvc->get_remote_addr(), buff, INET6_ADDRSTRLEN);
         Warning("Server certificate verification failed for %s but still continuing with the connection establishment", buff);
@@ -124,16 +124,12 @@ SSLInitClientContext(const SSLConfigParams *params)
   meth       = SSLv23_client_method();
   client_ctx = SSL_CTX_new(meth);
 
-  // disable selected protocols
-  SSL_CTX_set_options(client_ctx, params->ssl_ctx_options);
   if (!client_ctx) {
     SSLError("cannot create new client context");
     ::exit(1);
   }
 
-  if (params->ssl_client_ctx_protocols) {
-    SSL_CTX_set_options(client_ctx, params->ssl_client_ctx_protocols);
-  }
+  SSL_CTX_set_options(client_ctx, params->ssl_client_ctx_options);
   if (params->client_cipherSuite != nullptr) {
     if (!SSL_CTX_set_cipher_list(client_ctx, params->client_cipherSuite)) {
       SSLError("invalid client cipher suite in records.config");

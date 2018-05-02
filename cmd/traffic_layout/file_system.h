@@ -25,9 +25,6 @@
 
 #include <string>
 
-// binary executable mode (for symlink)
-#define BIN_MODE 33261
-
 // some system does not have OPEN_MAX defined
 // size can be changed accordingly
 #define OPEN_MAX_FILE 256
@@ -38,9 +35,9 @@ void append_slash(std::string &path);
 void remove_slash(std::string &path);
 
 // some checks for directory exist or is it a directory
-bool exists(std::string const &dir);
+bool exists(const std::string &dir);
 
-bool is_directory(std::string const &directory);
+bool is_directory(const std::string &directory);
 
 // for file system
 bool create_directory(const std::string &dir);

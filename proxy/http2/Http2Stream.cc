@@ -436,8 +436,9 @@ Http2Stream::initiating_close()
       SCOPED_MUTEX_LOCK(lock, current_reader->mutex, this_ethread());
       current_reader->handleEvent(VC_EVENT_ERROR);
     } else if (!sent_write_complete) {
-      // Transaction is already gone.  Kill yourself
+      // Transaction is already gone or not started. Kill yourself
       do_io_close();
+      destroy();
     }
   }
 }
@@ -527,7 +528,8 @@ Http2Stream::restart_sending()
 void
 Http2Stream::update_write_request(IOBufferReader *buf_reader, int64_t write_len, bool call_update)
 {
-  if (!this->is_client_state_writeable() || closed || parent == nullptr || write_vio.mutex == nullptr) {
+  if (!this->is_client_state_writeable() || closed || parent == nullptr || write_vio.mutex == nullptr ||
+      (buf_reader == nullptr && write_len == 0)) {
     return;
   }
   if (this->get_thread() != this_ethread()) {
@@ -555,6 +557,9 @@ Http2Stream::update_write_request(IOBufferReader *buf_reader, int64_t write_len,
     }
   }
 
+  if (this->response_get_data_reader() == nullptr) {
+    return;
+  }
   int64_t bytes_avail = this->response_get_data_reader()->read_avail();
   if (write_vio.nbytes > 0 && write_vio.ntodo() > 0) {
     int64_t num_to_write = write_vio.ntodo();
@@ -592,15 +597,18 @@ Http2Stream::update_write_request(IOBufferReader *buf_reader, int64_t write_len,
         int len;
         const char *value = field->value_get(&len);
         if (memcmp(HTTP_VALUE_CLOSE, value, HTTP_LEN_CLOSE) == 0) {
-          SCOPED_MUTEX_LOCK(lock, this->mutex, this_ethread());
+          SCOPED_MUTEX_LOCK(lock, parent->connection_state.mutex, this_ethread());
           if (parent->connection_state.get_shutdown_state() == HTTP2_SHUTDOWN_NONE) {
             parent->connection_state.set_shutdown_state(HTTP2_SHUTDOWN_NOT_INITIATED);
           }
         }
       }
 
-      // Send the response header back
-      parent->connection_state.send_headers_frame(this);
+      {
+        SCOPED_MUTEX_LOCK(lock, parent->connection_state.mutex, this_ethread());
+        // Send the response header back
+        parent->connection_state.send_headers_frame(this);
+      }
 
       // See if the response is chunked.  Set up the dechunking logic if it is
       // Make sure to check if the chunk is complete and signal appropriately
@@ -608,8 +616,9 @@ Http2Stream::update_write_request(IOBufferReader *buf_reader, int64_t write_len,
 
       // If there is additional data, send it along in a data frame.  Or if this was header only
       // make sure to send the end of stream
+      is_done |= (write_vio.ntodo() + this->response_header.length_get()) == bytes_avail;
       if (this->response_is_data_available() || is_done) {
-        if ((write_vio.ntodo() + this->response_header.length_get()) == bytes_avail || is_done) {
+        if (is_done) {
           this->mark_body_done();
         }
 
@@ -662,6 +671,7 @@ void
 Http2Stream::push_promise(URL &url, const MIMEField *accept_encoding)
 {
   Http2ClientSession *parent = static_cast<Http2ClientSession *>(this->get_parent());
+  SCOPED_MUTEX_LOCK(lock, parent->connection_state.mutex, this_ethread());
   parent->connection_state.send_push_promise_frame(this, url, accept_encoding);
 }
 
@@ -671,10 +681,12 @@ Http2Stream::send_response_body(bool call_update)
   Http2ClientSession *parent = static_cast<Http2ClientSession *>(this->get_parent());
 
   if (Http2::stream_priority_enabled) {
+    SCOPED_MUTEX_LOCK(lock, parent->connection_state.mutex, this_ethread());
     parent->connection_state.schedule_stream(this);
     // signal_write_event() will be called from `Http2ConnectionState::send_data_frames_depends_on_priority()`
     // when write_vio is consumed
   } else {
+    SCOPED_MUTEX_LOCK(lock, parent->connection_state.mutex, this_ethread());
     parent->connection_state.send_data_frames(this);
     this->signal_write_event(call_update);
   }

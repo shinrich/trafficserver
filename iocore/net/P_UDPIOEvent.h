@@ -21,16 +21,15 @@
   limitations under the License.
  */
 
-#ifndef _UDP_IO_EVENT_H_
-#define _UDP_IO_EVENT_H_
+#pragma once
 // ugly -- just encapsulate the I/O result so that it can be passed
 // back to the caller via continuation handler.
 
 class UDPIOEvent : public Event
 {
 public:
-  UDPIOEvent() : fd(-1), err(0), m(0), handle(0), b(0), bytesTransferred(0){};
-  ~UDPIOEvent(){};
+  UDPIOEvent() : fd(-1), err(0), m(nullptr), handle(nullptr), b(nullptr), bytesTransferred(0){};
+  ~UDPIOEvent() override{};
 
   void
   setInfo(int fd_, const Ptr<IOBufferBlock> &b_, int bytesTransferred_, int errno_)
@@ -107,4 +106,3 @@ UDPIOEvent::free(UDPIOEvent *e)
   e->mutex = nullptr;
   UDPIOEventAllocator.free(e);
 }
-#endif

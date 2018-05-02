@@ -28,8 +28,7 @@
  *
  ****************************************************************************/
 
-#ifndef _IP_ALLOW_H_
-#define _IP_ALLOW_H_
+#pragma once
 
 #include "Main.h"
 #include "hdrs/HTTP.h"
@@ -114,7 +113,7 @@ public:
   enum match_key_t { SRC_ADDR, DEST_ADDR };
 
   IpAllow(const char *config_var, const char *name, const char *action_val);
-  ~IpAllow();
+  ~IpAllow() override;
   void Print();
   AclRecord *match(IpEndpoint const *ip, match_key_t key) const;
   AclRecord *match(sockaddr const *ip, match_key_t key) const;
@@ -186,5 +185,3 @@ IpAllow::match(sockaddr const *ip, match_key_t key) const
   map.contains(ip, &raw);
   return static_cast<AclRecord *>(raw);
 }
-
-#endif

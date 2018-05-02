@@ -45,6 +45,8 @@ static const struct NetCmdOperation requests[] = {
   /* RECONFIGURE                */ {1, {MGMT_MARSHALL_INT}},
   /* RESTART                    */ {2, {MGMT_MARSHALL_INT, MGMT_MARSHALL_INT}},
   /* BOUNCE                     */ {2, {MGMT_MARSHALL_INT, MGMT_MARSHALL_INT}},
+  /* STOP                       */ {2, {MGMT_MARSHALL_INT, MGMT_MARSHALL_INT}},
+  /* DRAIN                      */ {2, {MGMT_MARSHALL_INT, MGMT_MARSHALL_INT}},
   /* EVENT_RESOLVE              */ {2, {MGMT_MARSHALL_INT, MGMT_MARSHALL_STRING}},
   /* EVENT_GET_MLT              */ {1, {MGMT_MARSHALL_INT}},
   /* EVENT_ACTIVE               */ {2, {MGMT_MARSHALL_INT, MGMT_MARSHALL_STRING}},
@@ -59,6 +61,8 @@ static const struct NetCmdOperation requests[] = {
   /* SERVER_BACKTRACE           */ {2, {MGMT_MARSHALL_INT, MGMT_MARSHALL_INT}},
   /* RECORD_DESCRIBE_CONFIG     */ {3, {MGMT_MARSHALL_INT, MGMT_MARSHALL_STRING, MGMT_MARSHALL_INT}},
   /* LIFECYCLE_MESSAGE          */ {3, {MGMT_MARSHALL_INT, MGMT_MARSHALL_STRING, MGMT_MARSHALL_DATA}},
+  /* HOST_STATUS_HOST_UP        */ {2, {MGMT_MARSHALL_INT, MGMT_MARSHALL_STRING}},
+  /* HOST_STATUS_HOST_DOWN      */ {2, {MGMT_MARSHALL_INT, MGMT_MARSHALL_STRING}},
 };
 
 // Responses always begin with a TSMgmtError code, followed by additional fields.
@@ -71,6 +75,8 @@ static const struct NetCmdOperation responses[] = {
   /* RECONFIGURE                */ {1, {MGMT_MARSHALL_INT}},
   /* RESTART                    */ {1, {MGMT_MARSHALL_INT}},
   /* BOUNCE                     */ {1, {MGMT_MARSHALL_INT}},
+  /* STOP                       */ {1, {MGMT_MARSHALL_INT}},
+  /* DRAIN                      */ {1, {MGMT_MARSHALL_INT}},
   /* EVENT_RESOLVE              */ {1, {MGMT_MARSHALL_INT}},
   /* EVENT_GET_MLT              */ {2, {MGMT_MARSHALL_INT, MGMT_MARSHALL_STRING}},
   /* EVENT_ACTIVE               */ {2, {MGMT_MARSHALL_INT, MGMT_MARSHALL_INT}},
@@ -91,6 +97,8 @@ static const struct NetCmdOperation responses[] = {
     MGMT_MARSHALL_INT /* updatetype */, MGMT_MARSHALL_INT /* checktype */, MGMT_MARSHALL_INT /* source */,
     MGMT_MARSHALL_STRING /* checkexpr */}},
   /* LIFECYCLE_MESSAGE          */ {1, {MGMT_MARSHALL_INT}},
+  /* HOST_STATUS_UP             */ {1, {MGMT_MARSHALL_INT}},
+  /* HOST_STATUS_DOWN           */ {1, {MGMT_MARSHALL_INT}},
 };
 
 #define GETCMD(ops, optype, cmd)                           \
@@ -113,8 +121,9 @@ send_mgmt_request(const mgmt_message_sender &snd, OpType optype, ...)
   const MgmtMarshallType lenfield[] = {MGMT_MARSHALL_INT};
   const NetCmdOperation *cmd;
 
-  if (!snd.is_connected())
+  if (!snd.is_connected()) {
     return TS_ERR_NET_ESTABLISH; // no connection.
+  }
 
   GETCMD(requests, optype, cmd);
 
@@ -190,12 +199,16 @@ send_mgmt_error(int fd, OpType optype, TSMgmtError error)
   // Switch on operations, grouped by response format.
   switch (optype) {
   case OpType::BOUNCE:
+  case OpType::STOP:
+  case OpType::DRAIN:
   case OpType::EVENT_RESOLVE:
   case OpType::LIFECYCLE_MESSAGE:
   case OpType::PROXY_STATE_SET:
   case OpType::RECONFIGURE:
   case OpType::RESTART:
   case OpType::STATS_RESET_NODE:
+  case OpType::HOST_STATUS_UP:
+  case OpType::HOST_STATUS_DOWN:
   case OpType::STORAGE_DEVICE_CMD_OFFLINE:
     ink_release_assert(responses[static_cast<unsigned>(optype)].nfields == 1);
     return send_mgmt_response(fd, optype, &ecode);

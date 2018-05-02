@@ -36,8 +36,7 @@
 
 
  ****************************************************************************/
-#ifndef __P_NETACCEPT_H__
-#define __P_NETACCEPT_H__
+#pragma once
 
 #include <vector>
 #include "ts/ink_platform.h"
@@ -62,7 +61,7 @@ struct NetAcceptAction : public Action, public RefCountObj {
   Server *server;
 
   void
-  cancel(Continuation *cont = nullptr)
+  cancel(Continuation *cont = nullptr) override
   {
     Action::cancel(cont);
     server->close();
@@ -74,7 +73,7 @@ struct NetAcceptAction : public Action, public RefCountObj {
     return Action::operator=(acont);
   }
 
-  ~NetAcceptAction() { Debug("net_accept", "NetAcceptAction dying"); }
+  ~NetAcceptAction() override { Debug("net_accept", "NetAcceptAction dying"); }
 };
 
 //
@@ -112,10 +111,8 @@ struct NetAccept : public Continuation {
   void cancel();
 
   explicit NetAccept(const NetProcessor::AcceptOptions &);
-  virtual ~NetAccept() { action_ = nullptr; }
+  ~NetAccept() override { action_ = nullptr; }
 };
 
 extern Ptr<ProxyMutex> naVecMutex;
 extern std::vector<NetAccept *> naVec;
-
-#endif

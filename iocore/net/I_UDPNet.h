@@ -29,8 +29,7 @@
 
  ****************************************************************************/
 
-#ifndef __UDPNET_H_
-#define __UDPNET_H_
+#pragma once
 
 #include "ts/I_Version.h"
 #include "I_EventSystem.h"
@@ -45,7 +44,7 @@
 class UDPNetProcessor : public Processor
 {
 public:
-  virtual int start(int n_upd_threads, size_t stacksize) = 0;
+  int start(int n_upd_threads, size_t stacksize) override = 0;
 
   // this function was interanal intially.. this is required for public and
   // interface probably should change.
@@ -107,5 +106,3 @@ extern EventType ET_UDP;
 
 #include "I_UDPPacket.h"
 #include "I_UDPConnection.h"
-
-#endif //__UDPNET_H_

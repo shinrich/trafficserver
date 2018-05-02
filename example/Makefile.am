@@ -32,6 +32,7 @@ example_Plugins = \
 	blacklist_0.la \
 	blacklist_1.la \
 	bnull_transform.la \
+	request_buffer.la \
 	cache_scan.la \
 	file_1.la \
 	hello.la \
@@ -60,7 +61,9 @@ example_Plugins = \
 	thread_1.la \
 	txn_data_sink.la \
 	version.la \
-	disable_http2.la
+	disable_http2.la \
+	verify_cert.la \
+	vconn_args.la
 
 example_Plugins += \
 	cppapi/AsyncHttpFetch.la \
@@ -98,6 +101,7 @@ basic_auth_la_SOURCES = basic_auth/basic_auth.c
 blacklist_0_la_SOURCES = blacklist_0/blacklist_0.c
 blacklist_1_la_SOURCES = blacklist_1/blacklist_1.c
 bnull_transform_la_SOURCES = bnull_transform/bnull_transform.c
+request_buffer_la_SOURCES = request_buffer/request_buffer.c
 cache_scan_la_SOURCES = cache_scan/cache_scan.cc
 file_1_la_SOURCES = file_1/file_1.c
 hello_la_SOURCES = hello/hello.c
@@ -123,12 +127,14 @@ ssl_sni_la_LIBADD = $(libtsconfig)
 ssl_sni_whitelist_la_SOURCES = ssl_sni_whitelist/ssl_sni_whitelist.cc
 ssl_sni_whitelist_la_LIBADD = $(libtsconfig)
 disable_http2_la_SOURCES = disable_http2/disable_http2.cc
+verify_cert_la_SOURCES = verify_cert/verify_cert.cc
 statistic_la_SOURCES = statistic/statistic.cc
 thread_1_la_SOURCES = thread_1/thread_1.c
 txn_data_sink_la_SOURCES = txn_data_sink/txn_data_sink.c
 version_la_SOURCES = version/version.c
 redirect_1_la_SOURCES = redirect_1/redirect_1.c
 session_hooks_la_SOURCES = session_hooks/session_hooks.c
+vconn_args_la_SOURCES = vconn_args/vconn_args.cc
 
 cppapi_AsyncHttpFetchStreaming_la_SOURCES = cppapi/async_http_fetch_streaming/AsyncHttpFetchStreaming.cc
 cppapi_AsyncHttpFetch_la_SOURCES = cppapi/async_http_fetch/AsyncHttpFetch.cc
@@ -180,6 +186,6 @@ cppapi_WebSocket_la_LIBADD = $(libatscppapi)
 cppapi_boom_la_LIBADD = $(libatscppapi)
 cppapi_intercept_la_LIBADD = $(libatscppapi)
 
-tidy-local: $(DIST_SOURCES)
+clang-tidy-local: $(DIST_SOURCES)
 	$(CXX_Clang_Tidy)
 	$(CC_Clang_Tidy)

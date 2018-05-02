@@ -28,8 +28,7 @@
 
  ****************************************************************************/
 
-#ifndef __P_UDPNET_H_
-#define __P_UDPNET_H_
+#pragma once
 
 #include "ts/ink_platform.h"
 #include "I_UDPNet.h"
@@ -44,7 +43,7 @@ static inline PollCont *get_UDPPollCont(EThread *);
 class UDPNetHandler;
 
 struct UDPNetProcessorInternal : public UDPNetProcessor {
-  virtual int start(int n_udp_threads, size_t stacksize);
+  int start(int n_udp_threads, size_t stacksize) override;
   void udp_read_from_net(UDPNetHandler *nh, UDPConnection *uc);
   int udp_callback(UDPNetHandler *nh, UDPConnection *uc, EThread *thread);
 
@@ -341,5 +340,3 @@ get_UDPNetHandler(EThread *t)
 {
   return (UDPNetHandler *)ETHREAD_GET_PTR(t, udpNetInternal.udpNetHandler_offset);
 }
-
-#endif //__P_UDPNET_H_

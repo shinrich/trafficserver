@@ -25,8 +25,7 @@
   limitations under the License.
  */
 
-#ifndef __TS_MGMT_API_H__
-#define __TS_MGMT_API_H__
+#pragma once
 
 #include <stdbool.h>
 #include <stdint.h>
@@ -200,6 +199,17 @@ typedef enum {
   TS_RESTART_OPT_NONE  = 0x0,
   TS_RESTART_OPT_DRAIN = 0x02, /* Wait for traffic to drain before restarting. */
 } TSRestartOptionT;
+
+typedef enum {
+  TS_STOP_OPT_NONE = 0x0,
+  TS_STOP_OPT_DRAIN, /* Wait for traffic to drain before stopping. */
+} TSStopOptionT;
+
+typedef enum {
+  TS_DRAIN_OPT_NONE = 0x0,
+  TS_DRAIN_OPT_IDLE, /* Wait for idle from new connections before draining. */
+  TS_DRAIN_OPT_UNDO, /* Recover TS from drain mode */
+} TSDrainOptionT;
 
 /***************************************************************************
  * Structures
@@ -412,6 +422,18 @@ tsapi TSMgmtError TSActionDo(TSActionNeedT action);
  */
 tsapi TSMgmtError TSBounce(unsigned options);
 
+/* TSStop: stop the traffic_server process(es).
+ * Input: options - bitmask of TSRestartOptionT
+ * Output TSMgmtError
+ */
+tsapi TSMgmtError TSStop(unsigned options);
+
+/* TSDrain: drain requests of the traffic_server process.
+ * Input: options - TSDrainOptionT
+ * Output TSMgmtError
+ */
+tsapi TSMgmtError TSDrain(unsigned options);
+
 /* TSStorageDeviceCmdOffline: Request to make a cache storage device offline.
  * @arg dev Target device, specified by path to device.
  * @return Success.
@@ -467,7 +489,8 @@ tsapi TSMgmtError TSReadFromUrl(char *url, char **header, int *headerSize, char 
  * NOTE: header and headerSize can be NULL
  */
 tsapi TSMgmtError TSReadFromUrlEx(const char *url, char **header, int *headerSize, char **body, int *bodySize, int timeout);
-
+tsapi TSMgmtError TSHostStatusSetUp(const char *name);
+tsapi TSMgmtError TSHostStatusSetDown(const char *name);
 /*--- statistics operations -----------------------------------------------*/
 /* TSStatsReset: sets all the statistics variables to their default values
  * Outpue: TSErrr
@@ -637,5 +660,3 @@ tsapi TSMgmtError TSInvalidateFromCacheUrlRegex(TSString url_regex, TSString *li
 #ifdef __cplusplus
 }
 #endif /* __cplusplus */
-
-#endif /* __TS_MGMT_API_H__ */

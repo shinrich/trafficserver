@@ -21,8 +21,7 @@
   limitations under the License.
  */
 
-#ifndef PTR_H_FBBD7DC3_CA5D_4715_9162_5E4DDA93353F
-#define PTR_H_FBBD7DC3_CA5D_4715_9162_5E4DDA93353F
+#pragma once
 
 #include "ts/ink_atomic.h"
 
@@ -52,7 +51,7 @@ public:
     return;
   }
 
-  virtual ~RefCountObj() {}
+  ~RefCountObj() override {}
   RefCountObj &
   operator=(const RefCountObj &s)
   {
@@ -90,9 +89,6 @@ private:
   int m_refcount;
 };
 
-#define REF_COUNT_OBJ_REFCOUNT_INC(_x) (_x)->refcount_inc()
-#define REF_COUNT_OBJ_REFCOUNT_DEC(_x) (_x)->refcount_dec()
-
 ////////////////////////////////////////////////////////////////////////
 //
 // class Ptr
@@ -101,7 +97,7 @@ private:
 template <class T> class Ptr
 {
 public:
-  explicit Ptr(T *p = 0);
+  explicit Ptr(T *p = nullptr);
   Ptr(const Ptr<T> &);
   ~Ptr();
 
@@ -160,7 +156,7 @@ public:
   detach()
   {
     T *tmp = m_ptr;
-    m_ptr  = NULL;
+    m_ptr  = nullptr;
     return tmp;
   }
 
@@ -242,7 +238,7 @@ Ptr<T>::clear()
   if (m_ptr) {
     if (!m_ptr->refcount_dec())
       m_ptr->free();
-    m_ptr = NULL;
+    m_ptr = nullptr;
   }
 }
 
@@ -252,5 +248,3 @@ Ptr<T>::operator=(const Ptr<T> &src)
 {
   return (operator=(src.m_ptr));
 }
-
-#endif /* PTR_H_FBBD7DC3_CA5D_4715_9162_5E4DDA93353F */

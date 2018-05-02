@@ -58,9 +58,7 @@ send_connection_event(Continuation *cont, int event, void *edata)
   return cont->handleEvent(event, edata);
 }
 
-Http2ClientSession::Http2ClientSession()
-{
-}
+Http2ClientSession::Http2ClientSession() {}
 
 void
 Http2ClientSession::destroy()
@@ -175,7 +173,7 @@ Http2ClientSession::new_connection(NetVConnection *new_vc, MIOBuffer *iobuf, IOB
   this->mutex          = new_vc->mutex;
   this->in_destroy     = false;
 
-  this->connection_state.mutex = new_ProxyMutex();
+  this->connection_state.mutex = this->mutex;
 
   Http2SsnDebug("session born, netvc %p", this->client_vc);
 
@@ -345,6 +343,10 @@ Http2ClientSession::main_event_handler(int event, void *edata)
     ink_release_assert(0);
     retval = 0;
     break;
+  }
+
+  if (!this->is_draining()) {
+    this->connection_state.set_shutdown_state(HTTP2_SHUTDOWN_NONE);
   }
 
   // For a case we already checked Connection header and it didn't exist

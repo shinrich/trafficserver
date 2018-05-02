@@ -20,8 +20,7 @@
   See the License for the specific language governing permissions and
   limitations under the License.
  */
-#ifndef LOG_HOST_H
-#define LOG_HOST_H
+#pragma once
 
 class LogSock;
 class LogBuffer;
@@ -135,12 +134,12 @@ class LogHostList : public LogBufferSink
 {
 public:
   LogHostList();
-  ~LogHostList();
+  ~LogHostList() override;
 
   void add(LogHost *host, bool copy = true);
   unsigned count();
   void clear();
-  int preproc_and_try_delete(LogBuffer *lb);
+  int preproc_and_try_delete(LogBuffer *lb) override;
 
   LogHost *
   first()
@@ -164,5 +163,3 @@ public:
 private:
   Queue<LogHost> m_host_list;
 };
-
-#endif

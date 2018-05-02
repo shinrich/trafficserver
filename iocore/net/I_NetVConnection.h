@@ -22,8 +22,7 @@
 
  */
 
-#ifndef __NETVCONNECTION_H__
-#define __NETVCONNECTION_H__
+#pragma once
 
 #include "ts/ink_inet.h"
 #include "I_Action.h"
@@ -223,7 +222,7 @@ struct NetVCOptions {
     if (&that != this) {
       sni_servername    = nullptr; // release any current name.
       clientCertificate = nullptr;
-      memcpy(this, &that, sizeof(self));
+      memcpy(static_cast<void *>(this), &that, sizeof(self));
       if (that.sni_servername) {
         sni_servername.release(); // otherwise we'll free the source string.
         this->sni_servername = ats_strdup(that.sni_servername);
@@ -258,7 +257,7 @@ struct NetVCOptions {
   stream IO to be done based on a single read or write call.
 
 */
-class NetVConnection : public VConnection
+class NetVConnection : public AnnotatedVConnection
 {
 public:
   // How many bytes have been queued to the OS for sending by haven't been sent yet
@@ -293,7 +292,7 @@ public:
     @return vio
 
   */
-  virtual VIO *do_io_read(Continuation *c, int64_t nbytes, MIOBuffer *buf) = 0;
+  VIO *do_io_read(Continuation *c, int64_t nbytes, MIOBuffer *buf) override = 0;
 
   /**
     Initiates write. Thread-safe, may be called when not handling
@@ -329,7 +328,7 @@ public:
     @return vio pointer
 
   */
-  virtual VIO *do_io_write(Continuation *c, int64_t nbytes, IOBufferReader *buf, bool owner = false) = 0;
+  VIO *do_io_write(Continuation *c, int64_t nbytes, IOBufferReader *buf, bool owner = false) override = 0;
 
   /**
     Closes the vconnection. A state machine MUST call do_io_close()
@@ -347,7 +346,7 @@ public:
     @param lerrno VIO:CLOSE for regular close or VIO::ABORT for aborts
 
   */
-  virtual void do_io_close(int lerrno = -1) = 0;
+  void do_io_close(int lerrno = -1) override = 0;
 
   /**
     Shuts down read side, write side, or both. do_io_shutdown() can
@@ -365,7 +364,7 @@ public:
     @param howto IO_SHUTDOWN_READ, IO_SHUTDOWN_WRITE, IO_SHUTDOWN_READWRITE
 
   */
-  virtual void do_io_shutdown(ShutdownHowTo_t howto) = 0;
+  void do_io_shutdown(ShutdownHowTo_t howto) override = 0;
 
   /**
     Sends out of band messages over the connection. This function
@@ -572,13 +571,13 @@ public:
   EThread *thread;
 
   /// PRIVATE: The public interface is VIO::reenable()
-  virtual void reenable(VIO *vio) = 0;
+  void reenable(VIO *vio) override = 0;
 
   /// PRIVATE: The public interface is VIO::reenable()
-  virtual void reenable_re(VIO *vio) = 0;
+  void reenable_re(VIO *vio) override = 0;
 
   /// PRIVATE
-  virtual ~NetVConnection() {}
+  ~NetVConnection() override {}
   /**
     PRIVATE: instances of NetVConnection cannot be created directly
     by the state machines. The objects are created by NetProcessor
@@ -661,11 +660,11 @@ protected:
 };
 
 inline NetVConnection::NetVConnection()
-  : VConnection(nullptr),
+  : AnnotatedVConnection(nullptr),
     attributes(0),
     thread(nullptr),
-    got_local_addr(0),
-    got_remote_addr(0),
+    got_local_addr(false),
+    got_remote_addr(false),
     is_internal_request(false),
     is_transparent(false),
     write_buffer_empty_event(0),
@@ -680,5 +679,3 @@ NetVConnection::trapWriteBufferEmpty(int event)
 {
   write_buffer_empty_event = event;
 }
-
-#endif

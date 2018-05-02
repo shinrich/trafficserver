@@ -336,6 +336,7 @@ rcv_headers_frame(Http2ConnectionState &cstate, const Http2Frame &frame)
 
     // Set up the State Machine
     if (!empty_request) {
+      SCOPED_MUTEX_LOCK(stream_lock, stream->mutex, this_ethread());
       stream->new_transaction();
       // Send request header to SM
       stream->send_request(cstate);
@@ -716,6 +717,7 @@ rcv_window_update_frame(Http2ConnectionState &cstate, const Http2Frame &frame)
     ssize_t wnd = std::min(cstate.client_rwnd, stream->client_rwnd);
 
     if (!stream->is_closed() && stream->get_state() == Http2StreamState::HTTP2_STREAM_STATE_HALF_CLOSED_REMOTE && wnd > 0) {
+      SCOPED_MUTEX_LOCK(lock, stream->mutex, this_ethread());
       stream->restart_sending();
     }
   }
@@ -809,6 +811,7 @@ rcv_continuation_frame(Http2ConnectionState &cstate, const Http2Frame &frame)
     }
 
     // Set up the State Machine
+    SCOPED_MUTEX_LOCK(stream_lock, stream->mutex, this_ethread());
     stream->new_transaction();
     // Send request header to SM
     stream->send_request(cstate);
@@ -836,6 +839,9 @@ static const http2_frame_dispatch frame_handlers[HTTP2_FRAME_TYPE_MAX] = {
 int
 Http2ConnectionState::main_event_handler(int event, void *edata)
 {
+  if (edata == fini_event) {
+    fini_event = nullptr;
+  }
   ++recursion;
   switch (event) {
   // Initialize HTTP/2 Connection
@@ -910,7 +916,9 @@ Http2ConnectionState::main_event_handler(int event, void *edata)
         }
         this->send_goaway_frame(this->latest_streamid_in, error.code);
         this->ua_session->set_half_close_local_flag(true);
-        this_ethread()->schedule_imm_local((Continuation *)this, HTTP2_SESSION_EVENT_FINI);
+        if (fini_event == nullptr) {
+          fini_event = this_ethread()->schedule_imm_local((Continuation *)this, HTTP2_SESSION_EVENT_FINI);
+        }
 
         // The streams will be cleaned up by the HTTP2_SESSION_EVENT_FINI event
         // The Http2ClientSession will shutdown because connection_state.is_state_closed() will be true
@@ -960,9 +968,12 @@ Http2ConnectionState::main_event_handler(int event, void *edata)
   --recursion;
   if (recursion == 0 && ua_session && !ua_session->is_recursing()) {
     if (this->ua_session->ready_to_free()) {
-      this->ua_session->free();
-      // After the free, the Http2ConnectionState object is also freed.
-      // The Http2ConnectionState object is allocted within the Http2ClientSession object
+      MUTEX_TRY_LOCK(lock, this->ua_session->mutex, this_ethread());
+      if (lock.is_locked()) {
+        this->ua_session->free();
+        // After the free, the Http2ConnectionState object is also freed.
+        // The Http2ConnectionState object is allocted within the Http2ClientSession object
+      }
     }
   }
 
@@ -970,8 +981,11 @@ Http2ConnectionState::main_event_handler(int event, void *edata)
 }
 
 int
-Http2ConnectionState::state_closed(int /* event */, void * /* edata */)
+Http2ConnectionState::state_closed(int /* event */, void *edata)
 {
+  if (edata == fini_event) {
+    fini_event = nullptr;
+  }
   return 0;
 }
 
@@ -1043,7 +1057,7 @@ Http2ConnectionState::create_stream(Http2StreamId new_id, Http2Error &error)
   ++total_client_streams_count;
 
   new_stream->set_parent(ua_session);
-  new_stream->mutex                     = ua_session->mutex;
+  new_stream->mutex                     = new_ProxyMutex();
   new_stream->is_first_transaction_flag = get_stream_requests() == 0;
   increment_stream_requests();
   ua_session->get_netvc()->add_to_active_queue();
@@ -1085,6 +1099,7 @@ Http2ConnectionState::restart_streams()
       Http2Stream *next = static_cast<Http2Stream *>(s->link.next ? s->link.next : stream_list.head);
       if (!s->is_closed() && s->get_state() == Http2StreamState::HTTP2_STREAM_STATE_HALF_CLOSED_REMOTE &&
           std::min(this->client_rwnd, s->client_rwnd) > 0) {
+        SCOPED_MUTEX_LOCK(lock, s->mutex, this_ethread());
         s->restart_sending();
       }
       ink_assert(s != next);
@@ -1092,6 +1107,7 @@ Http2ConnectionState::restart_streams()
     }
     if (!s->is_closed() && s->get_state() == Http2StreamState::HTTP2_STREAM_STATE_HALF_CLOSED_REMOTE &&
         std::min(this->client_rwnd, s->client_rwnd) > 0) {
+      SCOPED_MUTEX_LOCK(lock, s->mutex, this_ethread());
       s->restart_sending();
     }
 
@@ -1197,8 +1213,8 @@ Http2ConnectionState::release_stream(Http2Stream *stream)
         // Can't do this because we just destroyed right here ^,
         // or we can use a local variable to do it.
         // ua_session = nullptr;
-      } else if (shutdown_state == HTTP2_SHUTDOWN_IN_PROGRESS) {
-        this_ethread()->schedule_imm_local((Continuation *)this, HTTP2_SESSION_EVENT_FINI);
+      } else if (shutdown_state == HTTP2_SHUTDOWN_IN_PROGRESS && fini_event == nullptr) {
+        fini_event = this_ethread()->schedule_imm_local((Continuation *)this, HTTP2_SESSION_EVENT_FINI);
       }
     }
   }
@@ -1209,6 +1225,7 @@ Http2ConnectionState::update_initial_rwnd(Http2WindowSize new_size)
 {
   // Update stream level window sizes
   for (Http2Stream *s = stream_list.head; s; s = static_cast<Http2Stream *>(s->link.next)) {
+    SCOPED_MUTEX_LOCK(lock, s->mutex, this_ethread());
     s->client_rwnd = new_size - (client_settings.get(HTTP2_SETTINGS_INITIAL_WINDOW_SIZE) - s->client_rwnd);
   }
 }
@@ -1438,7 +1455,9 @@ Http2ConnectionState::send_headers_frame(Http2Stream *stream)
   if (!stream->change_state(HTTP2_FRAME_TYPE_HEADERS, flags)) {
     this->send_goaway_frame(this->latest_streamid_in, Http2ErrorCode::HTTP2_ERROR_PROTOCOL_ERROR);
     this->ua_session->set_half_close_local_flag(true);
-    this_ethread()->schedule_imm_local((Continuation *)this, HTTP2_SESSION_EVENT_FINI);
+    if (fini_event == nullptr) {
+      fini_event = this_ethread()->schedule_imm_local((Continuation *)this, HTTP2_SESSION_EVENT_FINI);
+    }
 
     h2_hdr.destroy();
     ats_free(buf);
@@ -1573,6 +1592,8 @@ Http2ConnectionState::send_push_promise_frame(Http2Stream *stream, URL &url, con
     h2_hdr.destroy();
     return;
   }
+
+  SCOPED_MUTEX_LOCK(stream_lock, stream->mutex, this_ethread());
   if (Http2::stream_priority_enabled) {
     Http2DependencyTree::Node *node = this->dependency_tree->find(id);
     if (node != nullptr) {
@@ -1615,7 +1636,9 @@ Http2ConnectionState::send_rst_stream_frame(Http2StreamId id, Http2ErrorCode ec)
     if (!stream->change_state(HTTP2_FRAME_TYPE_RST_STREAM, 0)) {
       this->send_goaway_frame(this->latest_streamid_in, Http2ErrorCode::HTTP2_ERROR_PROTOCOL_ERROR);
       this->ua_session->set_half_close_local_flag(true);
-      this_ethread()->schedule_imm_local((Continuation *)this, HTTP2_SESSION_EVENT_FINI);
+      if (fini_event == nullptr) {
+        fini_event = this_ethread()->schedule_imm_local((Continuation *)this, HTTP2_SESSION_EVENT_FINI);
+      }
 
       return;
     }
@@ -1651,7 +1674,9 @@ Http2ConnectionState::send_settings_frame(const Http2ConnectionSettings &new_set
       if (!http2_write_settings(param, iov)) {
         this->send_goaway_frame(this->latest_streamid_in, Http2ErrorCode::HTTP2_ERROR_INTERNAL_ERROR);
         this->ua_session->set_half_close_local_flag(true);
-        this_ethread()->schedule_imm_local((Continuation *)this, HTTP2_SESSION_EVENT_FINI);
+        if (fini_event == nullptr) {
+          fini_event = this_ethread()->schedule_imm_local((Continuation *)this, HTTP2_SESSION_EVENT_FINI);
+        }
 
         return;
       }

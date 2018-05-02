@@ -64,6 +64,8 @@ char *SSLConfigParams::ssl_wire_trace_addr        = nullptr;
 IpAddr *SSLConfigParams::ssl_wire_trace_ip        = nullptr;
 int SSLConfigParams::ssl_wire_trace_percentage    = 0;
 char *SSLConfigParams::ssl_wire_trace_server_name = nullptr;
+int SSLConfigParams::async_handshake_enabled      = 0;
+char *SSLConfigParams::engine_conf_file           = nullptr;
 
 static ConfigUpdateHandler<SSLCertificateConfig> *sslCertUpdate;
 
@@ -95,7 +97,7 @@ SSLConfigParams::reset()
   client_ctx      = nullptr;
   clientCertLevel = client_verify_depth = verify_depth = clientVerify = 0;
   ssl_ctx_options                                                     = SSL_OP_NO_SSLv2 | SSL_OP_NO_SSLv3;
-  ssl_client_ctx_protocols                                            = SSL_OP_NO_SSLv2 | SSL_OP_NO_SSLv3;
+  ssl_client_ctx_options                                              = SSL_OP_NO_SSLv2 | SSL_OP_NO_SSLv3;
   ssl_session_cache                                                   = SSL_SESSION_CACHE_MODE_SERVER_ATS_IMPL;
   ssl_session_cache_size                                              = 1024 * 100;
   ssl_session_cache_num_buckets = 1024; // Sessions per bucket is ceil(ssl_session_cache_size / ssl_session_cache_num_buckets)
@@ -188,11 +190,11 @@ SSLConfigParams::initialize()
 #if TS_USE_SSLV3_CLIENT
   REC_ReadConfigInteger(client_ssl_options, "proxy.config.ssl.client.SSLv3");
   if (client_ssl_options)
-    ssl_client_ctx_protocols &= ~SSL_OP_NO_SSLv3;
+    ssl_client_ctx_options &= ~SSL_OP_NO_SSLv3;
 #endif
   REC_ReadConfigInteger(client_ssl_options, "proxy.config.ssl.client.TLSv1");
   if (!client_ssl_options) {
-    ssl_client_ctx_protocols |= SSL_OP_NO_TLSv1;
+    ssl_client_ctx_options |= SSL_OP_NO_TLSv1;
   }
 
 // These are not available in all versions of OpenSSL (e.g. CentOS6). Also see http://s.apache.org/TS-2355.
@@ -204,7 +206,7 @@ SSLConfigParams::initialize()
 
   REC_ReadConfigInteger(client_ssl_options, "proxy.config.ssl.client.TLSv1_1");
   if (!client_ssl_options) {
-    ssl_client_ctx_protocols |= SSL_OP_NO_TLSv1_1;
+    ssl_client_ctx_options |= SSL_OP_NO_TLSv1_1;
   }
 #endif
 #ifdef SSL_OP_NO_TLSv1_2
@@ -215,7 +217,7 @@ SSLConfigParams::initialize()
 
   REC_ReadConfigInteger(client_ssl_options, "proxy.config.ssl.client.TLSv1_2");
   if (!client_ssl_options) {
-    ssl_client_ctx_protocols |= SSL_OP_NO_TLSv1_2;
+    ssl_client_ctx_options |= SSL_OP_NO_TLSv1_2;
   }
 #endif
 
@@ -229,6 +231,7 @@ SSLConfigParams::initialize()
 #ifdef SSL_OP_NO_COMPRESSION
   /* OpenSSL >= 1.0 only */
   ssl_ctx_options |= SSL_OP_NO_COMPRESSION;
+  ssl_client_ctx_options |= SSL_OP_NO_COMPRESSION;
 #elif OPENSSL_VERSION_NUMBER >= 0x00908000L
   sk_SSL_COMP_zero(SSL_COMP_get_compression_methods());
 #endif
@@ -236,19 +239,23 @@ SSLConfigParams::initialize()
 // Enable ephemeral DH parameters for the case where we use a cipher with DH forward security.
 #ifdef SSL_OP_SINGLE_DH_USE
   ssl_ctx_options |= SSL_OP_SINGLE_DH_USE;
+  ssl_client_ctx_options |= SSL_OP_SINGLE_DH_USE;
 #endif
 
 #ifdef SSL_OP_SINGLE_ECDH_USE
   ssl_ctx_options |= SSL_OP_SINGLE_ECDH_USE;
+  ssl_client_ctx_options |= SSL_OP_SINGLE_ECDH_USE;
 #endif
 
   // Enable all SSL compatibility workarounds.
   ssl_ctx_options |= SSL_OP_ALL;
+  ssl_client_ctx_options |= SSL_OP_ALL;
 
 // According to OpenSSL source, applications must enable this if they support the Server Name extension. Since
 // we do, then we ought to enable this. Httpd also enables this unconditionally.
 #ifdef SSL_OP_NO_SESSION_RESUMPTION_ON_RENEGOTIATION
   ssl_ctx_options |= SSL_OP_NO_SESSION_RESUMPTION_ON_RENEGOTIATION;
+  ssl_client_ctx_options |= SSL_OP_NO_SESSION_RESUMPTION_ON_RENEGOTIATION;
 #endif
 
   REC_ReadConfigStringAlloc(serverCertChainFilename, "proxy.config.ssl.server.cert_chain.filename");
@@ -294,7 +301,8 @@ SSLConfigParams::initialize()
   REC_EstablishStaticConfigInt32(ssl_ocsp_request_timeout, "proxy.config.ssl.ocsp.request_timeout");
   REC_EstablishStaticConfigInt32(ssl_ocsp_update_period, "proxy.config.ssl.ocsp.update_period");
 
-  REC_ReadConfigInt32(ssl_handshake_timeout_in, "proxy.config.ssl.handshake_timeout_in");
+  REC_ReadConfigInt32(async_handshake_enabled, "proxy.config.ssl.async.handshake.enabled");
+  REC_ReadConfigStringAlloc(engine_conf_file, "proxy.config.ssl.engine.conf_file");
 
   // ++++++++++++++++++++++++ Client part ++++++++++++++++++++
   client_verify_depth = 7;
@@ -387,8 +395,9 @@ SSLConfigParams::printCTXmap() const
 {
   Vec<cchar *> keys;
   ctx_map.get_keys(keys);
-  for (size_t i = 0; i < keys.length(); i++)
+  for (size_t i = 0; i < keys.length(); i++) {
     Debug("ssl", "Client certificates in the map %s: %p", keys.get(i), ctx_map.get(keys.get(i)));
+  }
 }
 void
 SSLConfigParams::freeCTXmap() const

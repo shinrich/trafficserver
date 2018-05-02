@@ -20,6 +20,7 @@
   See the License for the specific language governing permissions and
   limitations under the License.
  */
+#include "HostStatus.h"
 #include "ParentConsistentHash.h"
 
 ParentConsistentHash::ParentConsistentHash(ParentRecord *parent_record)
@@ -54,6 +55,7 @@ ParentConsistentHash::ParentConsistentHash(ParentRecord *parent_record)
 
 ParentConsistentHash::~ParentConsistentHash()
 {
+  Debug("parent_select", "~ParentConsistentHash(): releasing hashes");
   delete chash[PRIMARY];
   delete chash[SECONDARY];
 }
@@ -115,6 +117,8 @@ ParentConsistentHash::selectParent(bool first_call, ParentResult *result, Reques
   uint64_t path_hash            = 0;
   uint32_t last_lookup;
   pRecord *prtmp = nullptr, *pRec = nullptr;
+  HostStatus &pStatus    = HostStatus::instance();
+  HostStatus_t host_stat = HostStatus_t::HOST_STATUS_INIT;
 
   Debug("parent_select", "ParentConsistentHash::%s(): Using a consistent hash parent selection strategy.", __func__);
   ink_assert(numParents(result) > 0 || result->rec->go_direct == true);
@@ -165,11 +169,13 @@ ParentConsistentHash::selectParent(bool first_call, ParentResult *result, Reques
       } while (prtmp && strcmp(prtmp->hostname, result->hostname) == 0);
     }
   }
-
+  host_stat = pStatus.getHostStatus(pRec->hostname);
   // didn't find a parent or the parent is marked unavailable.
-  if (!pRec || (pRec && !pRec->available)) {
+  if ((pRec && !pRec->available) || host_stat == HOST_STATUS_DOWN) {
     do {
-      if (pRec && !pRec->available) {
+      // check if the host is retryable.  It's retryable if the retry window has elapsed
+      // and the global host status is HOST_STATUS_UP
+      if (pRec && !pRec->available && host_stat == HOST_STATUS_UP) {
         Debug("parent_select", "Parent.failedAt = %u, retry = %u, xact_start = %u", (unsigned int)pRec->failedAt,
               (unsigned int)retry_time, (unsigned int)request_info->xact_start);
         if ((pRec->failedAt + retry_time) < request_info->xact_start) {
@@ -215,7 +221,8 @@ ParentConsistentHash::selectParent(bool first_call, ParentResult *result, Reques
         Debug("parent_select", "No available parents.");
         break;
       }
-    } while (!prtmp || !pRec->available);
+      host_stat = pStatus.getHostStatus(pRec->hostname);
+    } while (!prtmp || !pRec->available || host_stat == HOST_STATUS_DOWN);
   }
 
   // use the available or marked for retry parent.

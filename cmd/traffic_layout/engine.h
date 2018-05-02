@@ -29,6 +29,8 @@
 
 #define RUNROOT_WORD_LENGTH 10
 
+typedef std::unordered_map<std::string, std::string> RunrootMapType;
+
 // structure for informaiton of the runroot passing around
 struct RunrootEngine {
   // the parsing function for traffic runroot program
@@ -43,15 +45,17 @@ struct RunrootEngine {
   // the function of creating runroot
   void create_runroot();
 
+  // the function of verifying runroot (including fix)
+  void verify_runroot();
+
   // copy the stuff from original_root to ts_runroot
   // fill in the global map for yaml file emitting later
   void copy_runroot(const std::string &original_root, const std::string &ts_runroot);
 
   // the help message for runroot
-  void runroot_help_message(const bool runflag, const bool cleanflag);
+  void runroot_help_message(const bool runflag, const bool cleanflag, const bool verifyflag);
 
   // the pass in arguments
-  int _argc;
   std::vector<std::string> _argv;
   // flags for command line parsing
   bool help_flag    = false;
@@ -60,8 +64,18 @@ struct RunrootEngine {
   bool clean_flag   = false;
   bool force_flag   = false;
   bool abs_flag     = false;
+  bool verify_flag  = false;
+  bool fix_flag     = false;
+  // for parsing
+  int command_num = 0;
+
   // the path for create & remove
   std::string path;
+
+  // vector containing all directory names
+  std::vector<std::string> dir_vector = {"prefix",     "exec_prefix", "bindir", "sbindir",    "sysconfdir",
+                                         "datadir",    "includedir",  "libdir", "libexecdir", "localstatedir",
+                                         "runtimedir", "logdir",      "mandir", "cachedir"};
 
   // map for yaml file emit
   std::unordered_map<std::string, std::string> path_map;

@@ -21,20 +21,26 @@
  */
 
 #pragma once
-#ifndef ATSCPPAPI_TRANSACTIONPLUGIN_H_
-#define ATSCPPAPI_TRANSACTIONPLUGIN_H_
 
 #include <memory>
+#include <mutex>
+
 #include <atscppapi/Plugin.h>
 #include <atscppapi/Transaction.h>
-#include <atscppapi/Mutex.h>
 
 namespace atscppapi
 {
+#if !defined(ATSCPPAPI_MUTEX_DEFINED_)
+#define ATSCPPAPI_MUTEX_DEFINED_
+
+using Mutex = std::recursive_mutex;
+
+#endif
+
 namespace utils
 {
   class internal;
-} /* utils */
+} // namespace utils
 
 /**
  * @private
@@ -92,7 +98,7 @@ public:
    * @see Plugin
    */
   void registerHook(Plugin::HookType hook_type);
-  virtual ~TransactionPlugin();
+  ~TransactionPlugin() override;
 
   bool isWebsocket() const;
 
@@ -113,6 +119,4 @@ private:
   friend class utils::internal;
 };
 
-} /* atscppapi */
-
-#endif /* ATSCPPAPI_TRANSACTIONPLUGIN_H_ */
+} // end namespace atscppapi

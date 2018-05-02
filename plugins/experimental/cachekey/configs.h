@@ -21,8 +21,7 @@
  * @brief Plugin configuration (header file).
  */
 
-#ifndef PLUGINS_EXPERIMENTAL_CACHEKEY_CONFIGS_H_
-#define PLUGINS_EXPERIMENTAL_CACHEKEY_CONFIGS_H_
+#pragma once
 
 #include "pattern.h"
 #include "common.h"
@@ -86,10 +85,10 @@ protected:
 class ConfigQuery : public ConfigElements
 {
 public:
-  bool finalize();
+  bool finalize() override;
 
 private:
-  const String &name() const;
+  const String &name() const override;
   static const String _NAME;
 };
 
@@ -99,12 +98,12 @@ private:
 class ConfigHeaders : public ConfigElements
 {
 public:
-  bool finalize();
+  bool finalize() override;
 
   const StringSet &getInclude() const;
 
 private:
-  const String &name() const;
+  const String &name() const override;
   static const String _NAME;
 };
 
@@ -114,10 +113,10 @@ private:
 class ConfigCookies : public ConfigElements
 {
 public:
-  bool finalize();
+  bool finalize() override;
 
 private:
-  const String &name() const;
+  const String &name() const override;
   static const String _NAME;
 };
 
@@ -198,5 +197,3 @@ private:
   String _separator        = "/";   /**< @brief a separator used to separate the cache key elements extracted from the URI */
   CacheKeyUriType _uriType = REMAP; /**< @brief shows which URI the cache key will be based on */
 };
-
-#endif // PLUGINS_EXPERIMENTAL_CACHEKEY_CONFIGS_H_

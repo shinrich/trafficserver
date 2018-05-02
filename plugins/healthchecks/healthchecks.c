@@ -223,9 +223,8 @@ hc_thread(void *data ATS_UNUSED)
         struct inotify_event *event = (struct inotify_event *)&buffer[i];
         HCFileInfo *finfo           = g_config;
 
-        while (
-          finfo &&
-          !((event->wd == finfo->wd) || ((event->wd == finfo->dir->wd) && !strncmp(event->name, finfo->basename, event->len)))) {
+        while (finfo && !((event->wd == finfo->wd) ||
+                          ((event->wd == finfo->dir->wd) && !strncmp(event->name, finfo->basename, event->len)))) {
           finfo = finfo->_next;
         }
         if (finfo) {
@@ -450,7 +449,7 @@ hc_process_write(TSCont contp, TSEvent event, HCState *my_state)
     char buf[48];
     int len;
 
-    len = snprintf(buf, sizeof(buf) - 1, "Content-Length: %d\r\n\r\n", my_state->data->b_len);
+    len = snprintf(buf, sizeof(buf), "Content-Length: %d\r\n\r\n", my_state->data->b_len);
     my_state->output_bytes += add_data_to_resp(buf, len, my_state);
     if (my_state->data->b_len > 0) {
       my_state->output_bytes += add_data_to_resp(my_state->data->body, my_state->data->b_len, my_state);

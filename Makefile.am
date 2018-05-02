@@ -74,12 +74,10 @@ asf-distdir:
 	$(RM) -r -- $(distdir)/autom4te.cache $(distdir)/ci `find $(distdir) -name .git -o -name .gitignore -o -name .gitmodules`
 
 asf-dist-sign: asf-dist
-	md5sum -b $(distdir).tar.bz2 >$(distdir).tar.bz2.md5
 	sha512sum -b $(distdir).tar.bz2 >$(distdir).tar.bz2.sha512
 	gpg --armor --output $(distdir).tar.bz2.asc  --detach-sig $(distdir).tar.bz2
 
 asf-dist-sign-rc: asf-dist-rc
-	md5sum -b $(distdir)-rc$(RC).tar.bz2 >$(distdir)-rc$(RC).tar.bz2.md5
 	sha512sum -b $(distdir)-rc$(RC).tar.bz2 >$(distdir)-rc$(RC).tar.bz2.sha512
 	gpg --armor --output $(distdir)-rc$(RC).tar.bz2.asc  --detach-sig $(distdir)-rc$(RC).tar.bz2
 
@@ -158,6 +156,7 @@ help:
 	@echo 'asf-dist-sign    recreate source package, with checksums and signature'
 	@echo 'check            run the test suite, if any'
 	@echo 'clang-format     run clang-format over most C and C++ files (not git subtrees)'
+	@echo 'clang-tidy       run clang-tidy in fix-it mode'
 	@echo 'clean            remove whatever make created'
 	@echo 'dist             DEPRECATED: recreate source package'
 	@echo 'distcheck        verify dist by performing VPATH build and then distclean'
@@ -171,5 +170,4 @@ help:
 	@echo 'rat              produce a RAT licence compliance report of the source'
 	@echo 'rel-candidate    recreate a signed relelease candidate source package and a signed git tag'
 	@echo 'release          recreate a signed release source package and a signed git tag'
-	@echo 'tidy             run clang-tidy in fix-it mode'
 	@echo 'autopep8         run autopep8 over python files'

@@ -21,8 +21,7 @@
  *  limitations under the License.
  */
 
-#ifndef P_REFCOUNTCACHESERIALIZER_H_07545391_276D_4BD3_B0DD_EF6B0007071D
-#define P_REFCOUNTCACHESERIALIZER_H_07545391_276D_4BD3_B0DD_EF6B0007071D
+#pragma once
 
 #include "P_RefCountCache.h"
 
@@ -118,7 +117,7 @@ template <class C> RefCountCacheSerializer<C>::~RefCountCacheSerializer()
 
   // Note that we have to do the unlink before we send the completion event, otherwise
   // we could unlink the sync file out from under another serializer.
-  cont->handleEvent(REFCOUNT_CACHE_EVENT_SYNC, 0);
+  cont->handleEvent(REFCOUNT_CACHE_EVENT_SYNC, nullptr);
 }
 
 template <class C>
@@ -230,7 +229,7 @@ int
 RefCountCacheSerializer<C>::initialize_storage(int /* event */, Event *e)
 {
   this->fd = socketManager.open(this->tmp_filename.c_str(), O_TRUNC | O_RDWR | O_CREAT, 0644); // TODO: configurable perms
-  if (this->fd == -1) {
+  if (this->fd < 0) {
     Warning("Unable to create temporary file %s, unable to persist hostdb: %s", this->tmp_filename.c_str(), strerror(errno));
     delete this;
     return EVENT_DONE;
@@ -322,5 +321,3 @@ RefCountCacheSerializer<C>::write_to_disk(const void *ptr, size_t n_bytes)
   }
   return 0;
 }
-
-#endif /* P_REFCOUNTCACHESERIALIZER_H_07545391_276D_4BD3_B0DD_EF6B0007071D */

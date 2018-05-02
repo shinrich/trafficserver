@@ -26,7 +26,11 @@ Here we document various internal libraries whose use is encouraged by |ATS|
 development team.
 
 .. toctree::
-   :maxdepth: 2
+   :maxdepth: 1
 
-   memview.en
+   string_view.en
+   TextView.en
+   MemSpan.en
    scalar.en
+   buffer-writer.en
+   MemArena.en

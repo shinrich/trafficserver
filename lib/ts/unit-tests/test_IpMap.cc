@@ -37,11 +37,10 @@ void
 IpMapTestPrint(IpMap &map)
 {
   printf("IpMap Dump\n");
-  for (IpMap::iterator spot(map.begin()), limit(map.end()); spot != limit; ++spot) {
+  for (auto &spot : map) {
     ip_text_buffer ipb1, ipb2;
 
-    printf("%s - %s : %p\n", ats_ip_ntop(spot->min(), ipb1, sizeof ipb1), ats_ip_ntop(spot->max(), ipb2, sizeof(ipb2)),
-           spot->data());
+    printf("%s - %s : %p\n", ats_ip_ntop(spot.min(), ipb1, sizeof ipb1), ats_ip_ntop(spot.max(), ipb2, sizeof(ipb2)), spot.data());
   }
   printf("\n");
 }
@@ -54,13 +53,13 @@ class MapMarkedAt : public Catch::MatcherBase<IpMap>
 public:
   MapMarkedAt(IpEndpoint const &addr) : _addr(addr) {}
 
-  virtual bool
+  bool
   match(IpMap const &map) const override
   {
     return map.contains(&_addr);
   }
 
-  virtual std::string
+  std::string
   describe() const override
   {
     std::ostringstream ss;
@@ -85,14 +84,14 @@ class MapMarkedWith : public Catch::MatcherBase<IpMap>
 public:
   MapMarkedWith(IpEndpoint const &addr, void *mark) : _addr(addr), _mark(mark) {}
 
-  virtual bool
+  bool
   match(IpMap const &map) const override
   {
     void *mark = nullptr;
     return (_found_p = map.contains(&_addr, &mark)) && mark == _mark;
   }
 
-  virtual std::string
+  std::string
   describe() const override
   {
     std::ostringstream ss;

@@ -22,10 +22,8 @@
  */
 
 #pragma once
-#ifndef ATSCPPAPI_GZIPINFLATETRANSFORMATION_H_
-#define ATSCPPAPI_GZIPINFLATETRANSFORMATION_H_
 
-#include <string>
+#include <ts/string_view.h>
 #include "atscppapi/TransformationPlugin.h"
 
 namespace atscppapi
@@ -73,22 +71,20 @@ namespace transformations
      *
      * @param data the input data to decompress
      */
-    void consume(const std::string &);
+    void consume(ts::string_view) override;
 
     /**
      * Any TransformationPlugin must implement handleInputComplete(), this method will
      * finalize the gzip decompression.
      */
-    void handleInputComplete();
+    void handleInputComplete() override;
 
-    virtual ~GzipInflateTransformation();
+    ~GzipInflateTransformation() override;
 
   private:
     GzipInflateTransformationState *state_; /** Internal state for Gzip Deflate Transformations */
   };
 
-} /* transformations */
+} // namespace transformations
 
-} /* atscppapi */
-
-#endif /* ATSCPPAPI_GZIPINFLATETRANSFORMATION_H_ */
+} // namespace atscppapi

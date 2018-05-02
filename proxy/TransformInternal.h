@@ -21,8 +21,7 @@
   limitations under the License.
  */
 
-#ifndef __TRANSFORM_INTERNAL_H__
-#define __TRANSFORM_INTERNAL_H__
+#pragma once
 
 #include "HttpSM.h"
 #include "MIME.h"
@@ -38,12 +37,12 @@ public:
 
   int handle_event(int event, void *edata);
 
-  VIO *do_io_read(Continuation *c, int64_t nbytes, MIOBuffer *buf);
-  VIO *do_io_write(Continuation *c, int64_t nbytes, IOBufferReader *buf, bool owner = false);
-  void do_io_close(int lerrno = -1);
-  void do_io_shutdown(ShutdownHowTo_t howto);
+  VIO *do_io_read(Continuation *c, int64_t nbytes, MIOBuffer *buf) override;
+  VIO *do_io_write(Continuation *c, int64_t nbytes, IOBufferReader *buf, bool owner = false) override;
+  void do_io_close(int lerrno = -1) override;
+  void do_io_shutdown(ShutdownHowTo_t howto) override;
 
-  void reenable(VIO *vio);
+  void reenable(VIO *vio) override;
 
 public:
   TransformVConnection *m_tvc;
@@ -153,5 +152,3 @@ public:
 
 extern PrefetchProcessor prefetchProcessor;
 #endif // PREFETCH
-
-#endif /* __TRANSFORM_INTERNAL_H__ */

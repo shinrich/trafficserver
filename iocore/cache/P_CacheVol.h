@@ -21,8 +21,7 @@
   limitations under the License.
  */
 
-#ifndef _P_CACHE_VOL_H__
-#define _P_CACHE_VOL_H__
+#pragma once
 
 #define CACHE_BLOCK_SHIFT 9
 #define CACHE_BLOCK_SIZE (1 << CACHE_BLOCK_SHIFT) // 512, smallest sector size
@@ -58,7 +57,7 @@
 #define dir_offset_evac_bucket(_o) (_o / (EVACUATION_BUCKET_SIZE / CACHE_BLOCK_SIZE))
 #define dir_evac_bucket(_e) dir_offset_evac_bucket(dir_offset(_e))
 #define offset_evac_bucket(_d, _o) \
-  dir_offset_evac_bucket((offset_to_vol_offset(_d, _o)
+  dir_offset_evac_bucket((_d->offset_to_vol_offset(_o)
 
 // Documents
 
@@ -243,6 +242,23 @@ struct Vol : public Continuation {
   int within_hit_evacuate_window(Dir *dir);
   uint32_t round_to_approx_size(uint32_t l);
 
+  // inline functions
+  int headerlen();         // calculates the total length of the vol header and the freelist
+  int direntries();        // total number of dir entries
+  Dir *dir_segment(int s); // returns the first dir in the segment s
+  size_t dirlen();         // calculates the total length of header, directories and footer
+  int vol_out_of_phase_valid(Dir *e);
+
+  int vol_out_of_phase_agg_valid(Dir *e);
+  int vol_out_of_phase_write_valid(Dir *e);
+  int vol_in_phase_valid(Dir *e);
+  int vol_in_phase_agg_buf_valid(Dir *e);
+
+  off_t vol_offset(Dir *e);
+  off_t offset_to_vol_offset(off_t pos);
+  off_t vol_offset_to_offset(off_t pos);
+  off_t vol_relative_length(off_t start_offset);
+
   Vol() : Continuation(new_ProxyMutex())
   {
     open_dir.mutex = mutex;
@@ -251,7 +267,7 @@ struct Vol : public Continuation {
     SET_HANDLER(&Vol::aggWrite);
   }
 
-  ~Vol() { ats_memalign_free(agg_buffer); }
+  ~Vol() override { ats_memalign_free(agg_buffer); }
 };
 
 struct AIO_Callback_handler : public Continuation {
@@ -271,7 +287,7 @@ struct CacheVol {
   // per volume stats
   RecRawStatBlock *vol_rsb;
 
-  CacheVol() : vol_number(-1), scheme(0), size(0), num_vols(0), vols(nullptr), disk_vols(0), vol_rsb(0) {}
+  CacheVol() : vol_number(-1), scheme(0), size(0), num_vols(0), vols(nullptr), disk_vols(nullptr), vol_rsb(nullptr) {}
 };
 
 // Note : hdr() needs to be 8 byte aligned.
@@ -279,14 +295,14 @@ struct Doc {
   uint32_t magic;     // DOC_MAGIC
   uint32_t len;       // length of this fragment (including hlen & sizeof(Doc), unrounded)
   uint64_t total_len; // total length of document
-#ifndef TS_ENABLE_FIPS
-  CryptoHash first_key; ///< first key in object.
-  CryptoHash key;       ///< Key for this doc.
-#else
+#if TS_ENABLE_FIPS == 1
   // For FIPS CryptoHash is 256 bits vs. 128, and the 'first_key' must be checked first, so
   // ensure that the new 'first_key' overlaps the old 'first_key' and that the rest of the data layout
   // is the same by putting 'key' at the ned.
   CryptoHash first_key; ///< first key in object.
+#else
+  CryptoHash first_key; ///< first key in object.
+  CryptoHash key;       ///< Key for this doc.
 #endif
   uint32_t hlen;         ///< Length of this header.
   uint32_t doc_type : 8; ///< Doc type - indicates the format of this structure and its content.
@@ -297,7 +313,7 @@ struct Doc {
   uint32_t write_serial;
   uint32_t pinned; // pinned until
   uint32_t checksum;
-#ifdef TS_ENABLE_FIPS
+#if TS_ENABLE_FIPS == 1
   CryptoHash key; ///< Key for this doc.
 #endif
 
@@ -321,82 +337,82 @@ extern unsigned short *vol_hash_table;
 // inline Functions
 
 TS_INLINE int
-vol_headerlen(Vol *d)
+Vol::headerlen()
 {
-  return ROUND_TO_STORE_BLOCK(sizeof(VolHeaderFooter) + sizeof(uint16_t) * (d->segments - 1));
+  return ROUND_TO_STORE_BLOCK(sizeof(VolHeaderFooter) + sizeof(uint16_t) * (this->segments - 1));
+}
+
+TS_INLINE Dir *
+Vol::dir_segment(int s)
+{
+  return (Dir *)(((char *)this->dir) + (s * this->buckets) * DIR_DEPTH * SIZEOF_DIR);
 }
 
 TS_INLINE size_t
-vol_dirlen(Vol *d)
+Vol::dirlen()
 {
-  return vol_headerlen(d) + ROUND_TO_STORE_BLOCK(((size_t)d->buckets) * DIR_DEPTH * d->segments * SIZEOF_DIR) +
+  return this->headerlen() + ROUND_TO_STORE_BLOCK(((size_t)this->buckets) * DIR_DEPTH * this->segments * SIZEOF_DIR) +
          ROUND_TO_STORE_BLOCK(sizeof(VolHeaderFooter));
 }
 
 TS_INLINE int
-vol_direntries(Vol *d)
+Vol::direntries()
 {
-  return d->buckets * DIR_DEPTH * d->segments;
+  return this->buckets * DIR_DEPTH * this->segments;
 }
 
 TS_INLINE int
-vol_out_of_phase_valid(Vol *d, Dir *e)
+Vol::vol_out_of_phase_valid(Dir *e)
 {
-  return (dir_offset(e) - 1 >= ((d->header->agg_pos - d->start) / CACHE_BLOCK_SIZE));
+  return (dir_offset(e) - 1 >= ((this->header->agg_pos - this->start) / CACHE_BLOCK_SIZE));
 }
 
 TS_INLINE int
-vol_out_of_phase_agg_valid(Vol *d, Dir *e)
+Vol::vol_out_of_phase_agg_valid(Dir *e)
 {
-  return (dir_offset(e) - 1 >= ((d->header->agg_pos - d->start + AGG_SIZE) / CACHE_BLOCK_SIZE));
+  return (dir_offset(e) - 1 >= ((this->header->agg_pos - this->start + AGG_SIZE) / CACHE_BLOCK_SIZE));
 }
 
 TS_INLINE int
-vol_out_of_phase_write_valid(Vol *d, Dir *e)
+Vol::vol_out_of_phase_write_valid(Dir *e)
 {
-  return (dir_offset(e) - 1 >= ((d->header->write_pos - d->start) / CACHE_BLOCK_SIZE));
+  return (dir_offset(e) - 1 >= ((this->header->write_pos - this->start) / CACHE_BLOCK_SIZE));
 }
 
 TS_INLINE int
-vol_in_phase_valid(Vol *d, Dir *e)
+Vol::vol_in_phase_valid(Dir *e)
 {
-  return (dir_offset(e) - 1 < ((d->header->write_pos + d->agg_buf_pos - d->start) / CACHE_BLOCK_SIZE));
+  return (dir_offset(e) - 1 < ((this->header->write_pos + this->agg_buf_pos - this->start) / CACHE_BLOCK_SIZE));
 }
 
 TS_INLINE off_t
-vol_offset(Vol *d, Dir *e)
+Vol::vol_offset(Dir *e)
 {
-  return d->start + (off_t)dir_offset(e) * CACHE_BLOCK_SIZE - CACHE_BLOCK_SIZE;
+  return this->start + (off_t)dir_offset(e) * CACHE_BLOCK_SIZE - CACHE_BLOCK_SIZE;
 }
 
 TS_INLINE off_t
-offset_to_vol_offset(Vol *d, off_t pos)
+Vol::offset_to_vol_offset(off_t pos)
 {
-  return ((pos - d->start + CACHE_BLOCK_SIZE) / CACHE_BLOCK_SIZE);
+  return ((pos - this->start + CACHE_BLOCK_SIZE) / CACHE_BLOCK_SIZE);
 }
 
 TS_INLINE off_t
-vol_offset_to_offset(Vol *d, off_t pos)
+Vol::vol_offset_to_offset(off_t pos)
 {
-  return d->start + pos * CACHE_BLOCK_SIZE - CACHE_BLOCK_SIZE;
-}
-
-TS_INLINE Dir *
-vol_dir_segment(Vol *d, int s)
-{
-  return (Dir *)(((char *)d->dir) + (s * d->buckets) * DIR_DEPTH * SIZEOF_DIR);
+  return this->start + pos * CACHE_BLOCK_SIZE - CACHE_BLOCK_SIZE;
 }
 
 TS_INLINE int
-vol_in_phase_agg_buf_valid(Vol *d, Dir *e)
+Vol::vol_in_phase_agg_buf_valid(Dir *e)
 {
-  return (vol_offset(d, e) >= d->header->write_pos && vol_offset(d, e) < (d->header->write_pos + d->agg_buf_pos));
+  return (this->vol_offset(e) >= this->header->write_pos && this->vol_offset(e) < (this->header->write_pos + this->agg_buf_pos));
 }
 // length of the partition not including the offset of location 0.
 TS_INLINE off_t
-vol_relative_length(Vol *v, off_t start_offset)
+Vol::vol_relative_length(off_t start_offset)
 {
-  return (v->len + v->skip) - start_offset;
+  return (this->len + this->skip) - start_offset;
 }
 
 TS_INLINE uint32_t
@@ -441,7 +457,7 @@ evacuation_block_exists(Dir *dir, Vol *p)
   for (; b; b = b->link.next)
     if (dir_offset(&b->dir) == dir_offset(dir))
       return b;
-  return 0;
+  return nullptr;
 }
 
 TS_INLINE void
@@ -459,8 +475,8 @@ new_EvacuationBlock(EThread *t)
   EvacuationBlock *b      = THREAD_ALLOC(evacuationBlockAllocator, t);
   b->init                 = 0;
   b->readers              = 0;
-  b->earliest_evacuator   = 0;
-  b->evac_frags.link.next = 0;
+  b->earliest_evacuator   = nullptr;
+  b->evac_frags.link.next = nullptr;
   return b;
 }
 
@@ -500,5 +516,3 @@ Vol::round_to_approx_size(uint32_t l)
   uint32_t ll = round_to_approx_dir_size(l);
   return ROUND_TO_SECTOR(this, ll);
 }
-
-#endif /* _P_CACHE_VOL_H__ */

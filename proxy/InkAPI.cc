@@ -58,6 +58,7 @@
 #include "I_AIO.h"
 #include "I_Tasks.h"
 
+#include "P_OCSPStapling.h"
 #include "I_RecDefs.h"
 #include "I_RecCore.h"
 #include "I_Machine.h"
@@ -97,9 +98,10 @@ static std::type_info const &TYPE_INFO_MGMT_FLOAT = typeid(MgmtFloat);
 struct UserArg {
   /// Types of user args.
   enum Type {
-    TXN,  ///< Transaction based.
-    SSN,  ///< Session based
-    COUNT ///< Fake enum, # of valid entries.
+    TXN,   ///< Transaction based.
+    SSN,   ///< Session based
+    VCONN, ///< VConnection based
+    COUNT  ///< Fake enum, # of valid entries.
   };
 
   std::string name;        ///< Name of reserving plugin.
@@ -741,9 +743,7 @@ sdk_free_field_handle(TSMBuffer bufp, MIMEFieldSDKHandle *field_handle)
 // FileImpl
 //
 ////////////////////////////////////////////////////////////////////
-FileImpl::FileImpl() : m_fd(-1), m_mode(CLOSED), m_buf(nullptr), m_bufsize(0), m_bufpos(0)
-{
-}
+FileImpl::FileImpl() : m_fd(-1), m_mode(CLOSED), m_buf(nullptr), m_bufsize(0), m_bufpos(0) {}
 
 FileImpl::~FileImpl()
 {
@@ -2137,7 +2137,10 @@ TSUrlLengthGet(TSMBuffer bufp, TSMLoc obj)
 char *
 TSUrlStringGet(TSMBuffer bufp, TSMLoc obj, int *length)
 {
-  sdk_assert(sdk_sanity_check_mbuffer(bufp) == TS_SUCCESS);
+  // bufp is not actually used anymore, so it can be null.
+  if (bufp) {
+    sdk_assert(sdk_sanity_check_mbuffer(bufp) == TS_SUCCESS);
+  }
   sdk_assert(sdk_sanity_check_url_handle(obj) == TS_SUCCESS);
   sdk_assert(sdk_sanity_check_null_ptr((void *)length) == TS_SUCCESS);
 
@@ -5242,7 +5245,7 @@ TSHttpTxnRedirectRequest(TSHttpTxn txnp, TSMBuffer bufp, TSMLoc url_loc)
 /**
  * timeout is in msec
  * overrides as proxy.config.http.transaction_active_timeout_out
-**/
+ **/
 void
 TSHttpTxnActiveTimeoutSet(TSHttpTxn txnp, int timeout)
 {
@@ -5255,7 +5258,7 @@ TSHttpTxnActiveTimeoutSet(TSHttpTxn txnp, int timeout)
 /**
  * timeout is in msec
  * overrides as proxy.config.http.connect_attempts_timeout
-**/
+ **/
 void
 TSHttpTxnConnectTimeoutSet(TSHttpTxn txnp, int timeout)
 {
@@ -5268,7 +5271,7 @@ TSHttpTxnConnectTimeoutSet(TSHttpTxn txnp, int timeout)
 /**
  * timeout is in msec
  * overrides as proxy.config.dns.lookup_timeout
-**/
+ **/
 void
 TSHttpTxnDNSTimeoutSet(TSHttpTxn txnp, int timeout)
 {
@@ -5282,7 +5285,7 @@ TSHttpTxnDNSTimeoutSet(TSHttpTxn txnp, int timeout)
 /**
  * timeout is in msec
  * overrides as proxy.config.http.transaction_no_activity_timeout_out
-**/
+ **/
 void
 TSHttpTxnNoActivityTimeoutSet(TSHttpTxn txnp, int timeout)
 {
@@ -5561,7 +5564,7 @@ TSHttpTxnOutgoingAddrSet(TSHttpTxn txnp, const struct sockaddr *addr)
 
   sm->ua_txn->set_outbound_port(ats_ip_port_host_order(addr));
   sm->ua_txn->set_outbound_ip(IpAddr(addr));
-  return TS_ERROR;
+  return TS_SUCCESS;
 }
 
 sockaddr const *
@@ -5926,14 +5929,16 @@ TSHttpArgIndexReserve(UserArg::Type type, const char *name, const char *descript
   sdk_assert(sdk_sanity_check_null_ptr(name) == TS_SUCCESS);
   sdk_assert(0 <= type && type < UserArg::Type::COUNT);
 
-  int idx = UserArgIdx[type]++;
+  int idx   = UserArgIdx[type]++;
+  int limit = (type == UserArg::Type::VCONN) ? TS_VCONN_MAX_USER_ARG : TS_HTTP_MAX_USER_ARG;
 
-  if (idx < TS_HTTP_MAX_USER_ARG) {
+  if (idx < limit) {
     UserArg &arg(UserArgTable[type][idx]);
     arg.name = name;
-    if (description)
+    if (description) {
       arg.description = description;
-    *ptr_idx          = idx;
+    }
+    *ptr_idx = idx;
 
     return TS_SUCCESS;
   }
@@ -6015,6 +6020,24 @@ TSHttpSsnArgIndexNameLookup(const char *name, int *arg_idx, const char **descrip
   return TSHttpArgIndexNameLookup(UserArg::SSN, name, arg_idx, description);
 }
 
+TSReturnCode
+TSVConnArgIndexReserve(const char *name, const char *description, int *arg_idx)
+{
+  return TSHttpArgIndexReserve(UserArg::VCONN, name, description, arg_idx);
+}
+
+TSReturnCode
+TSVConnArgIndexLookup(int arg_idx, const char **name, const char **description)
+{
+  return TSHttpArgIndexLookup(UserArg::VCONN, arg_idx, name, description);
+}
+
+TSReturnCode
+TSVConnArgIndexNameLookup(const char *name, int *arg_idx, const char **description)
+{
+  return TSHttpArgIndexNameLookup(UserArg::VCONN, name, arg_idx, description);
+}
+
 void
 TSHttpTxnArgSet(TSHttpTxn txnp, int arg_idx, void *arg)
 {
@@ -6054,6 +6077,25 @@ TSHttpSsnArgGet(TSHttpSsn ssnp, int arg_idx)
 
   ProxyClientSession *cs = reinterpret_cast<ProxyClientSession *>(ssnp);
   return cs->get_user_arg(arg_idx);
+}
+
+void
+TSVConnArgSet(TSVConn connp, int arg_idx, void *arg)
+{
+  sdk_assert(sdk_sanity_check_iocore_structure(connp) == TS_SUCCESS);
+  sdk_assert(arg_idx >= 0 && arg_idx < TS_VCONN_MAX_USER_ARG);
+  AnnotatedVConnection *avc = reinterpret_cast<AnnotatedVConnection *>(connp);
+  avc->set_user_arg(arg_idx, arg);
+}
+
+void *
+TSVConnArgGet(TSVConn connp, int arg_idx)
+{
+  sdk_assert(sdk_sanity_check_iocore_structure(connp) == TS_SUCCESS);
+  sdk_assert(arg_idx >= 0 && arg_idx < TS_VCONN_MAX_USER_ARG);
+
+  AnnotatedVConnection *avc = reinterpret_cast<AnnotatedVConnection *>(connp);
+  return avc->get_user_arg(arg_idx);
 }
 
 void
@@ -6719,9 +6761,9 @@ TSVConn
 TSTransformCreate(TSEventFunc event_funcp, TSHttpTxn txnp)
 {
   sdk_assert(sdk_sanity_check_txn(txnp) == TS_SUCCESS);
-  // TODO: This is somewhat of a leap of faith, but I think a TSHttpTxn is just another
-  // fancy continuation?
-  return TSVConnCreate(event_funcp, TSContMutexGet(reinterpret_cast<TSCont>(txnp)));
+
+  return TSVConnCreate(event_funcp,
+                       reinterpret_cast<TSMutex>(static_cast<Continuation *>(reinterpret_cast<HttpSM *>(txnp))->getMutex()));
 }
 
 TSVConn
@@ -7744,8 +7786,9 @@ TSHttpTxnServerPush(TSHttpTxn txnp, const char *url, int url_len)
   HttpSM *sm          = reinterpret_cast<HttpSM *>(txnp);
   Http2Stream *stream = dynamic_cast<Http2Stream *>(sm->ua_txn);
   if (stream) {
-    Http2ClientSession *parent = static_cast<Http2ClientSession *>(stream->get_parent());
-    if (!parent->is_url_pushed(url, url_len)) {
+    Http2ClientSession *ua_session = static_cast<Http2ClientSession *>(stream->get_parent());
+    SCOPED_MUTEX_LOCK(lock, ua_session->mutex, this_ethread());
+    if (!ua_session->connection_state.is_state_closed() && !ua_session->is_url_pushed(url, url_len)) {
       HTTPHdr *hptr = &(sm->t_state.hdr_info.client_request);
       TSMLoc obj    = reinterpret_cast<TSMLoc>(hptr->m_http);
 
@@ -7753,7 +7796,7 @@ TSHttpTxnServerPush(TSHttpTxn txnp, const char *url, int url_len)
       MIMEField *f    = mime_hdr_field_find(mh, MIME_FIELD_ACCEPT_ENCODING, MIME_LEN_ACCEPT_ENCODING);
       stream->push_promise(url_obj, f);
 
-      parent->add_url_to_pushed_table(url, url_len);
+      ua_session->add_url_to_pushed_table(url, url_len);
     }
   }
   url_obj.destroy();
@@ -8111,6 +8154,9 @@ _conf_to_memberp(TSOverridableConfigKey conf, OverridableHttpConfigParams *overr
   case TS_CONFIG_HTTP_POST_CHECK_CONTENT_LENGTH_ENABLED:
     ret = _memberp_to_generic(&overridableHttpConfig->post_check_content_length_enabled, typep);
     break;
+  case TS_CONFIG_HTTP_REQUEST_BUFFER_ENABLED:
+    ret = _memberp_to_generic(&overridableHttpConfig->request_buffer_enabled, typep);
+    break;
   case TS_CONFIG_HTTP_GLOBAL_USER_AGENT_HEADER:
     ret = _memberp_to_generic(&overridableHttpConfig->global_user_agent_header, typep);
     break;
@@ -8226,7 +8272,7 @@ _conf_to_memberp(TSOverridableConfigKey conf, OverridableHttpConfigParams *overr
 }
 
 /* APIs to manipulate the overridable configuration options.
-*/
+ */
 TSReturnCode
 TSHttpTxnConfigIntSet(TSHttpTxn txnp, TSOverridableConfigKey conf, TSMgmtInt value)
 {
@@ -8591,6 +8637,8 @@ TSHttpTxnConfigFind(const char *name, int length, TSOverridableConfigKey *conf, 
     case 'd':
       if (!strncmp(name, "proxy.config.http.forward_connect_method", length)) {
         cnf = TS_CONFIG_HTTP_FORWARD_CONNECT_METHOD;
+      } else if (!strncmp(name, "proxy.config.http.request_buffer_enabled", length)) {
+        cnf = TS_CONFIG_HTTP_REQUEST_BUFFER_ENABLED;
       }
       break;
     case 'e':
@@ -9099,8 +9147,7 @@ TSPluginDescriptorAccept(TSCont contp)
   Action *action = nullptr;
 
   HttpProxyPort::Group &proxy_ports = HttpProxyPort::global();
-  for (int i = 0, n = proxy_ports.size(); i < n; ++i) {
-    HttpProxyPort &port = proxy_ports[i];
+  for (auto &port : proxy_ports) {
     if (port.isPlugin()) {
       NetProcessor::AcceptOptions net(make_net_accept_options(&port, -1 /* nthreads */));
       action = netProcessor.main_accept((INKContInternal *)contp, port.m_fd, net);
@@ -9239,12 +9286,19 @@ TSSslContextFindByAddr(struct sockaddr const *addr)
 }
 
 tsapi TSSslContext
-TSSslServerContextCreate()
+TSSslServerContextCreate(TSSslX509 cert, const char *certname)
 {
   TSSslContext ret        = nullptr;
   SSLConfigParams *config = SSLConfig::acquire();
   if (config != nullptr) {
     ret = reinterpret_cast<TSSslContext>(SSLCreateServerContext(config));
+    if (ret && SSLConfigParams::ssl_ocsp_enabled && cert && certname) {
+      if (SSL_CTX_set_tlsext_status_cb(reinterpret_cast<SSL_CTX *>(ret), ssl_callback_ocsp_stapling)) {
+        if (!ssl_stapling_init_cert(reinterpret_cast<SSL_CTX *>(ret), reinterpret_cast<X509 *>(cert), certname)) {
+          Warning("fail to configure SSL_CTX for OCSP Stapling info for certificate at %s", (const char *)certname);
+        }
+      }
+    }
     SSLConfig::release(config);
   }
   return ret;
@@ -9356,7 +9410,7 @@ extern SSLSessionCache *session_cache; // declared extern in P_SSLConfig.h
 TSSslSession
 TSSslSessionGet(const TSSslSessionID *session_id)
 {
-  SSL_SESSION *session = NULL;
+  SSL_SESSION *session = nullptr;
   if (session_id && session_cache) {
     session_cache->getSession(reinterpret_cast<const SSLSessionID &>(*session_id), &session);
   }
@@ -9585,4 +9639,52 @@ const char *
 TSRegisterProtocolTag(const char *tag)
 {
   return nullptr;
+}
+
+namespace
+{
+// Function that contains the common logic for TSRemapFrom/ToUrlGet().
+//
+TSReturnCode
+remapUrlGet(TSHttpTxn txnp, TSMLoc *urlLocp, URL *(UrlMappingContainer::*mfp)() const)
+{
+  sdk_assert(sdk_sanity_check_txn(txnp) == TS_SUCCESS);
+  sdk_assert(sdk_sanity_check_null_ptr(urlLocp) == TS_SUCCESS);
+  HttpSM *sm = reinterpret_cast<HttpSM *>(txnp);
+
+  URL *url = (sm->t_state.url_map.*mfp)();
+  if (url == nullptr) {
+    return TS_ERROR;
+  }
+
+  auto urlImpl = url->m_url_impl;
+  if (urlImpl == nullptr) {
+    return TS_ERROR;
+  }
+
+  *urlLocp = reinterpret_cast<TSMLoc>(urlImpl);
+
+  return TS_SUCCESS;
+}
+
+} // end anonymous namespace
+
+tsapi TSReturnCode
+TSRemapFromUrlGet(TSHttpTxn txnp, TSMLoc *urlLocp)
+{
+  return remapUrlGet(txnp, urlLocp, &UrlMappingContainer::getFromURL);
+}
+
+tsapi TSReturnCode
+TSRemapToUrlGet(TSHttpTxn txnp, TSMLoc *urlLocp)
+{
+  return remapUrlGet(txnp, urlLocp, &UrlMappingContainer::getToURL);
+}
+
+tsapi TSIOBufferReader
+TSHttpTxnPostBufferReaderGet(TSHttpTxn txnp)
+{
+  sdk_assert(sdk_sanity_check_txn(txnp) == TS_SUCCESS);
+  HttpSM *sm = (HttpSM *)txnp;
+  return (TSIOBufferReader)sm->get_postbuf_clone_reader();
 }

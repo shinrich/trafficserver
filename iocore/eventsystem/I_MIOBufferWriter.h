@@ -1,6 +1,3 @@
-#if !defined I_MIOBUFFERWRITER_H_
-#define I_MIOBUFFERWRITER_H_
-
 /** @file
 
     Buffer Writer for an MIOBuffer.
@@ -23,6 +20,8 @@
     See the License for the specific language governing permissions and
     limitations under the License.
  */
+
+#pragma once
 
 #include <cstring>
 
@@ -112,7 +111,7 @@ public:
   // This function should not be called if no auxiliary buffer is available.
   //
   MIOBufferWriter &
-  write(size_t n) override
+  fill(size_t n) override
   {
     if (n) {
       IOBufferBlock *iobbPtr = _miob.first_write_block();
@@ -169,6 +168,6 @@ private:
   {
     _miob.add_block();
   }
+  // INTERNAL - Overload removed, make sure it's not used.
+  MIOBufferWriter &write(size_t n);
 };
-
-#endif // include once

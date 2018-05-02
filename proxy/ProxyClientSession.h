@@ -21,8 +21,7 @@
   limitations under the License.
  */
 
-#ifndef __PROXY_CLIENT_SESSION_H__
-#define __PROXY_CLIENT_SESSION_H__
+#pragma once
 
 #include <ts/ink_platform.h>
 #include <ts/ink_resolver.h>
@@ -30,8 +29,6 @@
 #include "P_Net.h"
 #include "InkAPIInternal.h"
 #include "http/HttpServerSession.h"
-
-extern bool http_client_session_draining;
 
 // Emit a debug message conditional on whether this particular client session
 // has debugging enabled. This should only be called from within a client session
@@ -125,7 +122,11 @@ public:
   bool
   is_draining() const
   {
-    return http_client_session_draining;
+    RecInt draining;
+    if (RecGetRecordInt("proxy.node.config.draining", &draining) != REC_ERR_OKAY) {
+      return false;
+    }
+    return draining != 0;
   }
 
   // Initiate an API hook invocation.
@@ -159,6 +160,24 @@ public:
   // Indicate we are done with a transaction.
   virtual void release(ProxyClientTransaction *trans) = 0;
 
+  virtual in_port_t
+  get_outbound_port() const
+  {
+    return outbound_port;
+  }
+
+  virtual IpAddr
+  get_outbound_ip4() const
+  {
+    return outbound_ip4;
+  }
+
+  virtual IpAddr
+  get_outbound_ip6() const
+  {
+    return outbound_ip6;
+  }
+
   int64_t
   connection_id() const
   {
@@ -173,7 +192,7 @@ public:
   virtual HttpServerSession *
   get_server_session() const
   {
-    return NULL;
+    return nullptr;
   }
 
   TSHttpHookID
@@ -200,7 +219,7 @@ public:
   bool
   is_client_closed() const
   {
-    return get_netvc() == NULL;
+    return get_netvc() == nullptr;
   }
 
   virtual int
@@ -237,6 +256,13 @@ public:
 
   /// acl record - cache IpAllow::match() call
   const AclRecord *acl_record = nullptr;
+
+  /// Local address for outbound connection.
+  IpAddr outbound_ip4;
+  /// Local address for outbound connection.
+  IpAddr outbound_ip6;
+  /// Local port for outbound connection.
+  in_port_t outbound_port{0};
 
   /// DNS resolution preferences.
   HostResStyle host_res_style = HOST_RES_IPV4;
@@ -276,5 +302,3 @@ private:
   // aborts.
   bool m_active = false;
 };
-
-#endif // __PROXY_CLIENT_SESSION_H__

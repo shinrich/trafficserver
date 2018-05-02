@@ -22,8 +22,7 @@
 
  */
 
-#ifndef __I_NETPROCESSOR_H__
-#define __I_NETPROCESSOR_H__
+#pragma once
 
 #include "I_EventSystem.h"
 #include "I_Socks.h"
@@ -210,7 +209,7 @@ public:
   NetProcessor(){};
 
   /** Private destructor. */
-  virtual ~NetProcessor(){};
+  ~NetProcessor() override{};
 
   /** This is MSS for connections we accept (client connections). */
   static int accept_mss;
@@ -269,5 +268,3 @@ extern inkcoreapi NetProcessor &netProcessor;
 
 */
 extern inkcoreapi NetProcessor &sslNetProcessor;
-
-#endif

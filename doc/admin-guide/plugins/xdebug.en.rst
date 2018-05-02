@@ -54,6 +54,12 @@ Diags
     transaction specific diagnostics for the transaction. This also requires
     that :ts:cv:`proxy.config.diags.debug.enabled` is set to ``1``.
 
+log-headers
+    If the ``log-headers`` is requested while :ts:cv:`proxy.config.diags.debug.tags` 
+    is set to ``xdebug.headers`` and :ts:cv:`proxy.config.diags.debug.enabled` is set to ``1``, 
+    then all client and server, request and response headers are logged. 
+    Also, the ``X-Debug: log-headers`` header is always added to the upstream request.
+
 X-Cache-Key
     The ``X-Cache-Key`` header contains the URL that identifies the HTTP object in the
     Traffic Server cache. This header is particularly useful if a custom cache
@@ -87,3 +93,7 @@ X-Milestones
 X-Transaction-ID
     A unique transaction ID, which identifies this request / transaction. This
     matches the log field format that is also available, %<cruuid>.
+
+X-Remap
+    If the URL was remapped for a request, this header gives the *to* and *from* field from the line in remap.config that caused
+    the URL to be remapped.

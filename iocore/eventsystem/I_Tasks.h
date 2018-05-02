@@ -22,8 +22,7 @@
 
  */
 
-#if !defined(I_Tasks_h)
-#define I_Tasks_h
+#pragma once
 
 #include "I_EventSystem.h"
 
@@ -32,9 +31,7 @@ extern EventType ET_TASK;
 class TasksProcessor : public Processor
 {
 public:
-  int start(int task_threads, size_t stacksize = DEFAULT_STACKSIZE);
+  int start(int task_threads, size_t stacksize = DEFAULT_STACKSIZE) override;
 };
 
 extern TasksProcessor tasksProcessor;
-
-#endif

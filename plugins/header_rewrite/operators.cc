@@ -26,6 +26,7 @@
 
 #include "operators.h"
 #include "expander.h"
+#include "../../lib/ts/apidefs.h"
 
 // OperatorConfig
 void
@@ -279,10 +280,9 @@ OperatorSetRedirect::initialize(Parser &p)
 
   _status.set_value(p.get_arg());
   _location.set_value(p.get_value());
-
-  if ((_status.get_int_value() != (int)TS_HTTP_STATUS_MOVED_PERMANENTLY) &&
-      (_status.get_int_value() != (int)TS_HTTP_STATUS_MOVED_TEMPORARILY)) {
-    TSError("[%s] unsupported redirect status %d", PLUGIN_NAME, _status.get_int_value());
+  auto status = _status.get_int_value();
+  if (status < 300 || status > 399 || status == TS_HTTP_STATUS_NOT_MODIFIED) {
+    TSError("[%s] unsupported redirect status %d", PLUGIN_NAME, status);
   }
 
   require_resources(RSRC_SERVER_RESPONSE_HEADERS);
@@ -922,6 +922,32 @@ OperatorSetConnDSCP::exec(const Resources &res) const
   if (res.txnp) {
     TSHttpTxnClientPacketDscpSet(res.txnp, _ds_value.get_int_value());
     TSDebug(PLUGIN_NAME, "   Setting DSCP to %d", _ds_value.get_int_value());
+  }
+}
+
+// OperatorSetConnMark
+void
+OperatorSetConnMark::initialize(Parser &p)
+{
+  Operator::initialize(p);
+
+  _ds_value.set_value(p.get_arg());
+}
+
+void
+OperatorSetConnMark::initialize_hooks()
+{
+  add_allowed_hook(TS_HTTP_READ_REQUEST_HDR_HOOK);
+  add_allowed_hook(TS_HTTP_SEND_RESPONSE_HDR_HOOK);
+  add_allowed_hook(TS_REMAP_PSEUDO_HOOK);
+}
+
+void
+OperatorSetConnMark::exec(const Resources &res) const
+{
+  if (res.txnp) {
+    TSHttpTxnClientPacketMarkSet(res.txnp, _ds_value.get_int_value());
+    TSDebug(PLUGIN_NAME, "   Setting MARK to %d", _ds_value.get_int_value());
   }
 }
 

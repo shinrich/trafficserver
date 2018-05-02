@@ -21,8 +21,7 @@
   limitations under the License.
  */
 
-#ifndef _URL_REWRITE_H_
-#define _URL_REWRITE_H_
+#pragma once
 
 #include "ts/ink_config.h"
 #include "UrlMapping.h"
@@ -37,7 +36,7 @@ struct BUILD_TABLE_INFO;
 
 /**
  * used for redirection, mapping, and reverse mapping
-**/
+ **/
 enum mapping_type {
   FORWARD_MAP,
   REVERSE_MAP,
@@ -50,24 +49,43 @@ enum mapping_type {
 
 /**
  *
-**/
-class UrlRewrite
+ **/
+class UrlRewrite : public RefCountObj
 {
 public:
   UrlRewrite();
-  ~UrlRewrite();
+  ~UrlRewrite() override;
 
   int BuildTable(const char *path);
   mapping_type Remap_redirect(HTTPHdr *request_header, URL *redirect_url);
   bool ReverseMap(HTTPHdr *response_header);
   void SetReverseFlag(int flag);
   void Print();
+
+  // The UrlRewrite object is-a RefCountObj, but this is a convenience to make it clear that we
+  // don't delete() these objects directly, but via the release() method only.
+  UrlRewrite *
+  acquire()
+  {
+    this->refcount_inc();
+    return this;
+  }
+
+  void
+  release()
+  {
+    if (0 == this->refcount_dec()) {
+      // Delete this on an ET_TASK thread, which avoids doing potentially slow things on an ET_NET thread.
+      Debug("url_rewrite", "Deleting old configuration immediately");
+      new_Deleter(this, 0);
+    }
+  }
+
   bool
   is_valid() const
   {
     return _valid;
   };
-  //  private:
 
   static const int MAX_REGEX_SUBS = 10;
 
@@ -101,7 +119,7 @@ public:
     bool
     empty()
     {
-      return ((hash_lookup == NULL) && regex_list.empty());
+      return ((hash_lookup == nullptr) && regex_list.empty());
     }
   };
 
@@ -192,5 +210,3 @@ private:
 };
 
 void url_rewrite_remap_request(const UrlMappingContainer &mapping_container, URL *request_url, int scheme = -1);
-
-#endif

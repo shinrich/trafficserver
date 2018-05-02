@@ -88,7 +88,6 @@ int cache_config_compatibility_4_2_0_fixup = 1;
 // Globals
 
 RecRawStatBlock *cache_rsb = nullptr;
-Cache *theStreamCache      = nullptr;
 Cache *theCache            = nullptr;
 CacheDisk **gdisks         = nullptr;
 int gndisks                = 0;
@@ -192,6 +191,7 @@ static int create_volume(int volume_number, off_t size_in_blocks, int scheme, Ca
 static void rebuild_host_table(Cache *cache);
 void register_cache_stats(RecRawStatBlock *rsb, const char *prefix);
 
+// Global list of the volumes created
 Queue<CacheVol> cp_list;
 int cp_list_len = 0;
 ConfigVolumes config_volumes;
@@ -214,7 +214,7 @@ cache_bytes_used(int volume)
       if (!gvol[i]->header->cycle) {
         used += gvol[i]->header->write_pos - gvol[i]->start;
       } else {
-        used += gvol[i]->len - vol_dirlen(gvol[i]) - EVACUATION_SIZE;
+        used += gvol[i]->len - gvol[i]->dirlen() - EVACUATION_SIZE;
       }
     }
   }
@@ -306,9 +306,9 @@ CacheVC::do_io_read(Continuation *c, int64_t nbytes, MIOBuffer *abuf)
   vio.nbytes    = nbytes;
   vio.vc_server = this;
 #ifdef DEBUG
-  ink_assert(c->mutex->thread_holding);
+  ink_assert(!c || c->mutex->thread_holding);
 #endif
-  if (!trigger && !recursive) {
+  if (c && !trigger && !recursive) {
     trigger = c->mutex->thread_holding->schedule_imm_local(this);
   }
   return &vio;
@@ -344,9 +344,9 @@ CacheVC::do_io_write(Continuation *c, int64_t nbytes, IOBufferReader *abuf, bool
   vio.nbytes    = nbytes;
   vio.vc_server = this;
 #ifdef DEBUG
-  ink_assert(c->mutex->thread_holding);
+  ink_assert(!c || c->mutex->thread_holding);
 #endif
-  if (!trigger && !recursive) {
+  if (c && !trigger && !recursive) {
     trigger = c->mutex->thread_holding->schedule_imm_local(this);
   }
   return &vio;
@@ -607,7 +607,6 @@ CacheProcessor::start_internal(int flags)
   fix                  = !!(flags & PROCESSOR_FIX);
   check                = (flags & PROCESSOR_CHECK) != 0;
   start_done           = 0;
-  int diskok           = 1;
   Span *sd;
 
   /* read the config file and create the data structures corresponding
@@ -619,6 +618,10 @@ CacheProcessor::start_internal(int flags)
   ink_aio_set_callback(new AIO_Callback_handler());
 
   config_volumes.read_config_file();
+
+  /*
+   create CacheDisk objects for each span in the configuration file and store in gdisks
+   */
   for (unsigned i = 0; i < theCacheStore.n_disks; i++) {
     sd = theCacheStore.disk[i];
     char path[PATH_NAME_MAX];
@@ -626,9 +629,6 @@ CacheProcessor::start_internal(int flags)
 
     ink_strlcpy(path, sd->pathname, sizeof(path));
     if (!sd->file_pathname) {
-      if (config_volumes.num_http_volumes && config_volumes.num_stream_volumes) {
-        Warning("It is suggested that you use raw disks if streaming and http are in the same cache");
-      }
       ink_strlcat(path, "/cache.db", sizeof(path));
       opts |= O_CREAT;
     }
@@ -652,22 +652,22 @@ CacheProcessor::start_internal(int flags)
     }
 
     if (fd >= 0) {
+      bool diskok = true;
       if (!sd->file_pathname) {
         if (!check) {
           if (ftruncate(fd, blocks * STORE_BLOCK_SIZE) < 0) {
             Warning("unable to truncate cache file '%s' to %" PRId64 " blocks", path, blocks);
-            diskok = 0;
+            diskok = false;
           }
         } else { // read-only mode checks
           struct stat sbuf;
-          diskok = 0;
           if (-1 == fstat(fd, &sbuf)) {
             fprintf(stderr, "Failed to stat cache file for directory %s\n", path);
+            diskok = false;
           } else if (blocks != sbuf.st_size / STORE_BLOCK_SIZE) {
             fprintf(stderr, "Cache file for directory %s is %" PRId64 " bytes, expected %" PRId64 "\n", path, sbuf.st_size,
                     blocks * static_cast<int64_t>(STORE_BLOCK_SIZE));
-          } else {
-            diskok = 1;
+            diskok = false;
           }
         }
       }
@@ -682,8 +682,6 @@ CacheProcessor::start_internal(int flags)
         if (sd->hash_base_string) {
           gdisks[gndisks]->hash_base_string = ats_strdup(sd->hash_base_string);
         }
-
-        Debug("cache_hosting", "Disk: %d, blocks: %" PRId64 "", gndisks, blocks);
 
         if (sector_size < cache_config_force_sector_size) {
           sector_size = cache_config_force_sector_size;
@@ -704,6 +702,8 @@ CacheProcessor::start_internal(int flags)
 #else
         gdisks[gndisks]->open(path, blocks, skip, sector_size, fd, clear);
 #endif
+
+        Debug("cache_hosting", "Disk: %d:%s, blocks: %" PRId64 "", gndisks, path, blocks);
         fd = -1;
         gndisks++;
       }
@@ -803,8 +803,8 @@ CacheProcessor::diskInitialized()
     /* create the cachevol list only if num volumes are greater
        than 0. */
     if (config_volumes.num_volumes == 0) {
-      res = cplist_reconfigure();
       /* if no volumes, default to just an http cache */
+      res = cplist_reconfigure();
     } else {
       // else
       /* create the cachevol list. */
@@ -835,7 +835,8 @@ CacheProcessor::diskInitialized()
       CacheDisk *d = gdisks[i];
       if (is_debug_tag_set("cache_hosting")) {
         int j;
-        Debug("cache_hosting", "Disk: %d: Vol Blocks: %u: Free space: %" PRIu64, i, d->header->num_diskvol_blks, d->free_space);
+        Debug("cache_hosting", "Disk: %d:%s: Vol Blocks: %u: Free space: %" PRIu64, i, d->path, d->header->num_diskvol_blks,
+              d->free_space);
         for (j = 0; j < (int)d->header->num_volumes; j++) {
           Debug("cache_hosting", "\tVol: %d Size: %" PRIu64, d->disk_vols[j]->vol_number, d->disk_vols[j]->size);
         }
@@ -859,12 +860,6 @@ CacheProcessor::diskInitialized()
       theCache->scheme = CACHE_HTTP_TYPE;
       theCache->open(clear, fix);
     }
-
-    if (config_volumes.num_stream_volumes != 0) {
-      theStreamCache         = new Cache();
-      theStreamCache->scheme = CACHE_RTSP_TYPE;
-      theStreamCache->open(clear, fix);
-    }
   }
 }
 
@@ -873,9 +868,10 @@ CacheProcessor::cacheInitialized()
 {
   int i;
 
-  if ((theCache && (theCache->ready == CACHE_INITIALIZING)) || (theStreamCache && (theStreamCache->ready == CACHE_INITIALIZING))) {
+  if (theCache && (theCache->ready == CACHE_INITIALIZING)) {
     return;
   }
+
   int caches_ready  = 0;
   int cache_init_ok = 0;
   /* allocate ram size in proportion to the disk space the
@@ -895,14 +891,6 @@ CacheProcessor::cacheInitialized()
     total_size += theCache->cache_size;
     Debug("cache_init", "CacheProcessor::cacheInitialized - theCache, total_size = %" PRId64 " = %" PRId64 " MB", total_size,
           total_size / ((1024 * 1024) / STORE_BLOCK_SIZE));
-  }
-  if (theStreamCache) {
-    total_size += theStreamCache->cache_size;
-    Debug("cache_init", "CacheProcessor::cacheInitialized - theStreamCache, total_size = %" PRId64 " = %" PRId64 " MB", total_size,
-          total_size / ((1024 * 1024) / STORE_BLOCK_SIZE));
-  }
-
-  if (theCache) {
     if (theCache->ready == CACHE_INIT_FAILED) {
       Debug("cache_init", "CacheProcessor::cacheInitialized - failed to initialize the cache for http: cache disabled");
       Warning("failed to initialize the cache for http: cache disabled\n");
@@ -911,15 +899,6 @@ CacheProcessor::cacheInitialized()
       caches_ready                 = caches_ready | (1 << CACHE_FRAG_TYPE_NONE);
       caches[CACHE_FRAG_TYPE_HTTP] = theCache;
       caches[CACHE_FRAG_TYPE_NONE] = theCache;
-    }
-  }
-  if (theStreamCache) {
-    if (theStreamCache->ready == CACHE_INIT_FAILED) {
-      Debug("cache_init", "CacheProcessor::cacheInitialized - failed to initialize the cache for streaming: cache disabled");
-      Warning("failed to initialize the cache for streaming: cache disabled\n");
-    } else {
-      caches_ready                 = caches_ready | (1 << CACHE_FRAG_TYPE_RTSP);
-      caches[CACHE_FRAG_TYPE_RTSP] = theStreamCache;
     }
   }
 
@@ -961,13 +940,13 @@ CacheProcessor::cacheInitialized()
         Debug("cache_init", "CacheProcessor::cacheInitialized - cache_config_ram_cache_size == AUTO_SIZE_RAM_CACHE");
         for (i = 0; i < gnvol; i++) {
           vol = gvol[i];
-          gvol[i]->ram_cache->init(vol_dirlen(vol) * DEFAULT_RAM_CACHE_MULTIPLIER, vol);
-          ram_cache_bytes += vol_dirlen(gvol[i]);
+          gvol[i]->ram_cache->init(vol->dirlen() * DEFAULT_RAM_CACHE_MULTIPLIER, vol);
+          ram_cache_bytes += gvol[i]->dirlen();
           Debug("cache_init", "CacheProcessor::cacheInitialized - ram_cache_bytes = %" PRId64 " = %" PRId64 "Mb", ram_cache_bytes,
                 ram_cache_bytes / (1024 * 1024));
-          CACHE_VOL_SUM_DYN_STAT(cache_ram_cache_bytes_total_stat, (int64_t)vol_dirlen(gvol[i]));
+          CACHE_VOL_SUM_DYN_STAT(cache_ram_cache_bytes_total_stat, (int64_t)gvol[i]->dirlen());
 
-          vol_total_cache_bytes = gvol[i]->len - vol_dirlen(gvol[i]);
+          vol_total_cache_bytes = gvol[i]->len - gvol[i]->dirlen();
           total_cache_bytes += vol_total_cache_bytes;
           Debug("cache_init", "CacheProcessor::cacheInitialized - total_cache_bytes = %" PRId64 " = %" PRId64 "Mb",
                 total_cache_bytes, total_cache_bytes / (1024 * 1024));
@@ -1011,15 +990,11 @@ CacheProcessor::cacheInitialized()
             ram_cache_bytes += (int64_t)(http_ram_cache_size * factor);
             CACHE_VOL_SUM_DYN_STAT(cache_ram_cache_bytes_total_stat, (int64_t)(http_ram_cache_size * factor));
           } else {
-            factor = (double)(int64_t)(gvol[i]->len >> STORE_BLOCK_SHIFT) / (int64_t)theStreamCache->cache_size;
-            Debug("cache_init", "CacheProcessor::cacheInitialized - factor = %f", factor);
-            gvol[i]->ram_cache->init((int64_t)(stream_ram_cache_size * factor), vol);
-            ram_cache_bytes += (int64_t)(stream_ram_cache_size * factor);
-            CACHE_VOL_SUM_DYN_STAT(cache_ram_cache_bytes_total_stat, (int64_t)(stream_ram_cache_size * factor));
+            ink_release_assert(!"Unexpected non-HTTP cache volume");
           }
           Debug("cache_init", "CacheProcessor::cacheInitialized[%d] - ram_cache_bytes = %" PRId64 " = %" PRId64 "Mb", i,
                 ram_cache_bytes, ram_cache_bytes / (1024 * 1024));
-          vol_total_cache_bytes = gvol[i]->len - vol_dirlen(gvol[i]);
+          vol_total_cache_bytes = gvol[i]->len - gvol[i]->dirlen();
           total_cache_bytes += vol_total_cache_bytes;
           CACHE_VOL_SUM_DYN_STAT(cache_bytes_total_stat, vol_total_cache_bytes);
           Debug("cache_init", "CacheProcessor::cacheInitialized - total_cache_bytes = %" PRId64 " = %" PRId64 "Mb",
@@ -1182,10 +1157,16 @@ Vol::db_check(bool /* fix ATS_UNUSED */)
 static void
 vol_init_data_internal(Vol *d)
 {
-  d->buckets  = ((d->len - (d->start - d->skip)) / cache_config_min_average_object_size) / DIR_DEPTH;
-  d->segments = (d->buckets + (((1 << 16) - 1) / DIR_DEPTH)) / ((1 << 16) / DIR_DEPTH);
-  d->buckets  = (d->buckets + d->segments - 1) / d->segments;
-  d->start    = d->skip + 2 * vol_dirlen(d);
+  // step1: calculate the number of entries.
+  off_t total_entries = (d->len - (d->start - d->skip)) / cache_config_min_average_object_size;
+  // step2: calculate the number of buckets
+  off_t total_buckets = total_entries / DIR_DEPTH;
+  // step3: calculate the number of segments, no semgent has more than 16384 buckets
+  d->segments = (total_buckets + (((1 << 16) - 1) / DIR_DEPTH)) / ((1 << 16) / DIR_DEPTH);
+  // step4: divide total_buckets into segments on average.
+  d->buckets = (total_buckets + d->segments - 1) / d->segments;
+  // step5: set the start pointer.
+  d->start = d->skip + 2 * d->dirlen();
 }
 
 static void
@@ -1204,7 +1185,7 @@ vol_init_dir(Vol *d)
 
   for (s = 0; s < d->segments; s++) {
     d->header->freelist[s] = 0;
-    Dir *seg               = dir_segment(s, d);
+    Dir *seg               = d->dir_segment(s);
     for (l = 1; l < DIR_DEPTH; l++) {
       for (b = 0; b < d->buckets; b++) {
         Dir *bucket = dir_bucket(b, seg);
@@ -1217,7 +1198,7 @@ vol_init_dir(Vol *d)
 void
 vol_clear_init(Vol *d)
 {
-  size_t dir_len = vol_dirlen(d);
+  size_t dir_len = d->dirlen();
   memset(d->raw_dir, 0, dir_len);
   vol_init_dir(d);
   d->header->magic             = VOL_MAGIC;
@@ -1236,7 +1217,7 @@ vol_clear_init(Vol *d)
 int
 vol_dir_clear(Vol *d)
 {
-  size_t dir_len = vol_dirlen(d);
+  size_t dir_len = d->dirlen();
   vol_clear_init(d);
 
   if (pwrite(d->fd, d->raw_dir, dir_len, d->skip) < 0) {
@@ -1249,7 +1230,7 @@ vol_dir_clear(Vol *d)
 int
 Vol::clear_dir()
 {
-  size_t dir_len = vol_dirlen(this);
+  size_t dir_len = this->dirlen();
   vol_clear_init(this);
 
   SET_HANDLER(&Vol::handle_dir_clear);
@@ -1294,22 +1275,22 @@ Vol::init(char *s, off_t blocks, off_t dir_skip, bool clear)
   evacuate_size = (int)(len / EVACUATION_BUCKET_SIZE) + 2;
   int evac_len  = (int)evacuate_size * sizeof(DLL<EvacuationBlock>);
   evacuate      = (DLL<EvacuationBlock> *)ats_malloc(evac_len);
-  memset(evacuate, 0, evac_len);
+  memset(static_cast<void *>(evacuate), 0, evac_len);
 
-  Debug("cache_init", "allocating %zu directory bytes for a %lld byte volume (%lf%%)", vol_dirlen(this), (long long)this->len,
-        (double)vol_dirlen(this) / (double)this->len * 100.0);
+  Debug("cache_init", "Vol %s: allocating %zu directory bytes for a %lld byte volume (%lf%%)", hash_text.get(), dirlen(),
+        (long long)this->len, (double)dirlen() / (double)this->len * 100.0);
 
   raw_dir = nullptr;
   if (ats_hugepage_enabled()) {
-    raw_dir = (char *)ats_alloc_hugepage(vol_dirlen(this));
+    raw_dir = (char *)ats_alloc_hugepage(this->dirlen());
   }
   if (raw_dir == nullptr) {
-    raw_dir = (char *)ats_memalign(ats_pagesize(), vol_dirlen(this));
+    raw_dir = (char *)ats_memalign(ats_pagesize(), this->dirlen());
   }
 
-  dir    = (Dir *)(raw_dir + vol_headerlen(this));
+  dir    = (Dir *)(raw_dir + this->headerlen());
   header = (VolHeaderFooter *)raw_dir;
-  footer = (VolHeaderFooter *)(raw_dir + vol_dirlen(this) - ROUND_TO_STORE_BLOCK(sizeof(VolHeaderFooter)));
+  footer = (VolHeaderFooter *)(raw_dir + this->dirlen() - ROUND_TO_STORE_BLOCK(sizeof(VolHeaderFooter)));
 
   if (clear) {
     Note("clearing cache directory '%s'", hash_text.get());
@@ -1318,16 +1299,15 @@ Vol::init(char *s, off_t blocks, off_t dir_skip, bool clear)
 
   init_info           = new VolInitInfo();
   int footerlen       = ROUND_TO_STORE_BLOCK(sizeof(VolHeaderFooter));
-  off_t footer_offset = vol_dirlen(this) - footerlen;
+  off_t footer_offset = this->dirlen() - footerlen;
   // try A
   off_t as = skip;
-  if (is_debug_tag_set("cache_init")) {
-    Note("reading directory '%s'", hash_text.get());
-  }
+
+  Debug("cache_init", "reading directory '%s'", hash_text.get());
   SET_HANDLER(&Vol::handle_header_read);
   init_info->vol_aio[0].aiocb.aio_offset = as;
   init_info->vol_aio[1].aiocb.aio_offset = as + footer_offset;
-  off_t bs                               = skip + vol_dirlen(this);
+  off_t bs                               = skip + this->dirlen();
   init_info->vol_aio[2].aiocb.aio_offset = bs;
   init_info->vol_aio[3].aiocb.aio_offset = bs + footer_offset;
 
@@ -1351,7 +1331,7 @@ Vol::init(char *s, off_t blocks, off_t dir_skip, bool clear)
 int
 Vol::handle_dir_clear(int event, void *data)
 {
-  size_t dir_len = vol_dirlen(this);
+  size_t dir_len = this->dirlen();
   AIOCallback *op;
 
   if (event == AIO_EVENT_DONE) {
@@ -1386,6 +1366,7 @@ Vol::handle_dir_read(int event, void *data)
 
   if (event == AIO_EVENT_DONE) {
     if ((size_t)op->aio_result != (size_t)op->aiocb.aio_nbytes) {
+      Note("Directory read failed: clearing cache directory %s", this->hash_text.get());
       clear_dir();
       return EVENT_DONE;
     }
@@ -1662,18 +1643,18 @@ Ldone : {
     next_sync_serial++;
   }
   // clear effected portion of the cache
-  off_t clear_start = offset_to_vol_offset(this, header->write_pos);
-  off_t clear_end   = offset_to_vol_offset(this, recover_pos);
+  off_t clear_start = this->offset_to_vol_offset(header->write_pos);
+  off_t clear_end   = this->offset_to_vol_offset(recover_pos);
   if (clear_start <= clear_end) {
     dir_clear_range(clear_start, clear_end, this);
   } else {
     dir_clear_range(clear_end, DIR_OFFSET_MAX, this);
     dir_clear_range(1, clear_start, this);
   }
-  if (is_debug_tag_set("cache_init")) {
-    Note("recovery clearing offsets [%" PRIu64 ", %" PRIu64 "] sync_serial %d next %d\n", header->write_pos, recover_pos,
-         header->sync_serial, next_sync_serial);
-  }
+
+  Note("recovery clearing offsets of Vol %s : [%" PRIu64 ", %" PRIu64 "] sync_serial %d next %d\n", hash_text.get(),
+       header->write_pos, recover_pos, header->sync_serial, next_sync_serial);
+
   footer->sync_serial = header->sync_serial = next_sync_serial;
 
   for (int i = 0; i < 3; i++) {
@@ -1684,7 +1665,7 @@ Ldone : {
     aio->then             = (i < 2) ? &(init_info->vol_aio[i + 1]) : nullptr;
   }
   int footerlen = ROUND_TO_STORE_BLOCK(sizeof(VolHeaderFooter));
-  size_t dirlen = vol_dirlen(this);
+  size_t dirlen = this->dirlen();
   int B         = header->sync_serial & 1;
   off_t ss      = skip + (B ? dirlen : 0);
 
@@ -1742,6 +1723,7 @@ Vol::handle_header_read(int event, void *data)
       ink_assert(op != nullptr);
       i = (VolHeaderFooter *)(op->aiocb.aio_buf);
       if ((size_t)op->aio_result != (size_t)op->aiocb.aio_nbytes) {
+        Note("Header read failed: clearing cache directory %s", this->hash_text.get());
         clear_dir();
         return EVENT_DONE;
       }
@@ -1749,7 +1731,7 @@ Vol::handle_header_read(int event, void *data)
     }
 
     io.aiocb.aio_fildes = fd;
-    io.aiocb.aio_nbytes = vol_dirlen(this);
+    io.aiocb.aio_nbytes = this->dirlen();
     io.aiocb.aio_buf    = raw_dir;
     io.action           = this;
     io.thread           = AIO_CALLBACK_THREAD_ANY;
@@ -1770,7 +1752,7 @@ Vol::handle_header_read(int event, void *data)
       if (is_debug_tag_set("cache_init")) {
         Note("using directory B for '%s'", hash_text.get());
       }
-      io.aiocb.aio_offset = skip + vol_dirlen(this);
+      io.aiocb.aio_offset = skip + this->dirlen();
       ink_assert(ink_aio_read(&io));
     } else {
       Note("no good directory, clearing '%s' since sync_serials on both A and B copies are invalid", hash_text.get());
@@ -1949,7 +1931,7 @@ Cache::vol_initialized(bool result)
 }
 
 /** Set the state of a disk programmatically.
-*/
+ */
 bool
 CacheProcessor::mark_storage_offline(CacheDisk *d, ///< Target disk
                                      bool admin)
@@ -1975,7 +1957,7 @@ CacheProcessor::mark_storage_offline(CacheDisk *d, ///< Target disk
     if (d->fd == gvol[p]->fd) {
       total_dir_delete += gvol[p]->buckets * gvol[p]->segments * DIR_DEPTH;
       used_dir_delete += dir_entries_used(gvol[p]);
-      total_bytes_delete += gvol[p]->len - vol_dirlen(gvol[p]);
+      total_bytes_delete += gvol[p]->len - gvol[p]->dirlen();
     }
   }
 
@@ -1991,9 +1973,6 @@ CacheProcessor::mark_storage_offline(CacheDisk *d, ///< Target disk
   if (theCache) {
     rebuild_host_table(theCache);
   }
-  if (theStreamCache) {
-    rebuild_host_table(theStreamCache);
-  }
 
   zret = this->has_online_storage();
   if (!zret) {
@@ -2007,13 +1986,6 @@ CacheProcessor::mark_storage_offline(CacheDisk *d, ///< Target disk
       caches_ready              = ~caches_ready;
       CacheProcessor::cache_ready &= caches_ready;
       Warning("all volumes for http cache are corrupt, http cache disabled");
-    }
-    if (theStreamCache && !theStreamCache->hosttable->gen_host_rec.vol_hash_table) {
-      unsigned int caches_ready = 0;
-      caches_ready              = caches_ready | (1 << CACHE_FRAG_TYPE_RTSP);
-      caches_ready              = ~caches_ready;
-      CacheProcessor::cache_ready &= caches_ready;
-      Warning("all volumes for mixt cache are corrupt, mixt cache disabled");
     }
   }
 
@@ -2447,7 +2419,7 @@ CacheVC::handleRead(int /* event ATS_UNUSED */, Event * /* e ATS_UNUSED */)
   }
   // see if its in the aggregation buffer
   if (dir_agg_buf_valid(vol, &dir)) {
-    int agg_offset = vol_offset(vol, &dir) - vol->header->write_pos;
+    int agg_offset = vol->vol_offset(&dir) - vol->header->write_pos;
     buf            = new_IOBufferData(iobuffer_size_to_index(io.aiocb.aio_nbytes, MAX_BUFFER_SIZE_INDEX), MEMALIGNED);
     ink_assert((agg_offset + io.aiocb.aio_nbytes) <= (unsigned)vol->agg_buf_pos);
     char *doc = buf->data();
@@ -2459,7 +2431,7 @@ CacheVC::handleRead(int /* event ATS_UNUSED */, Event * /* e ATS_UNUSED */)
   }
 
   io.aiocb.aio_fildes = vol->fd;
-  io.aiocb.aio_offset = vol_offset(vol, &dir);
+  io.aiocb.aio_offset = vol->vol_offset(&dir);
   if ((off_t)(io.aiocb.aio_offset + io.aiocb.aio_nbytes) > (off_t)(vol->skip + vol->len)) {
     io.aiocb.aio_nbytes = vol->skip + vol->len - io.aiocb.aio_offset;
   }
@@ -2641,9 +2613,7 @@ Cache::remove(Continuation *cont, const CacheKey *key, CacheFragType type, const
 }
 // CacheVConnection
 
-CacheVConnection::CacheVConnection() : VConnection(nullptr)
-{
-}
+CacheVConnection::CacheVConnection() : VConnection(nullptr) {}
 
 void
 cplist_init()
@@ -3406,7 +3376,7 @@ HTTPInfo_v21::copy_and_upgrade_unmarshalled_to_v23(char *&dst, char *&src, size_
   if (hdr_size > length) {
     return false;
   }
-  memcpy(d_hdr, s_hdr, hdr_size);
+  memcpy(static_cast<void *>(d_hdr), s_hdr, hdr_size);
   d_alt->m_request_hdr.m_heap = reinterpret_cast<HdrHeap_v23 *>(reinterpret_cast<char *>(d_hdr) - reinterpret_cast<char *>(d_alt));
   dst += hdr_size;
   length -= hdr_size;
@@ -3418,7 +3388,7 @@ HTTPInfo_v21::copy_and_upgrade_unmarshalled_to_v23(char *&dst, char *&src, size_
   if (hdr_size > length) {
     return false;
   }
-  memcpy(d_hdr, s_hdr, hdr_size);
+  memcpy(static_cast<void *>(d_hdr), s_hdr, hdr_size);
   d_alt->m_response_hdr.m_heap = reinterpret_cast<HdrHeap_v23 *>(reinterpret_cast<char *>(d_hdr) - reinterpret_cast<char *>(d_alt));
   dst += hdr_size;
   length -= hdr_size;
@@ -3428,4 +3398,4 @@ HTTPInfo_v21::copy_and_upgrade_unmarshalled_to_v23(char *&dst, char *&src, size_
   return true;
 }
 
-} // cache_bc
+} // namespace cache_bc

@@ -32,7 +32,7 @@ include background_fetch/Makefile.inc
 include conf_remap/Makefile.inc
 include esi/Makefile.inc
 include generator/Makefile.inc
-include gzip/Makefile.inc
+include compress/Makefile.inc
 include header_rewrite/Makefile.inc
 include healthchecks/Makefile.inc
 include libloader/Makefile.inc
@@ -42,6 +42,7 @@ include s3_auth/Makefile.inc
 include stats_over_http/Makefile.inc
 include tcpinfo/Makefile.inc
 include xdebug/Makefile.inc
+include test_cppapi/Makefile.inc
 
 if BUILD_EXPERIMENTAL_PLUGINS
 
@@ -56,6 +57,7 @@ include experimental/collapsed_forwarding/Makefile.inc
 include experimental/custom_redirect/Makefile.inc
 include experimental/epic/Makefile.inc
 include experimental/escalate/Makefile.inc
+include experimental/fq_pacing/Makefile.inc
 include experimental/geoip_acl/Makefile.inc
 include experimental/header_freq/Makefile.inc
 include experimental/header_normalize/Makefile.inc
@@ -74,6 +76,7 @@ include experimental/sslheaders/Makefile.inc
 include experimental/stale_while_revalidate/Makefile.inc
 include experimental/stream_editor/Makefile.inc
 include experimental/system_stats/Makefile.inc
+include experimental/tls_bridge/Makefile.inc
 include experimental/ts_lua/Makefile.inc
 include experimental/url_sig/Makefile.inc
 
@@ -107,6 +110,6 @@ TESTS_ENVIRONMENT = LSAN_OPTIONS=suppressions=suppression.txt
 
 TESTS = $(check_PROGRAMS)
 
-tidy-local: $(DIST_SOURCES)
+clang-tidy-local: $(DIST_SOURCES)
 	$(CXX_Clang_Tidy)
 	$(CC_Clang_Tidy)
