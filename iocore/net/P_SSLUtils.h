@@ -127,6 +127,9 @@ SSL_CTX *SSLCreateServerContext(const SSLConfigParams *params);
 // Initialize the SSL library.
 void SSLInitializeLibrary();
 
+// Initialize SSL library based on configuration settings
+void SSLPostConfigInitialize();
+
 // Initialize SSL statistics.
 void SSLInitializeStatistics();
 
