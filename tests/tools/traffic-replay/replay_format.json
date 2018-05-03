@@ -1,0 +1,114 @@
+{
+  "$schema": "http://solidwallofcode.github.io/_static/json/replay-file.json",
+  "title": "Traffic Server Replay File",
+  "description": "Data for Traffic Server sessions and transactions.",
+  "type": "object",
+  "properties": {
+    "meta": {
+      "description": "Metadata for the file.",
+      "type": "object",
+      "properties": {
+        "version": {
+          "description": "File format version.",
+          "type": "string"
+        }
+      }
+    },
+    "sessions": {
+      "description": "List of sessions",
+      "type": "array",
+      "items": {
+        "title": "Session",
+        "description": "Session data.",
+        "type": "object",
+        "properties": {
+          "protocol": {
+            "description": "Inbound protocol stack.",
+            "type": "string"
+          },
+          "connect-time": {
+            "description": "User Agent connection time.",
+            "type": "number"
+          },
+          "transactions": {
+            "description": "List of transactions",
+            "type": "array",
+            "items": {
+              "description": "Transaction",
+              "type": "object",
+              "properties": {
+                "uuid": {
+                  "description": "UUID to identify this specific transaction.",
+                  "type": "string"
+                },
+                "start-time": {
+                  "description": "Start time in epoch format",
+                  "type": "number"
+                },
+                "client-request": {
+                  "description": "Request sent by the inbound (downstream) connection.",
+                  "$ref": "#/definitions/header"
+                },
+                "proxy-request": {
+                  "description": "Request sent by the proxy.",
+                  "$ref": "#/definitions/header"
+                },
+                "server-response": {
+                  "description": "Response from the outbound (upstream) connection.",
+                  "$ref": "#/definitions/header"
+                },
+                "proxy-response": {
+                  "description": "Response sent by the proxy.",
+                  "$ref": "#/definitions/header"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+
+  "definitions": {
+    "header": {
+      "title": "Transaction Header",
+      "description": "Data for the headers in an HTTP transaction.",
+      "type": "object",
+      "properties": {
+        "scheme": {
+          "description": "HTTP scheme.",
+          "type": "string"
+        },
+        "method": {
+          "description": "HTTP method",
+          "type": "string"
+        },
+        "encoding": {
+          "description": "Encoding for the fields.",
+          "type": "string",
+          "enum": ["plain", "uri"]
+        },
+        "content-size": {
+          "description": "Number of bytes of content.",
+          "type": "integer"
+        },
+        "fields": {
+          "description": "HTTP header fields.",
+          "type": "array",
+          "items": {
+            "description": "HTTP field.",
+            "type": "array",
+            "items": [{
+                "description": "Name of the field.",
+                "type": "string"
+              }, {
+                "description": "Value of the field.",
+                "type": "string"
+              }
+            ]
+          }
+        }
+      }
+    }
+  }
+}
