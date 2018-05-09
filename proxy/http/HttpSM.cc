@@ -7116,9 +7116,12 @@ HttpSM::dump_state_hdr(HTTPHdr *h, const char *s)
     int index     = 0;
     int offset    = 0;
 
-    h->print(hdr_buf, l, &index, &offset);
-
-    hdr_buf[l] = '\0';
+    // Only null terminate if the print succeeded.
+    if (h->print(hdr_buf, l, &index, &offset)) {
+      hdr_buf[l] = '\0';
+    } else {
+      hdr_buf[0] = '\0';
+    }
     Error("  ----  %s [%" PRId64 "] ----\n%s\n", s, sm_id, hdr_buf);
     ats_free(hdr_buf);
   }
