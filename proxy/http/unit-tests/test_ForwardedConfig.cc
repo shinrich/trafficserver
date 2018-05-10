@@ -32,8 +32,6 @@
 
 #include "HttpConfig.h"
 
-int cmd_disable_freelist_more                  = 0;
-
 using namespace HttpForwarded;
 
 class OptionBitSetListInit : public OptionBitSet

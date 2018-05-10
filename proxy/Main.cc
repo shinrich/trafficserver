@@ -199,7 +199,7 @@ static const ArgumentDescription argument_descriptions[] = {
   {"cluster_port", 'P', "Cluster Port Number", "I", &cluster_port_number, "PROXY_CLUSTER_PORT", nullptr},
   {"dprintf_level", 'o', "Debug output level", "I", &cmd_line_dprintf_level, "PROXY_DPRINTF_LEVEL", nullptr},
   {"disable_freelist", 'f', "Disable the freelist memory allocator", "T", &cmd_disable_freelist, "PROXY_DPRINTF_LEVEL", nullptr},
-  {"disable_fl_more", 'F', "Disable the freelist memory allocator in ProxyAllocator", "T", &cmd_disable_freelist_more,
+  {"disable_pfreelist", 'F', "Disable the freelist memory allocator in ProxyAllocator", "T", &cmd_disable_pfreelist,
    "PROXY_DPRINTF_LEVEL", nullptr},
 
 #if TS_HAS_TESTS
@@ -1568,9 +1568,7 @@ main(int /* argc ATS_UNUSED */, const char **argv)
   command_index = find_cmd_index(command_string);
   command_valid = command_flag && command_index >= 0;
 
-  if (cmd_disable_freelist) {
-    ink_freelist_init_ops(ink_freelist_malloc_ops());
-  }
+  ink_freelist_init_ops(cmd_disable_freelist, cmd_disable_pfreelist);
 
 #if TS_HAS_TESTS
   if (regression_list) {

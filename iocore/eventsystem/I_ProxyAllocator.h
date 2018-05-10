@@ -37,7 +37,7 @@ class EThread;
 
 extern int thread_freelist_high_watermark;
 extern int thread_freelist_low_watermark;
-extern int cmd_disable_freelist_more;
+extern int cmd_disable_pfreelist;
 
 struct ProxyAllocator {
   int allocated;
@@ -50,7 +50,7 @@ template <class C>
 inline C *
 thread_alloc(ClassAllocator<C> &a, ProxyAllocator &l)
 {
-  if (!cmd_disable_freelist_more && l.freelist) {
+  if (!cmd_disable_pfreelist && l.freelist) {
     C *v       = (C *)l.freelist;
     l.freelist = *(C **)l.freelist;
     --(l.allocated);
@@ -64,7 +64,7 @@ template <class C>
 inline C *
 thread_alloc_init(ClassAllocator<C> &a, ProxyAllocator &l)
 {
-  if (!cmd_disable_freelist_more && l.freelist) {
+  if (!cmd_disable_pfreelist && l.freelist) {
     C *v       = (C *)l.freelist;
     l.freelist = *(C **)l.freelist;
     --(l.allocated);
@@ -91,23 +91,22 @@ template <class C>
 inline void
 thread_freeup(ClassAllocator<C> &a, ProxyAllocator &l)
 {
-  if (!cmd_disable_freelist_more) {
-    C *head      = (C *)l.freelist;
-    C *tail      = (C *)l.freelist;
-    size_t count = 0;
-    while (l.freelist && l.allocated > thread_freelist_low_watermark) {
-      tail       = (C *)l.freelist;
-      l.freelist = *(C **)l.freelist;
-      --(l.allocated);
-      ++count;
-    }
-
-    if (unlikely(count == 1)) {
-      a.free(tail);
-    } else if (count > 0) {
-      a.free_bulk(head, tail, count);
-    }
+  C *head      = (C *)l.freelist;
+  C *tail      = (C *)l.freelist;
+  size_t count = 0;
+  while (l.freelist && l.allocated > thread_freelist_low_watermark) {
+    tail       = (C *)l.freelist;
+    l.freelist = *(C **)l.freelist;
+    --(l.allocated);
+    ++count;
   }
+
+  if (unlikely(count == 1)) {
+    a.free(tail);
+  } else if (count > 0) {
+    a.free_bulk(head, tail, count);
+  }
+
   ink_assert(l.allocated >= thread_freelist_low_watermark);
 }
 
@@ -117,7 +116,7 @@ void thread_freeup(Allocator &a, ProxyAllocator &l);
 #define THREAD_ALLOC(_a, _t) thread_alloc(::_a, _t->_a)
 #define THREAD_ALLOC_INIT(_a, _t) thread_alloc_init(::_a, _t->_a)
 #define THREAD_FREE(_p, _a, _t)                              \
-  if (!cmd_disable_freelist_more) {                          \
+  if (!cmd_disable_pfreelist) {                              \
     do {                                                     \
       *(char **)_p    = (char *)_t->_a.freelist;             \
       _t->_a.freelist = _p;                                  \
