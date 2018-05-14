@@ -280,7 +280,7 @@ getAppQueryString(const char *query_string, int query_length)
     return NULL;
   }
   memset(buf, 0, sizeof(buf));
-  strncpy(buf, query_string, query_length);
+  memcpy(buf, query_string, query_length);
   p = buf;
 
   TSDebug(PLUGIN_NAME, "query_string: %s, query_length: %d", query_string, query_length);
