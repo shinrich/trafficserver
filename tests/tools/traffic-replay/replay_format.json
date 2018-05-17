@@ -76,17 +76,25 @@
       "type": "object",
       "properties": {
         "scheme": {
-          "description": "HTTP scheme.",
+          "description": "HTTP scheme (request).",
+          "type": "string"
+        },
+        "status": {
+          "description": "Status code (response).",
           "type": "string"
         },
         "method": {
-          "description": "HTTP method",
+          "description": "HTTP method (request)",
+          "type": "string"
+        },
+        "reason": {
+          "description": "Reason phrase (response)",
           "type": "string"
         },
         "encoding": {
           "description": "Encoding for the fields.",
           "type": "string",
-          "enum": ["plain", "uri"]
+          "enum": ["plain", "uri", "esc_json"]
         },
         "content-size": {
           "description": "Number of bytes of content.",
