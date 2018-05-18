@@ -1561,6 +1561,8 @@ main(int /* argc ATS_UNUSED */, const char **argv)
   runroot_handler(argv);
   // Before accessing file system initialize Layout engine
   Layout::create();
+  // Let's be clear on what exactly is starting up.
+  printf("Traffic Server " PACKAGE_VERSION BUILD_NUMBER " " __DATE__ " " __TIME__ " " BUILD_MACHINE "\n");
   chdir_root(); // change directory to the install root of traffic server.
 
   process_args(&appVersionInfo, argument_descriptions, countof(argument_descriptions), argv);
