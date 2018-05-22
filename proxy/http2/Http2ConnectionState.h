@@ -128,7 +128,8 @@ public:
       _scheduled(false),
       fini_received(false),
       recursion(0),
-      fini_event(nullptr)
+      fini_event(nullptr),
+      zombie_event(nullptr)
   {
     SET_HANDLER(&Http2ConnectionState::main_event_handler);
   }
@@ -272,6 +273,23 @@ public:
     }
   }
 
+  Event *
+  get_zombie_event()
+  {
+    return zombie_event;
+  }
+
+  void
+  schedule_zombie_event()
+  {
+    if (Http2::zombie_timeout_in) { // If we have zombie debugging enabled
+      if (zombie_event) {
+        zombie_event->cancel();
+      }
+      zombie_event = this_ethread()->schedule_in(this, HRTIME_SECONDS(Http2::zombie_timeout_in));
+    }
+  }
+
 private:
   Http2ConnectionState(const Http2ConnectionState &);            // noncopyable
   Http2ConnectionState &operator=(const Http2ConnectionState &); // noncopyable
@@ -311,6 +329,7 @@ private:
   bool fini_received;
   int recursion;
   Event *fini_event;
+  Event *zombie_event;
 };
 
 #endif // __HTTP2_CONNECTION_STATE_H__

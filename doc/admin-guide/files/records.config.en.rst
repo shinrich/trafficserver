@@ -3400,6 +3400,41 @@ HTTP/2 Configuration
 
    Enable the experimental HTTP/2 Stream Priority feature.
 
+.. ts:cv:: CONFIG proxy.config.http2.active_timeout_in INT 0
+   :reloadable:
+
+   This is the active timeout of the http2 connection. It is set when the connection is opened
+   and keeps ticking regardless of activity level.
+
+   The value of ``0`` specifies that there is no timeout.
+
+.. ts:cv:: CONFIG proxy.config.http2.accept_no_activity_timeout INT 120
+   :reloadable:
+   :overridable:
+
+   Specifies how long Traffic Server keeps connections to clients open if no
+   activity is received on the connection. Lowering this timeout can ease
+   pressure on the proxy if misconfigured or misbehaving clients are opening
+   a large number of connections without submitting requests.
+
+.. ts:cv:: CONFIG proxy.config.http2.no_activity_timeout_in INT 120
+   :reloadable:
+   :overridable:
+
+   Specifies how long Traffic Server keeps connections to clients open if a
+   transaction stalls. Lowering this timeout can ease pressure on the proxy if
+   misconfigured or misbehaving clients are opening a large number of
+   connections without submitting requests.
+
+.. ts:cv:: CONFIG proxy.config.http2.zombie_debug_timeout_in INT 0
+   :reloadable:
+
+   This timeout enables the zombie debugging feature.  If it is non-zero, it sets a zombie event to go off that
+   many seconds in the future when the HTTP2 session reaches one but not both of the terminating events, i.e received 
+   a close event (via client goaway or timeout) and the number of active streams has gone to zero.  If the event is executed,
+   the Traffic Server process will assert.  This mechanism is useful to debug potential leaks in the HTTP2 Stream and Session 
+   processing.
+
 .. ts:cv:: CONFIG proxy.config.http2.push_diary_size INT 256
    :reloadable:
 
