@@ -24,10 +24,6 @@
 #include <cstring>
 #include <zlib.h>
 
-#if HAVE_BROTLI_ENCODE_H
-#include <brotli/encode.h>
-#endif
-
 #include "ts/ts.h"
 #include "ts/ink_defs.h"
 
