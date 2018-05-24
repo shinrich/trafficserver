@@ -342,6 +342,7 @@ private:
   SessionAccept *sessionAcceptPtr  = nullptr;
   bool sslTrace                    = false;
   bool SNIMapping                  = false;
+  int64_t redoWriteSize            = 0;
 };
 
 typedef int (SSLNetVConnection::*SSLNetVConnHandler)(int, void *);
