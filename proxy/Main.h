@@ -80,7 +80,7 @@ maintainance_mode()
 
 extern AppVersionInfo appVersionInfo;
 
-void crash_logger_init();
+void crash_logger_init(const char *user);
 void crash_logger_invoke(int signo, siginfo_t *info, void *ctx);
 
 #endif /* _Main_h_ */
