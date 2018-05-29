@@ -115,7 +115,7 @@
             "size": {
               "description": "Size of the payload in bytes.",
               "type": "number"
-            },
+            }
           }
         }
       ]
