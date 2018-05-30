@@ -37,13 +37,13 @@ vconn_arg_handler(TSCont contp, TSEvent event, void *edata)
   case TS_EVENT_VCONN_START: {
     // Testing set argument
     int idx = 0;
-    while (TSVConnArgIndexReserve(PLUGIN_NAME, "test", &idx) == TS_SUCCESS) {
+    while (idx <= last_arg) {
       char *buf = (char *)TSmalloc(64);
       snprintf(buf, 64, "Test Arg Idx %d", idx);
       TSVConnArgSet(ssl_vc, idx, (void *)buf);
-      TSDebug(PLUGIN_NAME, "Successfully reserve and set arg #%d", idx);
+      TSDebug(PLUGIN_NAME, "Successfully and set arg #%d", idx);
+      idx += 1;
     }
-    last_arg = idx;
     break;
   }
   case TS_EVENT_SSL_SERVERNAME: {
@@ -57,7 +57,7 @@ vconn_arg_handler(TSCont contp, TSEvent event, void *edata)
       } else {
         TSDebug(PLUGIN_NAME, "Failed lookup for arg #%d", idx);
       }
-      idx++;
+      idx += 1;
     }
     break;
   }
@@ -72,7 +72,7 @@ vconn_arg_handler(TSCont contp, TSEvent event, void *edata)
       } else {
         TSDebug(PLUGIN_NAME, "Failed to retrieve vconn arg #%d", idx);
       }
-      idx++;
+      idx += 1;
     }
   } break;
   default: {
@@ -96,6 +96,11 @@ TSPluginInit(int argc, const char *argv[])
   if (TSPluginRegister(&info) != TS_SUCCESS) {
     TSError("[%s] Unable to initialize plugin. Failed to register.", PLUGIN_NAME);
   } else {
+    int idx = 0;
+    while (TSVConnArgIndexReserve(PLUGIN_NAME, "test", &idx) == TS_SUCCESS) {
+      TSDebug(PLUGIN_NAME, "Successfully reserved arg index %d", idx);
+    }
+    last_arg = idx;
     TSCont cb = TSContCreate(vconn_arg_handler, nullptr);
     TSHttpHookAdd(TS_VCONN_START_HOOK, cb);
     TSHttpHookAdd(TS_SSL_SERVERNAME_HOOK, cb);
