@@ -10,6 +10,7 @@
       "transactions": [
         {
           "start-time": 1527269900,
+          "uuid": "12345",
           "client-request": {
             "version": "1.1",
             "scheme": "http",
@@ -69,6 +70,7 @@
         },
         {
           "start-time": 1527269901,
+          "uuid": "54321",
           "client-request": {
             "version": "1.1",
             "scheme": "http",
@@ -107,6 +109,7 @@
       "transactions": [
         {
           "start-time": 1527270000,
+          "uuid": "34251",
           "client-request": {
             "version": "1.1",
             "scheme": "http",
