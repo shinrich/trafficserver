@@ -195,10 +195,6 @@
           "description": "Reason phrase.",
           "type": "string"
         },
-        "encoding": {
-          "description": "Encoding for the fields.",
-          "$ref": "#/definitions/encoding"
-        },
         "content": {
           "description": "HTTP Payload",
           "$ref": "#/definitions/content"
