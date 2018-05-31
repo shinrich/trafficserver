@@ -100,41 +100,29 @@ class SNI_IpAllow : public ActionItem
     SNI_IpAllow(std::string& ip_allow_list, cchar* servername){
             // the server identified by item.fqdn requires ATS to do IP filtering
     if(ip_allow_list.length()){
-        IpEndpoint addr1;
-        IpEndpoint addr2;
-
+        IpAddr addr1;
+        IpAddr addr2;
         // check format first
         // check if the input is a comma separated list of IPs
         ts::TextView content(ip_allow_list);
-        ts::TextView list = content.take_prefix_at(',');
-        if(!list.empty()&&!content.empty())
+        while(!content.empty())
         {
-            while(!list.empty())
+            ts::TextView list{ content.take_prefix_at(',')};
+            if(0!=ats_ip_range_parse(list, addr1, addr2))
             {
-                Debug("ssl_sni","ip %s allowed for %s",list.data(),servername);
-                IpEndpoint ip_;
-                ats_ip_pton(list,&ip_);
-                ip_map.fill(ip_,ip_,reinterpret_cast<void *>(1));
-                //next ip in the list
-                list = content.take_prefix_at(',');
-
-            }
-        }
-        else
-        {
-            auto errPtr = ExtractIpRange(ats_scoped_str(ats_strdup(ip_allow_list.data())), addr1, addr2);
-            if(errPtr!=nullptr)
-            {
-                Debug("ssl_sni","Please check the format of the input of ip_allow in your servername config");
+                Debug("ssl_sni","%.*s is not a valid format",static_cast<int>(list.size()),list.data());
+                break;
             }
             else
             {
-                Debug("ssl_sni","%s added to the ip_allow list %s",ip_allow_list.data(),servername);
-                ip_map.fill(addr1,addr2, reinterpret_cast<void *>(1));
+                Debug("ssl_sni","%.*s added to the ip_allow list %s",static_cast<int>(list.size()),list.data(),servername);
+                ip_map.fill(IpEndpoint().assign(addr1),IpEndpoint().assign(addr2), reinterpret_cast<void *>(1));
             }
+
         }
     }
-    }
+    } //end function SNI_IpAllow
+
     int
     SNIAction(Continuation* cont) override
     {
