@@ -1347,10 +1347,6 @@ UnixNetVConnection::connectUp(EThread *t, int fd)
     con.is_bound     = true;
   }
 
-  // Did not fail, increment connection count
-  NET_SUM_GLOBAL_DYN_STAT(net_connections_currently_open_stat, 1);
-  ink_release_assert(con.fd != NO_FD);
-
   // Must connect after EventIO::Start() to avoid a race condition
   // when edge triggering is used.
   if (ep.start(get_PollDescriptor(t), this, EVENTIO_READ | EVENTIO_WRITE) < 0) {
@@ -1366,8 +1362,11 @@ UnixNetVConnection::connectUp(EThread *t, int fd)
     }
   }
 
-  // start up next round immediately
+  // Did not fail, increment connection count
+  NET_SUM_GLOBAL_DYN_STAT(net_connections_currently_open_stat, 1);
+  ink_release_assert(con.fd != NO_FD);
 
+  // Setup a timeout callback handler.
   SET_HANDLER(&UnixNetVConnection::mainEvent);
 
   nh = get_NetHandler(t);
