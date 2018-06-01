@@ -93,6 +93,8 @@ test_ForwardedConfig_SOURCES = \
   unit-tests/test_BufferWriterFormat.cc \
   unit-tests/test_ForwardedConfig_mocks.cc
 
+test_ForwardedConfig_LDADD = \
+        $(top_builddir)/lib/ts/libtsutil.la
 
 TESTS = $(check_PROGRAMS)
 
