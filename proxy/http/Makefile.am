@@ -90,7 +90,6 @@ test_ForwardedConfig_CPPFLAGS = $(AM_CPPFLAGS)\
 test_ForwardedConfig_SOURCES = \
   unit-tests/test_ForwardedConfig.cc \
   ForwardedConfig.cc \
-  unit-tests/test_BufferWriterFormat.cc \
   unit-tests/test_ForwardedConfig_mocks.cc
 
 test_ForwardedConfig_LDADD = \
