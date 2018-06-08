@@ -67,6 +67,8 @@ enum {
 
 class HttpServerSession : public VConnection
 {
+  using super_type = VConnection;
+
 public:
   HttpServerSession()
     : VConnection(nullptr), sharing_match(TS_SERVER_SESSION_SHARING_MATCH_BOTH), sharing_pool(TS_SERVER_SESSION_SHARING_POOL_GLOBAL)
@@ -83,7 +85,7 @@ public:
    * The @a group must have already incremented the connection count. It will be cleaned up when the
    * session terminates.
    */
-  void enable_outbound_connection_tracking(OutboundConnTracker::Group *group);
+  void enable_outbound_connection_tracking(OutboundConnTrack::Group *group);
 
   void
   reset_read_buffer(void)
@@ -153,8 +155,8 @@ public:
   bool private_session = false;
 
   // Copy of the owning SM's server session sharing settings
-  TSServerSessionSharingMatchType sharing_match;
-  TSServerSessionSharingPoolType sharing_pool;
+  TSServerSessionSharingMatchType sharing_match{TS_SERVER_SESSION_SHARING_MATCH_BOTH};
+  TSServerSessionSharingPoolType sharing_pool{TS_SERVER_SESSION_SHARING_POOL_GLOBAL};
   //  int share_session;
 
   LINK(HttpServerSession, ip_hash_link);
@@ -162,7 +164,7 @@ public:
 
   // Keep track of connection limiting and a pointer to the
   // singleton that keeps track of the connection counts.
-  OutboundConnTracker::Group *conn_track_group = nullptr;
+  OutboundConnTrack::Group *conn_track_group = nullptr;
 
   // The ServerSession owns the following buffer which use
   //   for parsing the headers.  The server session needs to

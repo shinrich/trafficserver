@@ -266,7 +266,7 @@ public:
       // TODO: TS-567 Integrate with debugging allocators "dump" features?
       ink_freelists_dump(stderr);
       ResourceTracker::dump(stderr);
-      OutboundConnTracker::dump(stderr);
+      OutboundConnTrack::dump(stderr);
 
       if (!end) {
         end = (char *)sbrk(0);

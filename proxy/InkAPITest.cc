@@ -7505,7 +7505,7 @@ EXCLUSIVE_REGRESSION_TEST(SDK_API_TSHttpConnectServerIntercept)(RegressionTest *
 ////////////////////////////////////////////////
 
 // The order of these should be the same as TSOverridableConfigKey
-const char *SDK_Overridable_Configs[TS_CONFIG_LAST_ENTRY] = {"proxy.config.url_remap.pristine_host_hdr",
+std::array<ts::string_view, TS_CONFIG_LAST_ENTRY> SDK_Overridable_Configs = {{"proxy.config.url_remap.pristine_host_hdr",
                                                              "proxy.config.http.chunking_enabled",
                                                              "proxy.config.http.negative_caching_enabled",
                                                              "proxy.config.http.negative_caching_lifetime",
@@ -7598,7 +7598,6 @@ const char *SDK_Overridable_Configs[TS_CONFIG_LAST_ENTRY] = {"proxy.config.url_r
                                                              "proxy.config.http.redirect_use_orig_cache_key",
                                                              "proxy.config.http.attach_server_session_to_client",
                                                              "proxy.config.http.safe_requests_retryable",
-                                                             "proxy.config.http.origin_max_connections_queue",
                                                              "proxy.config.websocket.no_activity_timeout",
                                                              "proxy.config.websocket.active_timeout",
                                                              "proxy.config.http.uncacheable_requests_bypass_parent",
@@ -7617,11 +7616,12 @@ const char *SDK_Overridable_Configs[TS_CONFIG_LAST_ENTRY] = {"proxy.config.url_r
                                                              "proxy.config.http.normalize_ae",
                                                              "proxy.config.http.insert_forwarded",
                                                              "proxy.config.cache.max_doc_size",
-                                                             "proxy.config.http.allow_multi_range"};
+                                                             OutboundConnTrack::CONFIG_VAR_MAX,
+                                                             OutboundConnTrack::CONFIG_VAR_MATCH,
+                                                             "proxy.config.http.allow_multi_range"}};
 
 REGRESSION_TEST(SDK_API_OVERRIDABLE_CONFIGS)(RegressionTest *test, int /* atype ATS_UNUSED */, int *pstatus)
 {
-  const char *conf;
   TSOverridableConfigKey key;
   TSRecordDataType type;
   HttpSM *s      = HttpSM::allocate();
@@ -7637,17 +7637,29 @@ REGRESSION_TEST(SDK_API_OVERRIDABLE_CONFIGS)(RegressionTest *test, int /* atype 
   s->init();
 
   *pstatus = REGRESSION_TEST_INPROGRESS;
-  for (int i = TS_CONFIG_NULL + 1; i < TS_CONFIG_LAST_ENTRY; ++i) {
-    conf = SDK_Overridable_Configs[i];
+  for (int i = 0; i < static_cast<int>(SDK_Overridable_Configs.size()); ++i) {
+    ts::string_view conf{SDK_Overridable_Configs[i]};
 
-    if (TS_SUCCESS == TSHttpTxnConfigFind(conf, -1, &key, &type)) {
+    if (TS_SUCCESS == TSHttpTxnConfigFind(conf.data(), -1, &key, &type)) {
       if (key != i) {
-        SDK_RPRINT(test, "TSHttpTxnConfigFind", "TestCase1", TC_FAIL, "Failed on %s, expected %d, got %d", conf, i, key);
+        SDK_RPRINT(test, "TSHttpTxnConfigFind", "TestCase1", TC_FAIL, "Failed on %s, expected %d, got %d", conf.data(), i, key);
         success = false;
         continue;
       }
     } else {
-      SDK_RPRINT(test, "TSHttpTxnConfigFind", "TestCase1", TC_FAIL, "Call returned unexpected TS_ERROR for %s", conf);
+      SDK_RPRINT(test, "TSHttpTxnConfigFind", "TestCase1", TC_FAIL, "Call returned unexpected TS_ERROR for %s", conf.data());
+      success = false;
+      continue;
+    }
+
+    if (TS_SUCCESS == TSHttpTxnConfigFind(conf.data(), conf.size(), &key, &type)) {
+      if (key != i) {
+        SDK_RPRINT(test, "TSHttpTxnConfigFind", "TestCase1", TC_FAIL, "Failed on %s, expected %d, got %d", conf.data(), i, key);
+        success = false;
+        continue;
+      }
+    } else {
+      SDK_RPRINT(test, "TSHttpTxnConfigFind", "TestCase1", TC_FAIL, "Call returned unexpected TS_ERROR for %s", conf.data());
       success = false;
       continue;
     }
@@ -7659,7 +7671,8 @@ REGRESSION_TEST(SDK_API_OVERRIDABLE_CONFIGS)(RegressionTest *test, int /* atype 
       TSHttpTxnConfigIntSet(txnp, key, ival_rand);
       TSHttpTxnConfigIntGet(txnp, key, &ival_read);
       if (ival_rand != ival_read) {
-        SDK_RPRINT(test, "TSHttpTxnConfigIntSet", "TestCase1", TC_FAIL, "Failed on %s, %d != %d", conf, ival_read, ival_rand);
+        SDK_RPRINT(test, "TSHttpTxnConfigIntSet", "TestCase1", TC_FAIL, "Failed on %s, %d != %d", conf.data(), ival_read,
+                   ival_rand);
         success = false;
         continue;
       }
@@ -7670,7 +7683,8 @@ REGRESSION_TEST(SDK_API_OVERRIDABLE_CONFIGS)(RegressionTest *test, int /* atype 
       TSHttpTxnConfigFloatSet(txnp, key, fval_rand);
       TSHttpTxnConfigFloatGet(txnp, key, &fval_read);
       if (fval_rand != fval_read) {
-        SDK_RPRINT(test, "TSHttpTxnConfigFloatSet", "TestCase1", TC_FAIL, "Failed on %s, %f != %f", conf, fval_read, fval_rand);
+        SDK_RPRINT(test, "TSHttpTxnConfigFloatSet", "TestCase1", TC_FAIL, "Failed on %s, %f != %f", conf.data(), fval_read,
+                   fval_rand);
         success = false;
         continue;
       }
@@ -7680,7 +7694,8 @@ REGRESSION_TEST(SDK_API_OVERRIDABLE_CONFIGS)(RegressionTest *test, int /* atype 
       TSHttpTxnConfigStringSet(txnp, key, test_string, -1);
       TSHttpTxnConfigStringGet(txnp, key, &sval_read, &len);
       if (test_string != sval_read) {
-        SDK_RPRINT(test, "TSHttpTxnConfigStringSet", "TestCase1", TC_FAIL, "Failed on %s, %s != %s", conf, sval_read, test_string);
+        SDK_RPRINT(test, "TSHttpTxnConfigStringSet", "TestCase1", TC_FAIL, "Failed on %s, %s != %s", conf.data(), sval_read,
+                   test_string);
         success = false;
         continue;
       }

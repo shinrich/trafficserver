@@ -410,7 +410,8 @@ public:
     TRANSACTION_COMPLETE,
     CONGEST_CONTROL_CONGESTED_ON_F,
     CONGEST_CONTROL_CONGESTED_ON_M,
-    PARENT_ORIGIN_RETRY
+    PARENT_ORIGIN_RETRY,
+    OUTBOUND_CONGESTION
   };
 
   enum CacheWriteStatus_t {
@@ -840,12 +841,12 @@ public:
     CacheLookupInfo cache_info;
     DNSLookupInfo dns_info;
     RedirectInfo redirect_info;
-    OutboundConnTracker::Group *conn_tracker_info = nullptr;
-    unsigned int updated_server_version;
-    bool force_dns;
-    MgmtByte cache_open_write_fail_action;
-    bool is_revalidation_necessary; // Added to check if revalidation is necessary - YTS Team, yamsat
-    bool request_will_not_selfloop; // To determine if process done - YTS Team, yamsat
+    OutboundConnTrack::TxnState outbound_conn_track_state;
+    unsigned int updated_server_version   = HostDBApplicationInfo::HTTP_VERSION_UNDEFINED;
+    bool force_dns                        = false;
+    MgmtByte cache_open_write_fail_action = 0;
+    bool is_revalidation_necessary        = false; // Added to check if revalidation is necessary - YTS Team, yamsat
+    bool request_will_not_selfloop        = false; // To determine if process done - YTS Team, yamsat
     ConnectionAttributes client_info;
     ConnectionAttributes icp_info;
     ConnectionAttributes parent_info;
@@ -892,15 +893,10 @@ public:
     bool is_websocket;
     bool did_upgrade_succeed;
 
-    // Track if this SM has reserved (incremented) the outbound connection tracking data.
-    // see conn_track_info
-    bool outbound_conn_reserved = false;
-    bool outbound_conn_queued   = false;
-
-    char *internal_msg_buffer;        // out
-    char *internal_msg_buffer_type;   // out
-    int64_t internal_msg_buffer_size; // out
-    int64_t internal_msg_buffer_fast_allocator_size;
+    char *internal_msg_buffer                       = nullptr; // out
+    char *internal_msg_buffer_type                  = nullptr; // out
+    int64_t internal_msg_buffer_size                = 0;       // out
+    int64_t internal_msg_buffer_fast_allocator_size = -1;
 
     struct sockaddr_in icp_ip_result; // in
     bool icp_lookup_success;          // in
@@ -1160,7 +1156,7 @@ public:
       arena.reset();
       unmapped_url.clear();
       hostdb_entry.clear();
-      clear_conn_tracking();
+      outbound_conn_track_state.clear();
 
       delete[] ranges;
       ranges      = NULL;
@@ -1193,17 +1189,6 @@ public:
       internal_msg_buffer_size = 0;
     }
 
-    void
-    clear_conn_tracking()
-    {
-      if (conn_tracker_info) {
-        if (outbound_conn_reserved)
-          --(conn_tracker_info->_count);
-        if (outbound_conn_queued)
-          --(conn_tracker_info->_queued);
-        outbound_conn_reserved = outbound_conn_queued = false;
-      }
-    }
   }; // End of State struct.
 
   static void HandleBlindTunnel(State *s);

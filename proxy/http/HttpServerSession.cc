@@ -29,6 +29,8 @@
 
  ****************************************************************************/
 #include "ts/ink_config.h"
+#include "ts/BufferWriter.h"
+#include "ts/bwf_std_format.h"
 #include "ts/Allocator.h"
 #include "HttpServerSession.h"
 #include "HttpSessionManager.h"
@@ -85,14 +87,14 @@ HttpServerSession::new_connection(NetVConnection *new_vc)
 }
 
 void
-HttpServerSession::enable_outbound_connection_tracking(OutboundConnTracker::Group *group)
+HttpServerSession::enable_outbound_connection_tracking(OutboundConnTrack::Group *group)
 {
+  ink_assert(nullptr == conn_track_group);
   conn_track_group = group;
   if (is_debug_tag_set("http_ss")) {
     ts::LocalBufferWriter<256> w;
-    w.print("[{}] new connection, ip: {}, group ({},{},{:s}), count: {}", con_id, get_server_ip(), group->_addr, group->_fqdn_hash,
-            group->_match_type, group->_count.load());
-    Debug("http_ss", "%.*s", static_cast<int>(w.size()), w.data());
+    w.print("[{}] new connection, ip: {}, group ({}), count: {}\0", con_id, get_server_ip(), *group, group->_count);
+    Debug("http_ss", "%s", w.data());
   }
 }
 
@@ -135,17 +137,18 @@ HttpServerSession::do_io_close(int alerrno)
   if (conn_track_group) {
     if (conn_track_group->_count >= 0) {
       auto n = (conn_track_group->_count)--;
-      if (debug_p)
-        w.print(" conn track group ({},{},{:s}) count {}", conn_track_group->_addr, conn_track_group->_fqdn_hash,
-                conn_track_group->_match_type, n);
+      if (debug_p) {
+        w.print(" conn track group ({}) count {}", conn_track_group->_key, n);
+      }
     } else {
       // A bit dubious, as there's no guarantee it's still negative, but even that would be interesting to know.
       Error("[http_ss] [%" PRId64 "] number of connections should be greater than or equal to zero: %u", con_id,
             conn_track_group->_count.load());
     }
   }
-  if (debug_p)
+  if (debug_p) {
     Debug("http_ss", "%.*s", static_cast<int>(w.size()), w.data());
+  }
 
   if (server_vc) {
     server_vc->do_io_close(alerrno);

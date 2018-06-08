@@ -61,6 +61,8 @@ HttpDebugNames::get_server_state_name(HttpTransact::ServerState_t state)
     return "CONGEST_CONTROL_CONGESTED_ON_M";
   case HttpTransact::PARENT_ORIGIN_RETRY:
     return "PARENT_ORIGIN_RETRY";
+  case HttpTransact::OUTBOUND_CONGESTION:
+    return "OUTBOUND_CONGESTION";
   }
 
   return ("unknown state name");
