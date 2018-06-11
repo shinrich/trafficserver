@@ -1675,7 +1675,7 @@ HttpSM::handle_api_return()
     // state_read_server_reponse_header and never get into this logic again.
     if (enable_redirection && !t_state.redirect_info.redirect_in_process && is_redirect_required() &&
         (redirection_tries <= t_state.txn_conf->number_of_redirections)) {
-      ++redirection_tries;
+      // redirection_tries already incremented in state_read_server_response_header(..)
       do_redirect();
     } else if (redirection_tries > t_state.txn_conf->number_of_redirections) {
       t_state.squid_codes.subcode = SQUID_SUBCODE_NUM_REDIRECTIONS_EXCEEDED;
