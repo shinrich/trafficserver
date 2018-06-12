@@ -1,0 +1,128 @@
+Requirements:
+Fedora:
+	 hiredis-devel-0.13.3-5.fc27.x86_64
+
+General overview notes all about ats_session_reuse.
+===================================================
+
+ats_ssl_session_reuse - handles everything needed to resume TLS connections with 
+    abbreviated handshakes among local group of machines (POD). 
+    TLS session reuse for session ticket (rfc5077) and session IDs as defined
+    from SSLv2 up to TLSv1.2.   No support for TLSv1.3 0-RTT/resumption PSKs yet.
+    This file contains a bunch of short notes to help understand what this code base does.
+
+     Creates a network (using Redis) among nodes of a POD to share:
+	  - session cache information
+	  - session ticket encryption key
+      	  - update/rotate session ticket encryption key.
+
+
+-----
+POD connectivity of all nodes 
+   A Redis star network is formed with all clients (ATS nodes of POD) connecting 
+   to a Redis-server node.  Deployments typically have a backup second redis-server node.
+   Edge deployments typically have nodes 1 and 2 configured as the redis server nodes.
+
+   Authentication to join the network is required and done via a PSK
+
+   - Redis is a non-encrypted communication mechanism, so ssl_session_reuse encrypts 
+     each session cache packet and each stek.
+
+-----
+
+Pod system Run-time entities:
+	1) redis-server (typically two, running on ATS nodes 1&2 of POD. separate process)
+	2) ats_session_reuse plugin (running in ATS execution space)
+          2a) STEK-master thread.
+          2b) STEK-slave thread.
+-----------------------------------
+redis-server
+	- clients connenct to the redis-server if they can authenticate
+		by presenting the configured PSK.
+	- distributes data quickly among the nodes.
+	- typical deployment has two instances running on the first two nodes
+	of the POD.
+        - redis_server is started up independently via something like:
+		yinst start redis_y
+
+
+-----------------------------------
+ats_session_reuse plugin
+	Does the following:
+
+0) runs in ATS execution space as an ATS plugin,  It launches 1 or 2 threads at execution time
+for handling STEK-rotations.  Otherwise it is called via ATS's OpenSSL callbacks when a
+TLS handshake occurs.
+
+1) session-cache info handling:
+	on new incoming TLS connection, OpenSSL calls callback to cache session 
+		info,  which encrypts and distributes to POD.
+
+2) session-cache info on resumption, Will query the ATS session cache by
+    session-id for session-cache info.  Which may have occurred to any 
+    of the nodes in the POD.
+
+3) session-ticket info handling:
+	on incoming TLS connection, if stek-name matches current or previous
+		ticket, it decrypts the ticket, and session-reuse is allowed.
+
+5) runs the STEK-master thread - only one per POD.  It's responsible for
+	generating a new STEK at configured time period. - currently defaults
+	to 7 hours.  After generating a STEK and pushing it out to network, 
+	it goes to sleep (for ~7 hours).  Each of the redis_subscribers
+	(MDBM subscribers) store only a single stek, so any push by master
+	replaces previous.  When master wakes up, if plugin is still using the same 
+    key it generated, it remains the master.  If not, then it assumes 
+    another entity in the POD is the master, and so it yields to the
+	master that last updated the POD, by terminating it's own stek-master-thread.
+
+
+----- ----- ----- ----- ----- ----- ----- ----- ----- ----- ----- ----- -----
+
+
+**** Operational/deployment notes: *****
+     -----------------------------
+1) Make sure the redis auth key is deployed. It can be specified in the config file as  
+    ssl_session.redis_auth_key_file=/path/to/key/file
+
+2) redis_server: 
+
+2a) redis_server packageshould be running on the configured 
+master nodes.  It's not used on the redis client nodes. Server must be told that 
+client need to authenticate with a command like:
+
+	redis_y.requirepass= redis_session_reuse
+
+# above will tell the redis_server that any clients connecting must
+# authenticate with a password
+
+---
+
+2b) All nodes must be configured to know where the 
+redis_server is:
+
+   ats_ssl_session_reuse.redis_endpoints=abc.rst.com:6379,wuv.hij.com:6379
+
+# Production typically puts this on 1st and 2nd nodes of cluster.
+
+Those server nodes should have redis server package on them
+Start the redis server
+--
+3) Check the session_reuse config settings.
+
+--
+
+4) Start ATS
+4a)	The following line should be in the ATS plugin.config:
+		ssl_session_reuse.so conf/trafficserver/ats_ssl_session_reuse.config
+
+There is an example config provided with the plugin source code: example_config.config
+4b) start ats
+
+--
+
+5) logs are in logs/trafficserver/
+    logs to error.log (for warnings and error) or traffic.out (for debug)
+	
+Version 0.1.0 (06/15/2018, persia)
+  * Initial open source release of ats_ssl_session_reuse
