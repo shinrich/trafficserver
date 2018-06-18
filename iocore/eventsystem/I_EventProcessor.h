@@ -290,10 +290,12 @@ public:
   struct ThreadGroupDescriptor {
     std::string _name;                               ///< Name for the thread group.
     int _count                = 0;                   ///< # of threads of this type.
-    std::atomic<int> _started = 0;                   ///< # of started threads of this type.
+    std::atomic<int> _started;                       ///< # of started threads of this type.
     int _next_round_robin     = 0;                   ///< Index of thread to use for events assigned to this group.
     Que(Event, link) _spawnQueue;                    ///< Events to dispatch when thread is spawned.
     EThread *_thread[MAX_THREADS_IN_EACH_TYPE] = {}; ///< The actual threads in this group.
+
+    ThreadGroupDescriptor() : _started(0) {}
   };
 
   /// Storage for per group data.
