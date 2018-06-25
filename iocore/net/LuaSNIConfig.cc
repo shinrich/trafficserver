@@ -40,11 +40,14 @@ TsConfigEnumDescriptor LuaSNIConfig::Item::LEVEL_DESCRIPTOR = {TsConfigDescripto
 TsConfigDescriptor LuaSNIConfig::Item::TUNNEL_DEST_DESCRIPTOR = {TsConfigDescriptor::Type::STRING, "String", TS_tunnel_route,
                                                                  "tunnel route destination"};
 TsConfigDescriptor LuaSNIConfig::Item::IP_ALLOW_DESCRIPTOR = {TsConfigDescriptor::Type::STRING, "String", TS_ip_allow,
-                                                                 "Client IP allowed for this communication"};
+                                                              "Client IP allowed for this communication"};
 TsConfigDescriptor LuaSNIConfig::Item::CLIENT_CERT_DESCRIPTOR = {TsConfigDescriptor::Type::STRING, "String", TS_client_cert,
                                                                  "Client certificate to present to the next hop server"};
-TsConfigDescriptor LuaSNIConfig::Item::VERIFY_NEXT_SERVER_DESCRIPTOR = {TsConfigDescriptor::Type::INT, "Int",
-                                                                        TS_verify_origin_server, "Next hop verification level"};
+TsConfigEnumDescriptor LuaSNIConfig::Item::VERIFY_NEXT_SERVER_DESCRIPTOR = {TsConfigDescriptor::Type::ENUM,
+                                                                            "enum",
+                                                                            "Level",
+                                                                            "Level for client verification",
+                                                                            {{"NONE", 0}, {"MODERATE", 1}, {"STRICT", 2}}};
 
 ts::Errata
 LuaSNIConfig::loader(lua_State *L)

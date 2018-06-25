@@ -52,7 +52,7 @@ struct LuaSNIConfig : public TsConfigBase {
   enum class Action {
     disable_h2 = start,
     verify_client,
-    tunnel_route,         // blind tunnel action
+    tunnel_route, // blind tunnel action
     ip_allow,
     verify_origin_server, // this applies to server side vc only
     client_cert
@@ -70,7 +70,7 @@ struct LuaSNIConfig : public TsConfigBase {
         DISABLEH2_CONFIG(DISABLE_h2_DESCRIPTOR, disable_h2),
         VERIFYCLIENT_CONFIG(LEVEL_DESCRIPTOR, (int &)verify_client_level),
         TUNNEL_DEST_CONFIG(TUNNEL_DEST_DESCRIPTOR, tunnel_destination),
-        IP_ALLOW_CONFIG(IP_ALLOW_DESCRIPTOR,ip_allow),
+        IP_ALLOW_CONFIG(IP_ALLOW_DESCRIPTOR, ip_allow),
         CLIENT_CERT_CONFIG(CLIENT_CERT_DESCRIPTOR, client_cert),
         VERIFY_NEXT_SERVER_CONFIG(VERIFY_NEXT_SERVER_DESCRIPTOR, (int &)verify_origin_server)
     {
@@ -103,8 +103,8 @@ struct LuaSNIConfig : public TsConfigBase {
     TsConfigString IP_ALLOW_CONFIG;
     static TsConfigDescriptor CLIENT_CERT_DESCRIPTOR;
     TsConfigString CLIENT_CERT_CONFIG;
-    static TsConfigDescriptor VERIFY_NEXT_SERVER_DESCRIPTOR;
-    TsConfigInt VERIFY_NEXT_SERVER_CONFIG;
+    static TsConfigEnumDescriptor VERIFY_NEXT_SERVER_DESCRIPTOR;
+    TsConfigEnum<self::Level> VERIFY_NEXT_SERVER_CONFIG;
     ~Item() {}
   };
   std::vector<self::Item> items;
