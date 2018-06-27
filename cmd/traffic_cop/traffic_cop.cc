@@ -70,6 +70,8 @@ static const int MAX_LOGIN = ink_login_name_max();
 #define COP_DEBUG LOG_DEBUG
 #define COP_NOTICE LOG_NOTICE
 
+static pid_t manager_pid = 0;
+
 static const char *runtime_dir;
 static char config_file[PATH_NAME_MAX];
 
@@ -255,18 +257,12 @@ sig_term(int signum)
 
   cop_log_trace("Entering sig_term(%d)\n", signum);
 
-  // safely^W commit suicide.
-  cop_log_trace("Sending signal %d to entire group\n", signum);
-  killpg(0, signum);
+  // safely commit suicide.
+  cop_log_trace("Sending signal %d to traffic_manager\n", signum);
+  kill(manager_pid, signum);
 
   cop_log_trace("Waiting for children to exit.");
-
-  for (;;) {
-    pid = waitpid(WAIT_ANY, &status, WNOHANG);
-
-    if (pid <= 0) {
-      break;
-    }
+  if ((pid = waitpid(manager_pid, &status, 0)) > 0) {
     // TSqa03086 - We can not log the child status signal from
     //   the signal handler since syslog can deadlock.  Record
     //   the pid and the status in a global for logging
@@ -771,15 +767,15 @@ spawn_manager()
 
   cop_log_trace("launching %s'\n", prog);
 
-  pid_t child = fork();
-  if (child == 0) {
+  manager_pid = fork();
+  if (manager_pid == 0) {
     EnableDeathSignal(SIGTERM);
 
     // Bind stdout and stderr of traffic_manager to traffic.out
     execl(prog, prog, "--" TM_OPT_BIND_STDOUT, log_file, "--" TM_OPT_BIND_STDERR, log_file, nullptr);
     cop_log_trace("Somehow execv(%s, options, nullptr) failed: %s (%d)!\n", prog, strerror(errno), errno);
     exit(1);
-  } else if (child == -1) {
+  } else if (manager_pid == -1) {
     cop_log(COP_FATAL, "unable to fork [%d '%s']\n", errno, strerror(errno));
     exit(1);
   }
