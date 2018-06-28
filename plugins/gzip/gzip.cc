@@ -30,6 +30,7 @@
 #include "debug_macros.h"
 #include "misc.h"
 #include "configuration.h"
+#include "add_vary.h"
 #include "ts/remap.h"
 
 using namespace std;
@@ -186,47 +187,6 @@ content_encoding_header(TSMBuffer bufp, TSMLoc hdr_loc, const int compression_ty
   return ret;
 }
 
-static TSReturnCode
-vary_header(TSMBuffer bufp, TSMLoc hdr_loc)
-{
-  TSReturnCode ret;
-  TSMLoc ce_loc;
-
-  ce_loc = TSMimeHdrFieldFind(bufp, hdr_loc, TS_MIME_FIELD_VARY, TS_MIME_LEN_VARY);
-  if (ce_loc) {
-    int idx, count, len;
-    const char *value;
-
-    count = TSMimeHdrFieldValuesCount(bufp, hdr_loc, ce_loc);
-    for (idx = 0; idx < count; idx++) {
-      value = TSMimeHdrFieldValueStringGet(bufp, hdr_loc, ce_loc, idx, &len);
-      if (len && strncasecmp("Accept-Encoding", value, len) == 0) {
-        // Bail, Vary: Accept-Encoding already sent from origin
-        TSHandleMLocRelease(bufp, hdr_loc, ce_loc);
-        return TS_SUCCESS;
-      }
-    }
-
-    ret = TSMimeHdrFieldValueStringInsert(bufp, hdr_loc, ce_loc, -1, TS_MIME_FIELD_ACCEPT_ENCODING, TS_MIME_LEN_ACCEPT_ENCODING);
-    TSHandleMLocRelease(bufp, hdr_loc, ce_loc);
-  } else {
-    if ((ret = TSMimeHdrFieldCreateNamed(bufp, hdr_loc, TS_MIME_FIELD_VARY, TS_MIME_LEN_VARY, &ce_loc)) == TS_SUCCESS) {
-      if ((ret = TSMimeHdrFieldValueStringInsert(bufp, hdr_loc, ce_loc, -1, TS_MIME_FIELD_ACCEPT_ENCODING,
-                                                 TS_MIME_LEN_ACCEPT_ENCODING)) == TS_SUCCESS) {
-        ret = TSMimeHdrFieldAppend(bufp, hdr_loc, ce_loc);
-      }
-
-      TSHandleMLocRelease(bufp, hdr_loc, ce_loc);
-    }
-  }
-
-  if (ret != TS_SUCCESS) {
-    error("cannot add/update the Vary header");
-  }
-
-  return ret;
-}
-
 // FIXME: the etag alteration isn't proper. it should modify the value inside quotes
 //       specify a very header..
 static TSReturnCode
@@ -281,7 +241,7 @@ compress_transform_init(TSCont contp, Data *data)
   }
 
   if (content_encoding_header(bufp, hdr_loc, data->compression_type, data->compression_algorithms) == TS_SUCCESS &&
-      vary_header(bufp, hdr_loc) == TS_SUCCESS && etag_header(bufp, hdr_loc) == TS_SUCCESS) {
+      Compress::addVaryHdr(bufp, hdr_loc) && etag_header(bufp, hdr_loc) == TS_SUCCESS) {
     downstream_conn         = TSTransformOutputVConnGet(contp);
     data->downstream_buffer = TSIOBufferCreate();
     data->downstream_reader = TSIOBufferReaderAlloc(data->downstream_buffer);
@@ -893,6 +853,8 @@ transform_plugin(TSCont contp, TSEvent event, void *edata)
 static void
 handle_request(TSHttpTxn txnp, Configuration *config)
 {
+  Compress::addVaryHdrContinuation(txnp);
+
   TSMBuffer req_buf;
   TSMLoc req_loc;
   HostConfiguration *hc;

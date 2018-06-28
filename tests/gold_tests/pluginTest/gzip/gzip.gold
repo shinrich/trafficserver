@@ -31,6 +31,7 @@
 < HTTP/1.1 200 OK
 < Content-Type: text/javascript
 < Content-Length: 41
+< Vary: Accept-Encoding
 
 > GET http://ae-1/obj1 HTTP/1.1
 > X-Ats-Gzip-Test: ts/1/gzip, deflate, sdch, br
@@ -56,6 +57,7 @@
 < HTTP/1.1 200 OK
 < Content-Type: text/javascript
 < Content-Length: 41
+< Vary: Accept-Encoding
 
 > GET http://ae-1/obj1 HTTP/1.1
 > X-Ats-Gzip-Test: ts/1/deflate
@@ -63,6 +65,7 @@
 < HTTP/1.1 200 OK
 < Content-Type: text/javascript
 < Content-Length: 41
+< Vary: Accept-Encoding
 
 > GET http://ae-2/obj2 HTTP/1.1
 > X-Ats-Gzip-Test: ts/2/gzip, deflate, sdch, br
@@ -97,6 +100,7 @@
 < HTTP/1.1 200 OK
 < Content-Type: text/javascript
 < Content-Length: 41
+< Vary: Accept-Encoding
 
 > GET http://ae-0/obj0 HTTP/1.1
 > X-Ats-Gzip-Test: ts2/0/gzip
@@ -131,6 +135,7 @@
 < HTTP/1.1 200 OK
 < Content-Type: text/javascript
 < Content-Length: 41
+< Vary: Accept-Encoding
 
 > GET http://ae-1/obj1 HTTP/1.1
 > X-Ats-Gzip-Test: ts2/1/gzip
@@ -156,6 +161,7 @@
 < HTTP/1.1 200 OK
 < Content-Type: text/javascript
 < Content-Length: 41
+< Vary: Accept-Encoding
 
 > GET http://ae-1/obj1 HTTP/1.1
 > X-Ats-Gzip-Test: ts2/1/deflate
@@ -163,6 +169,7 @@
 < HTTP/1.1 200 OK
 < Content-Type: text/javascript
 < Content-Length: 41
+< Vary: Accept-Encoding
 
 > GET http://ae-2/obj2 HTTP/1.1
 > X-Ats-Gzip-Test: ts2/2/gzip
@@ -197,6 +204,7 @@
 < HTTP/1.1 200 OK
 < Content-Type: text/javascript
 < Content-Length: 41
+< Vary: Accept-Encoding
 
 > GET http://ae-0/obj0 HTTP/1.1
 > X-Ats-Gzip-Test: ts3/0/deflate
@@ -204,6 +212,7 @@
 < HTTP/1.1 200 OK
 < Content-Type: text/javascript
 < Content-Length: 41
+< Vary: Accept-Encoding
 
 > GET http://ae-0/obj0 HTTP/1.1
 > X-Ats-Gzip-Test: ts3/0/gzip
@@ -229,6 +238,7 @@
 < HTTP/1.1 200 OK
 < Content-Type: text/javascript
 < Content-Length: 41
+< Vary: Accept-Encoding
 
 > GET http://ae-1/obj1 HTTP/1.1
 > X-Ats-Gzip-Test: ts3/1/deflate
@@ -236,6 +246,7 @@
 < HTTP/1.1 200 OK
 < Content-Type: text/javascript
 < Content-Length: 41
+< Vary: Accept-Encoding
 
 > GET http://ae-1/obj1 HTTP/1.1
 > X-Ats-Gzip-Test: ts3/1/gzip
@@ -261,6 +272,7 @@
 < HTTP/1.1 200 OK
 < Content-Type: text/javascript
 < Content-Length: 41
+< Vary: Accept-Encoding
 
 > GET http://ae-2/obj2 HTTP/1.1
 > X-Ats-Gzip-Test: ts3/2/deflate
@@ -268,6 +280,7 @@
 < HTTP/1.1 200 OK
 < Content-Type: text/javascript
 < Content-Length: 41
+< Vary: Accept-Encoding
 
 > GET http://ae-2/obj2 HTTP/1.1
 > X-Ats-Gzip-Test: ts3/2/gzip
@@ -293,4 +306,5 @@
 < HTTP/1.1 200 OK
 < Content-Type: text/javascript
 < Content-Length: 41
+< Vary: Accept-Encoding
 
