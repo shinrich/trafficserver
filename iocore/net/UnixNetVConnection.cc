@@ -141,7 +141,12 @@ read_signal_and_update(int event, UnixNetVConnection *vc)
 {
   vc->recursion++;
   if (vc->read.vio._cont) {
-    vc->read.vio._cont->handleEvent(event, &vc->read.vio);
+    MUTEX_TRY_LOCK_FOR(lock, vc->read.vio._cont->mutex, vc->mutex->thread_holding, vc->read.vio._cont);
+    if (!lock.is_locked()) {
+      vc->mutex->thread_holding->schedule_in(vc->read.vio._cont, HRTIME_MSECONDS(1), event);
+    } else { 
+      vc->read.vio._cont->handleEvent(event, &vc->read.vio);
+    }
   } else {
     switch (event) {
     case VC_EVENT_EOS:
