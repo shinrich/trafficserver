@@ -2062,6 +2062,8 @@ HttpSM::state_send_server_request_header(int event, void *data)
         setup_transform_to_server_transfer();
       } else {
         do_setup_post_tunnel(HTTP_SERVER_VC);
+        // Start up read response in parallel in case of early error response
+        setup_server_read_response_header();
       }
     } else {
       // It's time to start reading the response
@@ -2868,8 +2870,7 @@ HttpSM::tunnel_handler_post(int event, void *data)
   case HTTP_SM_POST_UA_FAIL:
     break;
   case HTTP_SM_POST_SUCCESS:
-    // It's time to start reading the response
-    setup_server_read_response_header();
+    // Read reasponse already setup
     break;
   default:
     ink_release_assert(0);
@@ -5500,7 +5501,7 @@ HttpSM::handle_post_failure()
     tunnel.deallocate_buffers();
     tunnel.reset();
     // There's data from the server so try to read the header
-    setup_server_read_response_header();
+    // Read response is already set up
   } else {
     tunnel.deallocate_buffers();
     tunnel.reset();
@@ -5556,6 +5557,8 @@ HttpSM::handle_http_server_open()
       (t_state.hdr_info.request_content_length > 0 || t_state.client_info.transfer_encoding == HttpTransact::CHUNKED_ENCODING) &&
       do_post_transform_open()) {
     do_setup_post_tunnel(HTTP_TRANSFORM_VC);
+    // Start up read response in parallel in case of early error response
+    setup_server_read_response_header();
   } else {
     setup_server_send_request_api();
   }
