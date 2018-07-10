@@ -2872,7 +2872,7 @@ HttpSM::tunnel_handler_post(int event, void *data)
     break;
   case HTTP_SM_POST_UA_FAIL:
     // Cancel out the server read if present. Left over attempt to read server response.
-    if (server_entry && server_entry->read_vio && server_session && server_entry->read_vio->cont) {
+    if (server_entry && server_entry->read_vio && server_session && server_entry->read_vio->_cont) {
       server_entry->read_vio = server_session->do_io_read(nullptr, 0, nullptr);
     }
     break;

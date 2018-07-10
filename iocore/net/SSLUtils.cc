@@ -40,6 +40,7 @@
 #include <openssl/rand.h>
 #include <openssl/dh.h>
 #include <openssl/bn.h>
+#include <openssl/engine.h>
 #include <unistd.h>
 #include <termios.h>
 #include <vector>
