@@ -251,3 +251,9 @@ check_runroot()
   }
   return runroot_map(using_runroot);
 }
+
+bool
+use_runroot()
+{
+  return !using_runroot.empty();
+}
