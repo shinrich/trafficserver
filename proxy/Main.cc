@@ -231,7 +231,7 @@ static const ArgumentDescription argument_descriptions[] = {
   {"poll_timeout", 't', "poll timeout in milliseconds", "I", &poll_timeout, nullptr, nullptr},
   HELP_ARGUMENT_DESCRIPTION(),
   VERSION_ARGUMENT_DESCRIPTION(),
-  RUNROOT_ARGUMENT_DESCRIPTION()};
+  RUNROOT_ARGUMENT_DESCRIPTION()
 };
 
 struct AutoStopCont : public Continuation {

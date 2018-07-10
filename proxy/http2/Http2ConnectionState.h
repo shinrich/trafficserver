@@ -132,7 +132,7 @@ public:
       recursion(0),
       fini_event(nullptr),
       zombie_event(nullptr),
-      shutdown_state(NOT_INITIATED)
+      shutdown_state(HTTP2_SHUTDOWN_NOT_INITIATED)
   {
     SET_HANDLER(&Http2ConnectionState::main_event_handler);
   }
