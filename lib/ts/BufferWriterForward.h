@@ -23,12 +23,11 @@
 
 #pragma once
 
-#include <stdlib.h>
+#include <cstdlib>
 #include <utility>
 #include <cstring>
 #include <vector>
 #include <map>
-#include <ts/ink_std_compat.h>
 
 #include <ts/TextView.h>
 #include <ts/ink_assert.h>
@@ -53,8 +52,8 @@ struct BWFSpec {
     NONE,                            ///< No alignment.
     LEFT,                            ///< Left alignment '<'.
     RIGHT,                           ///< Right alignment '>'.
-    CENTER,                          ///< Center alignment '='.
-    SIGN                             ///< Align plus/minus sign before numeric fill. '^'
+    CENTER,                          ///< Center alignment '^'.
+    SIGN                             ///< Align plus/minus sign before numeric fill. '='
   } _align           = Align::NONE;  ///< Output field alignment.
   char _type         = DEFAULT_TYPE; ///< Type / radix indicator.
   bool _radix_lead_p = false;        ///< Print leading radix indication.
@@ -63,8 +62,8 @@ struct BWFSpec {
   int _prec         = -1;                                       ///< Precision
   unsigned int _max = std::numeric_limits<unsigned int>::max(); ///< Maxium width
   int _idx          = -1;                                       ///< Positional "name" of the specification.
-  string_view _name;                                            ///< Name of the specification.
-  string_view _ext;                                             ///< Extension if provided.
+  ts::string_view _name;                                       ///< Name of the specification.
+  ts::string_view _ext;                                        ///< Extension if provided.
 
   static const self_type DEFAULT;
 
@@ -78,6 +77,8 @@ struct BWFSpec {
   bool has_numeric_type() const;
   /// Check if the type in @a this is an upper case variant.
   bool has_upper_case_type() const;
+  /// Check if the type is a raw pointer.
+  bool has_pointer_type() const;
 
 protected:
   /// Validate character is alignment character and return the appropriate enum value.
@@ -86,51 +87,64 @@ protected:
   /// Validate is sign indicator.
   bool is_sign(char c);
 
-  static constexpr uint8_t TYPE_FLAG_VALID   = 0x01; ///< A valid type character.
-  static constexpr uint8_t TYPE_FLAG_NUMERIC = 0x02; ///< Numeric output.
-  static constexpr uint8_t TYPE_FLAG_UPPER   = 0x04; ///< Upper case flag.
-  /// Type character properties.
-  static const uint8_t TYPE_FLAG[0x100];
+  /// Handrolled initialization the character syntactic property data.
+  static const struct Property {
+    Property(); ///< Default constructor, creates initialized flag set.
+    /// Flag storage, indexed by character value.
+    uint8_t _data[0x100];
+    /// Flag mask values.
+    static constexpr uint8_t ALIGN_MASK        = 0x0F; ///< Alignment type.
+    static constexpr uint8_t TYPE_CHAR         = 0x10; ///< A valid type character.
+    static constexpr uint8_t UPPER_TYPE_CHAR   = 0x20; ///< Upper case flag.
+    static constexpr uint8_t NUMERIC_TYPE_CHAR = 0x40; ///< Numeric output.
+    static constexpr uint8_t SIGN_CHAR         = 0x80; ///< Is sign character.
+  } _prop;
 };
 
 inline BWFSpec::Align
 BWFSpec::align_of(char c)
 {
-  return '<' == c ? Align::LEFT : '>' == c ? Align::RIGHT : '=' == c ? Align::CENTER : '^' == c ? Align::SIGN : Align::NONE;
+  return static_cast<Align>(_prop._data[static_cast<unsigned>(c)] & Property::ALIGN_MASK);
 }
 
 inline bool
 BWFSpec::is_sign(char c)
 {
-  return '+' == c || '-' == c || ' ' == c;
+  return _prop._data[static_cast<unsigned>(c)] & Property::SIGN_CHAR;
 }
 
 inline bool
 BWFSpec::is_type(char c)
 {
-  return TYPE_FLAG[static_cast<int>(c)] & TYPE_FLAG_VALID;
+  return _prop._data[static_cast<unsigned>(c)] & Property::TYPE_CHAR;
 }
 
 inline bool
 BWFSpec::is_upper_case_type(char c)
 {
-  return TYPE_FLAG[static_cast<int>(c)] & TYPE_FLAG_UPPER;
+  return _prop._data[static_cast<unsigned>(c)] & Property::UPPER_TYPE_CHAR;
 }
 
 inline bool
 BWFSpec::has_numeric_type() const
 {
-  return TYPE_FLAG[static_cast<int>(_type)] & TYPE_FLAG_NUMERIC;
+  return _prop._data[static_cast<unsigned>(_type)] & Property::NUMERIC_TYPE_CHAR;
 }
 
 inline bool
 BWFSpec::has_upper_case_type() const
 {
-  return TYPE_FLAG[static_cast<int>(_type)] & TYPE_FLAG_UPPER;
+  return _prop._data[static_cast<unsigned>(_type)] & Property::UPPER_TYPE_CHAR;
+}
+
+inline bool
+BWFSpec::has_pointer_type() const
+{
+  return _type == 'p' || _type == 'P';
 }
 
 class BWFormat;
 
 class BufferWriter;
 
-} // ts
+} // namespace ts
