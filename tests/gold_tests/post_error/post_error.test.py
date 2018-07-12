@@ -57,8 +57,6 @@ ts.Disk.records_config.update({
     'proxy.config.http.server_ports': '{0}'.format(ts.Variables.port)
 })
 
-
-
 tr = Test.AddTestRun()
 tr.Processes.Default.Command = 'curl -H"Expect:" -v -k -d "@postbody" http://127.0.0.1:{0}/'.format(ts.Variables.port)
 tr.Processes.Default.ReturnCode = 0
@@ -67,3 +65,51 @@ tr.Processes.Default.StartBefore(server)
 tr.Processes.Default.StartBefore(Test.Processes.ts, ready=When.PortOpen(ts.Variables.port))
 tr.StillRunningAfter = server
 
+tr = Test.AddTestRun()
+tr.Processes.Default.Command = 'curl -H"Expect:" -v -k -d "@postbody" http://127.0.0.1:{0}/'.format(ts.Variables.port)
+tr.Processes.Default.ReturnCode = 0
+tr.Processes.Default.Streams.All = "gold/post_error.gold"
+tr.StillRunningAfter = server
+
+
+tr = Test.AddTestRun()
+tr.Processes.Default.Command = 'curl -H"Expect:" -v -k -d "@postbody" http://127.0.0.1:{0}/'.format(ts.Variables.port)
+tr.Processes.Default.ReturnCode = 0
+tr.Processes.Default.Streams.All = "gold/post_error.gold"
+tr.StillRunningAfter = server
+
+tr = Test.AddTestRun()
+tr.Processes.Default.Command = 'curl -H"Expect:" -v -k -d "@postbody" http://127.0.0.1:{0}/'.format(ts.Variables.port)
+tr.Processes.Default.ReturnCode = 0
+tr.Processes.Default.Streams.All = "gold/post_error.gold"
+tr.StillRunningAfter = server
+
+tr = Test.AddTestRun()
+tr.Processes.Default.Command = 'curl -H"Expect:" -v -k -d "@postbody" http://127.0.0.1:{0}/'.format(ts.Variables.port)
+tr.Processes.Default.ReturnCode = 0
+tr.Processes.Default.Streams.All = "gold/post_error.gold"
+tr.StillRunningAfter = server
+
+tr = Test.AddTestRun()
+tr.Processes.Default.Command = 'curl -H"Expect:" -v -k -d "@postbody" http://127.0.0.1:{0}/'.format(ts.Variables.port)
+tr.Processes.Default.ReturnCode = 0
+tr.Processes.Default.Streams.All = "gold/post_error.gold"
+tr.StillRunningAfter = server
+
+tr = Test.AddTestRun()
+tr.Processes.Default.Command = 'curl -H"Expect:" -v -k -d "@postbody" http://127.0.0.1:{0}/'.format(ts.Variables.port)
+tr.Processes.Default.ReturnCode = 0
+tr.Processes.Default.Streams.All = "gold/post_error.gold"
+tr.StillRunningAfter = server
+
+tr = Test.AddTestRun()
+tr.Processes.Default.Command = 'curl -H"Expect:" -v -k -d "@postbody" http://127.0.0.1:{0}/'.format(ts.Variables.port)
+tr.Processes.Default.ReturnCode = 0
+tr.Processes.Default.Streams.All = "gold/post_error.gold"
+tr.StillRunningAfter = server
+
+tr = Test.AddTestRun()
+tr.Processes.Default.Command = 'curl -H"Expect:" -v -k -d "@postbody" http://127.0.0.1:{0}/'.format(ts.Variables.port)
+tr.Processes.Default.ReturnCode = 0
+tr.Processes.Default.Streams.All = "gold/post_error.gold"
+tr.StillRunningAfter = server

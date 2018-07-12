@@ -1905,9 +1905,13 @@ HttpSM::state_read_server_response_header(int event, void *data)
   case VC_EVENT_ERROR:
   case VC_EVENT_INACTIVITY_TIMEOUT:
   case VC_EVENT_ACTIVE_TIMEOUT:
-    // Error handling function
-    handle_server_setup_error(event, data);
-    return 0;
+
+    // If there is data to process, let's go there
+    // Otherwise return a canned error
+    if (server_buffer_reader->read_avail() == 0) {
+      handle_server_setup_error(event, data);
+      return 0;
+    }
   }
 
   // Reset the inactivity timeout if this is the first
@@ -2066,9 +2070,11 @@ HttpSM::state_send_server_request_header(int event, void *data)
       if (post_transform_info.vc) {
         setup_transform_to_server_transfer();
       } else {
+        if (server_session) { // Make sure we didn't lose the server connection before proceeding
+          // Start up read response in parallel in case of early error response
+          setup_server_read_response_header();
+        }
         do_setup_post_tunnel(HTTP_SERVER_VC);
-        // Start up read response in parallel in case of early error response
-        setup_server_read_response_header();
       }
     } else {
       // It's time to start reading the response
