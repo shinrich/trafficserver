@@ -23,9 +23,13 @@
 #include <sstream>
 #include <cstring>
 #include <getopt.h>
+#include <cstdint>
+#include <cinttypes>
 
-#include "ts/ts.h"
-#include "ts/ink_defs.h"
+#include <ts/ts.h>
+#include <ts/ink_defs.h>
+#include <ts/PostScript.h>
+#include <ts/TextView.h>
 
 #include "xdebug_headers.cc"
 #include "xdebug_transforms.cc"
@@ -36,17 +40,18 @@ static struct {
 } xDebugHeader = {nullptr, 0};
 
 enum {
-  XHEADER_X_CACHE_KEY      = 0x0004u,
-  XHEADER_X_MILESTONES     = 0x0008u,
-  XHEADER_X_CACHE          = 0x0010u,
-  XHEADER_X_GENERATION     = 0x0020u,
-  XHEADER_X_TRANSACTION_ID = 0x0040u,
-  XHEADER_X_DUMP_HEADERS   = 0x0080u,
-  XHEADER_X_REMAP          = 0x0100u,
+  XHEADER_X_CACHE_KEY      = 1u << 2,
+  XHEADER_X_MILESTONES     = 1u << 3,
+  XHEADER_X_CACHE          = 1u << 4,
+  XHEADER_X_GENERATION     = 1u << 5,
+  XHEADER_X_TRANSACTION_ID = 1u << 6,
+  XHEADER_X_DUMP_HEADERS   = 1u << 7,
+  XHEADER_X_REMAP          = 1u << 8,
 };
 
-static int XArgIndex             = 0;
-static TSCont XInjectHeadersCont = nullptr;
+static int XArgIndex              = 0;
+static TSCont XInjectHeadersCont  = nullptr;
+static TSCont XDeleteDebugHdrCont = nullptr;
 
 // Return the length of a string literal.
 template <int N>
@@ -319,14 +324,13 @@ InjectTxnUuidHeader(TSHttpTxn txn, TSMBuffer buffer, TSMLoc hdr)
 static int
 XInjectResponseHeaders(TSCont /* contp */, TSEvent event, void *edata)
 {
-  TSHttpTxn txn     = (TSHttpTxn)edata;
-  intptr_t xheaders = 0;
+  TSHttpTxn txn = (TSHttpTxn)edata;
   TSMBuffer buffer;
   TSMLoc hdr;
 
   TSReleaseAssert(event == TS_EVENT_HTTP_SEND_RESPONSE_HDR);
 
-  xheaders = (intptr_t)TSHttpTxnArgGet(txn, XArgIndex);
+  uintptr_t xheaders = reinterpret_cast<uintptr_t>(TSHttpTxnArgGet(txn, XArgIndex));
   if (xheaders == 0) {
     goto done;
   }
@@ -368,21 +372,71 @@ done:
   return TS_EVENT_NONE;
 }
 
+static bool
+isFwdFieldValue(ts::TextView tvVal, intmax_t &fwdCnt)
+{
+  static const ts::TextView paramName("fwd");
+
+  if (tvVal.size() < paramName.size()) {
+    return false;
+  }
+
+  if (ts::strcasecmp(paramName, tvVal.prefix(paramName.size())) != 0) {
+    return false;
+  }
+
+  tvVal.remove_prefix(paramName.size());
+
+  if (tvVal.size() == 0) {
+    // Value is 'fwd' with no '=<count>'.
+    fwdCnt = -1;
+    return true;
+  }
+
+  const char httpSpace[] = " \t";
+
+  tvVal.ltrim(httpSpace);
+
+  if (tvVal[0] != '=') {
+    return false;
+  }
+
+  tvVal.remove_prefix(1);
+  tvVal.ltrim(httpSpace);
+
+  size_t sz  = tvVal.size();
+  intmax_t i = ts::svtoi(tvVal, &tvVal);
+
+  if ((tvVal.size() != sz) or (i < 0)) {
+    // There were crud characters after the number, or the number was negative.
+    return false;
+  }
+
+  fwdCnt = i;
+
+  return true;
+}
+
 // Scan the client request headers and determine which debug headers they
 // want in the response.
 static int
 XScanRequestHeaders(TSCont /* contp */, TSEvent event, void *edata)
 {
-  TSHttpTxn txn     = (TSHttpTxn)edata;
-  intptr_t xheaders = 0;
+  TSHttpTxn txn      = (TSHttpTxn)edata;
+  uintptr_t xheaders = 0;
+  intmax_t fwdCnt    = 0;
   TSMLoc field, next;
   TSMBuffer buffer;
   TSMLoc hdr;
 
+  // Make sure TSHttpTxnReenable(txn, TS_EVENT_HTTP_CONTINUE) is called before exiting function.
+  //
+  ts::PostScript<std::function<void()> > ps([=]() -> void { TSHttpTxnReenable(txn, TS_EVENT_HTTP_CONTINUE); });
+
   TSReleaseAssert(event == TS_EVENT_HTTP_READ_REQUEST_HDR);
 
   if (TSHttpTxnClientReqGet(txn, &buffer, &hdr) == TS_ERROR) {
-    goto done;
+    return TS_EVENT_NONE;
   }
 
   TSDebug("xdebug", "scanning for %s header values", xDebugHeader.str);
@@ -479,6 +533,15 @@ XScanRequestHeaders(TSCont /* contp */, TSEvent event, void *edata)
         TSHttpTxnServerRespNoStoreSet(txn, 1);
         TSHttpTxnTransformedRespCache(txn, 0);
         TSHttpTxnUntransformedRespCache(txn, 0);
+
+      } else if (isFwdFieldValue(ts::TextView(value, vsize), fwdCnt)) {
+        if (fwdCnt > 0) {
+          // Decrement forward count in X-Debug header.
+          char newVal[128];
+          snprintf(newVal, sizeof(newVal), "fwd=%" PRIiMAX, fwdCnt - 1);
+          TSMimeHdrFieldValueStringSet(buffer, hdr, field, i, newVal, std::strlen(newVal));
+        }
+
       } else {
         TSDebug("xdebug", "ignoring unrecognized debug tag '%.*s'", vsize, value);
       }
@@ -489,9 +552,6 @@ XScanRequestHeaders(TSCont /* contp */, TSEvent event, void *edata)
     // Get the next duplicate.
     next = TSMimeHdrFieldNextDup(buffer, hdr, field);
 
-    // Destroy the current field that we have. We don't want this to go through and potentially confuse the origin.
-    TSMimeHdrFieldDestroy(buffer, hdr, field);
-
     // Now release our reference.
     TSHandleMLocRelease(buffer, hdr, field);
 
@@ -500,13 +560,51 @@ XScanRequestHeaders(TSCont /* contp */, TSEvent event, void *edata)
   }
 
   if (xheaders) {
-    TSDebug("xdebug", "adding response hook for header mask %p", (void *)xheaders);
+    TSDebug("xdebug", "adding response hook for header mask %p and forward count %" PRIiMAX, reinterpret_cast<void *>(xheaders),
+            fwdCnt);
     TSHttpTxnHookAdd(txn, TS_HTTP_SEND_RESPONSE_HDR_HOOK, XInjectHeadersCont);
-    TSHttpTxnArgSet(txn, XArgIndex, (void *)xheaders);
+    TSHttpTxnArgSet(txn, XArgIndex, reinterpret_cast<void *>(xheaders));
+
+    if (fwdCnt == 0) {
+      // X-Debug header has to be deleted, but not too soon for other plugins to see it.
+      TSHttpTxnHookAdd(txn, TS_HTTP_CACHE_LOOKUP_COMPLETE_HOOK, XDeleteDebugHdrCont);
+    }
   }
 
-done:
-  TSHttpTxnReenable(txn, TS_EVENT_HTTP_CONTINUE);
+  return TS_EVENT_NONE;
+}
+
+// Continuation function to delete the x-debug header.
+//
+static int
+XDeleteDebugHdr(TSCont /* contp */, TSEvent event, void *edata)
+{
+  TSHttpTxn txn = static_cast<TSHttpTxn>(edata);
+  TSMLoc hdr, field;
+  TSMBuffer buffer;
+
+  // Make sure TSHttpTxnReenable(txn, TS_EVENT_HTTP_CONTINUE) is called before exiting function.
+  //
+  ts::PostScript<std::function<void()> > ps([=]() -> void { TSHttpTxnReenable(txn, TS_EVENT_HTTP_CONTINUE); });
+
+  TSReleaseAssert(event == TS_EVENT_HTTP_CACHE_LOOKUP_COMPLETE);
+
+  if (TSHttpTxnClientReqGet(txn, &buffer, &hdr) == TS_ERROR) {
+    return TS_EVENT_NONE;
+  }
+
+  field = TSMimeHdrFieldFind(buffer, hdr, xDebugHeader.str, xDebugHeader.len);
+  if (field == TS_NULL_MLOC) {
+    TSError("Missing %s header", xDebugHeader.str);
+    return TS_EVENT_NONE;
+  }
+
+  if (TSMimeHdrFieldDestroy(buffer, hdr, field) == TS_ERROR) {
+    TSError("Failure destroying %s header", xDebugHeader.str);
+  }
+
+  TSHandleMLocRelease(buffer, hdr, field);
+
   return TS_EVENT_NONE;
 }
 
@@ -548,6 +646,7 @@ TSPluginInit(int argc, const char *argv[])
   // Setup the global hook
   TSReleaseAssert(TSHttpTxnArgIndexReserve("xdebug", "xdebug header requests", &XArgIndex) == TS_SUCCESS);
   TSReleaseAssert(XInjectHeadersCont = TSContCreate(XInjectResponseHeaders, nullptr));
+  TSReleaseAssert(XDeleteDebugHdrCont = TSContCreate(XDeleteDebugHdr, nullptr));
   TSHttpHookAdd(TS_HTTP_READ_REQUEST_HDR_HOOK, TSContCreate(XScanRequestHeaders, nullptr));
 
   gethostname(Hostname, 1024);

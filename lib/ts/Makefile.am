@@ -20,7 +20,7 @@ include $(top_srcdir)/build/tidy.mk
 
 library_includedir=$(includedir)/ts
 
-library_include_HEADERS = apidefs.h
+library_include_HEADERS = apidefs.h PostScript.h string_view.h TextView.h
 
 noinst_PROGRAMS = mkdfa CompileParseRules
 check_PROGRAMS = test_tsutil test_arena test_atomic test_freelist test_geometry test_List test_Map test_Vec test_X509HostnameValidator test_tslib
@@ -171,6 +171,7 @@ libtsutil_la_SOURCES = \
   MMH.h \
   ParseRules.cc \
   ParseRules.h \
+  PostScript.h \
   PriorityQueue.h \
   Ptr.h \
   RawHashTable.cc \
@@ -257,6 +258,7 @@ test_tslib_SOURCES = \
 	unit-tests/unit_test_main.cc \
 	unit-tests/test_BufferWriter.cc \
 	unit-tests/test_ink_inet.cc \
+	unit-tests/test_PostScript.cc \
 	unit-tests/test_string_view.cc \
 	unit-tests/test_TextView.cc
 
