@@ -385,7 +385,6 @@ The Apache Traffic Server Administration Manual will explain what these strings 
  proxy.config.cluster.sock_option_flag
  proxy.config.cluster.startup_timeout
  proxy.config.cluster.threads
- proxy.config.config_dir
  proxy.config.cop.core_signal
  proxy.config.cop.linux_min_memfree_kb
  proxy.config.cop.linux_min_swapfree_kb

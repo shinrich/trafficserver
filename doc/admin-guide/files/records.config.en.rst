@@ -30,6 +30,11 @@ modify :file:`records.config`, run the command :option:`traffic_ctl config reloa
 to apply the changes. When you apply changes to one node in a cluster, |TS|
 automatically applies the changes to all other nodes in the cluster.
 
+Note: The configuration directory, containing the ``SYSCONFDIR`` value specified at build time
+relative to the installation prefix, contains Traffic Server configuration files.
+The ``$TS_ROOT`` environment variable can be used alter the installation prefix at run time.
+The directory must allow read/write access for configuration reloads.
+
 Format
 ======
 
@@ -219,14 +224,6 @@ System Variables
 
    The script executed before the :program:`traffic_manager` process spawns
    the :program:`traffic_server` process.
-
-.. ts:cv:: CONFIG proxy.config.config_dir STRING etc/trafficserver
-
-   The directory that contains Traffic Server configuration files.
-   This is a read-only configuration option that contains the
-   ``SYSCONFDIR`` value specified at build time relative to the
-   installation prefix. The ``$TS_ROOT`` environment variable can
-   be used alter the installation prefix at run time.
 
 .. ts:cv:: CONFIG proxy.config.syslog_facility STRING LOG_DAEMON
 
