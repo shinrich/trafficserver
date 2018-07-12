@@ -29,9 +29,9 @@
 #include <string>
 #include <unordered_map>
 
-static const std::string_view RUNROOT_WORD{"--run-root"};
-static const std::string_view COPYSTYLE_WORD{"--copy-style"};
-static const std::string_view LAYOUT_WORD{"--layout"};
+static const ts::string_view RUNROOT_WORD{"--run-root"};
+static const ts::string_view COPYSTYLE_WORD{"--copy-style"};
+static const ts::string_view LAYOUT_WORD{"--layout"};
 
 typedef std::unordered_map<std::string, std::string> RunrootMapType;
 

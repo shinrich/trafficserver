@@ -462,11 +462,15 @@ RunrootEngine::copy_runroot(const std::string &original_root, const std::string 
   RunrootMapType new_map = original_map;
   // use the user provided layout: layout_file
   if (layout_file.size() != 0) {
-    try {
-      YAML::Node yamlfile = YAML::LoadFile(layout_file);
-      for (auto it : yamlfile) {
-        std::string key   = it.first.as<std::string>();
-        std::string value = it.second.as<std::string>();
+    std::ifstream file;
+    file.open(layout_file);
+    if (file.good()) {
+      std::ifstream yamlfile(layout_file);
+      std::string str;
+      while (std::getline(yamlfile, str)) {
+        int pos           = str.find(':');
+        std::string key   = str.substr(0, pos);
+        std::string value = str.substr(pos + 2);
         auto iter         = new_map.find(key);
         if (iter != new_map.end()) {
           iter->second = value;
@@ -476,8 +480,8 @@ RunrootEngine::copy_runroot(const std::string &original_root, const std::string 
           }
         }
       }
-    } catch (YAML::Exception &e) {
-      ink_warning("Unable to read provided YAML file '%s': %s", layout_file.c_str(), e.what());
+    } else {
+      ink_warning("Unable to read provided YAML file '%s'", layout_file.c_str());
       ink_notice("Continuing with default value");
     }
   }

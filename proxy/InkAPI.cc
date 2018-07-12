@@ -1820,7 +1820,7 @@ TSTrafficServerVersionGetPatch()
 const char *
 TSPluginDirGet(void)
 {
-  static std::string path = RecConfigReadPrefixPath("proxy.config.plugin.plugin_dir");
+  static std::string path = RecConfigReadPluginDir();
   return path.c_str();
 }
 
