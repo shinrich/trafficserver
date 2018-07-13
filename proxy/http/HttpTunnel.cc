@@ -1364,14 +1364,9 @@ HttpTunnel::consumer_handler(int event, HttpTunnelConsumer *c)
     this->consumer_reenable(c);
     break;
 
-  case VC_EVENT_ERROR:
-  {
-    Debug("http_tunnel", "Write error, likely closed socket");
-    // Just return.  Hopefully the outstanding read will get triggered
-    return sm_callback;
-  }
   case VC_EVENT_WRITE_COMPLETE:
   case VC_EVENT_EOS:
+  case VC_EVENT_ERROR:
   case VC_EVENT_ACTIVE_TIMEOUT:
   case VC_EVENT_INACTIVITY_TIMEOUT:
     ink_assert(c->alive);
