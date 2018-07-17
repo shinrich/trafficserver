@@ -73,7 +73,7 @@ namespace Compress
 bool
 addVaryHdr(TSMBuffer bufp, TSMLoc hdr)
 {
-  TSReturnCode ret;
+  TSReturnCode ret = TS_SUCCESS;
   TSMLoc ce_loc;
 
   ce_loc = TSMimeHdrFieldFind(bufp, hdr, TS_MIME_FIELD_VARY, TS_MIME_LEN_VARY);
