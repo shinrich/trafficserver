@@ -44,6 +44,7 @@ static ConfigUpdateHandler<SNIConfig> *sniConfigUpdate;
 struct NetAccept;
 Map<int, SSLNextProtocolSet *> snpsMap;
 extern TunnelHashMap TunnelMap;
+extern TunnelHashMap wildTunnelMap;
 NextHopProperty::NextHopProperty()
 {
 }
@@ -83,7 +84,13 @@ SNIConfigParams::loadSNIConfig()
     }
 
     if (item.tunnel_destination.length()) {
-      TunnelMap.emplace(item.fqdn.data(), item.tunnel_destination);
+      if (wildcard) {
+        ts::TextView domain{servername, strlen(servername)};
+        domain.take_prefix_at('.');
+        wildTunnelMap.emplace(ats_stringdup(domain), item.tunnel_destination);
+      } else {
+        TunnelMap.emplace(servername, item.tunnel_destination);
+      }
     }
 
     auto ai3 = new SNI_IpAllow(item.ip_allow, servername);
