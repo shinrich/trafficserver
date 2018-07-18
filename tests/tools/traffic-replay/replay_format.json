@@ -132,6 +132,8 @@
         "fields": {
           "description": "The field name and value pairs.",
           "type": "array",
+          "minItems": 2,
+          "maxItems": 3,
           "items": {
             "description": "HTTP field.",
             "type": "array",
@@ -141,6 +143,9 @@
                 "type": "string"
               }, {
                 "description": "Value of the field.",
+                "type": "string"
+              }, {
+                "description": "Flag for the field. 'e' for existence, '==/!=' for comparison testing",
                 "type": "string"
               }
             ]
