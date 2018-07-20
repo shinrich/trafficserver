@@ -38,6 +38,7 @@ datadir, libexecdir, libdir, runtimedir, cachedir.
 */
 
 #include "ts/ink_error.h"
+#include "ts/ink_file.h"
 #include "ts/I_Layout.h"
 #include "runroot.h"
 
@@ -46,27 +47,33 @@ datadir, libexecdir, libdir, runtimedir, cachedir.
 #include <set>
 #include <unistd.h>
 
-static std::string using_runroot = {};
+static std::string runroot_file = {};
 
 // the function for the checking of the yaml file in the passed in path
-// if found return the path, if not return empty string
-std::string
-check_path(const std::string &path)
+// if found return the path to the yaml file, if not return empty string.
+static std::string
+get_yaml_path(const std::string &path)
 {
-  std::string whole_path = path;
-  std::string yaml_path  = Layout::relative_to(whole_path, "runroot_path.yml");
   std::ifstream check_file;
-  check_file.open(yaml_path);
-  if (check_file.good()) {
-    return whole_path;
+  if (ink_file_is_directory(path.c_str())) {
+    std::string yaml_path = Layout::relative_to(path, "runroot_path.yml");
+    check_file.open(yaml_path);
+    if (check_file.good()) {
+      return yaml_path;
+    }
+  } else {
+    check_file.open(path);
+    if (check_file.good() && path.substr(path.find_last_of("/") + 1) == "runroot_path.yml") {
+      return path;
+    }
   }
   return {};
 }
 
 // the function for the checking of the yaml file in passed in directory or parent directory
-// if found return the parent path containing the yaml file
-std::string
-check_parent_path(const std::string &path)
+// if found return the parent path to the yaml file
+static std::string
+get_parent_yaml_path(const std::string &path)
 {
   std::string whole_path = path;
   if (whole_path.back() == '/') {
@@ -78,25 +85,17 @@ check_parent_path(const std::string &path)
     if (whole_path.empty()) {
       return {};
     }
-    if (!check_path(whole_path).empty()) {
-      return whole_path;
+    std::string yaml_file = get_yaml_path(whole_path);
+    if (!yaml_file.empty()) {
+      return yaml_file;
     }
     whole_path = whole_path.substr(0, whole_path.find_last_of("/"));
   }
   return {};
 }
 
-// until I get a <filesystem> impl in
-bool
-is_directory(const char *directory)
-{
-  struct stat buffer;
-  int result = stat(directory, &buffer);
-  return (!result && (S_IFDIR & buffer.st_mode)) ? true : false;
-}
-
 // handler for ts runroot
-// this function set up using_runroot
+// this function set up runroot_file
 void
 runroot_handler(const char **argv, bool json)
 {
@@ -120,12 +119,12 @@ runroot_handler(const char **argv, bool json)
   if (!arg.empty() && arg != prefix) {
     // 1. pass in path
     prefix += "=";
-    path = check_path(arg.substr(prefix.size(), arg.size() - 1));
+    path = get_yaml_path(arg.substr(prefix.size(), arg.size() - 1));
     if (!path.empty()) {
       if (!json) {
         ink_notice("using command line path as RUNROOT");
       }
-      using_runroot = path;
+      runroot_file = path;
       return;
     } else {
       if (!json) {
@@ -136,10 +135,10 @@ runroot_handler(const char **argv, bool json)
 
   // 2. check Environment variable
   char *env_val = getenv("TS_RUNROOT");
-  if ((env_val != nullptr) && is_directory(env_val)) {
-    path = check_path(env_val);
+  if (env_val) {
+    path = get_yaml_path(env_val);
     if (!path.empty()) {
-      using_runroot = env_val;
+      runroot_file = path;
       if (!json) {
         ink_notice("using the environment variable TS_RUNROOT");
       }
@@ -154,9 +153,9 @@ runroot_handler(const char **argv, bool json)
   // 3. find cwd or parent path of cwd to check
   char cwd[PATH_MAX] = {0};
   if (getcwd(cwd, sizeof(cwd)) != nullptr) {
-    path = check_parent_path(cwd);
+    path = get_parent_yaml_path(cwd);
     if (!path.empty()) {
-      using_runroot = path;
+      runroot_file = path;
       if (!json) {
         ink_notice("using cwd as TS_RUNROOT");
       }
@@ -169,9 +168,9 @@ runroot_handler(const char **argv, bool json)
   if ((argv[0] != nullptr) && realpath(argv[0], RealBinPath) != nullptr) {
     std::string bindir = RealBinPath;
     bindir             = bindir.substr(0, bindir.find_last_of("/")); // getting the bin dir not executable path
-    path               = check_parent_path(bindir);
+    path               = get_parent_yaml_path(bindir);
     if (!path.empty()) {
-      using_runroot = path;
+      runroot_file = path;
       if (!json) {
         ink_notice("using the installed dir as TS_RUNROOT");
       }
@@ -208,18 +207,18 @@ runroot_map_default()
 
 // return a map of all path in runroot_path.yml
 RunrootMapType
-runroot_map(const std::string &prefix)
+runroot_map(const std::string &file)
 {
-  std::string yaml_path = Layout::relative_to(prefix, "runroot_path.yml");
-  std::ifstream file;
-  file.open(yaml_path);
-  if (!file.good()) {
-    ink_warning("Bad path '%s', continue with default value", prefix.c_str());
+  std::ifstream f;
+  f.open(file);
+  if (!f.good()) {
+    ink_warning("Bad path '%s', continue with default value", file.c_str());
     return RunrootMapType{};
   }
 
-  std::ifstream yamlfile(yaml_path);
+  std::ifstream yamlfile(file);
   RunrootMapType map;
+  std::string prefix  = file.substr(0, file.find_last_of("/"));
   std::string str;
   while (std::getline(yamlfile, str)) {
     int pos = str.find(':');
@@ -241,19 +240,19 @@ runroot_map(const std::string &prefix)
 RunrootMapType
 check_runroot()
 {
-  if (using_runroot.empty()) {
+  if (runroot_file.empty()) {
     return RunrootMapType{};
   }
 
-  int len = using_runroot.size();
+  int len = runroot_file.size();
   if ((len + 1) > PATH_NAME_MAX) {
     ink_fatal("runroot path is too big: %d, max %d\n", len, PATH_NAME_MAX - 1);
   }
-  return runroot_map(using_runroot);
+  return runroot_map(runroot_file);
 }
 
 bool
 use_runroot()
 {
-  return !using_runroot.empty();
+  return !runroot_file.empty();
 }
