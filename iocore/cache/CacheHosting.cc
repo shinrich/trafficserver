@@ -788,22 +788,6 @@ static int execute_and_verify(RegressionTest *t);
 static void save_state();
 static void restore_state();
 
-EXCLUSIVE_REGRESSION_TEST(Cache_vol)(RegressionTest *t, int /* atype ATS_UNUSED */, int *status)
-{
-  save_state();
-  srand48(time(nullptr));
-  *status = REGRESSION_TEST_PASSED;
-  for (int i = 0; i < configs; i++) {
-    if (create_config(t, i)) {
-      if (execute_and_verify(t) == REGRESSION_TEST_FAILED) {
-        *status = REGRESSION_TEST_FAILED;
-      }
-    }
-  }
-  restore_state();
-  return;
-}
-
 int
 create_config(RegressionTest *t, int num)
 {
