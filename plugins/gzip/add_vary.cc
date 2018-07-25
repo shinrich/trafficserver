@@ -94,9 +94,6 @@ addVaryHdr(TSMBuffer bufp, TSMLoc hdr)
     if (count > 0) {
       // Add Accept-Encoding to existing Vary header.
       ret = TSMimeHdrFieldValueStringInsert(bufp, hdr, ce_loc, -1, TS_MIME_FIELD_ACCEPT_ENCODING, TS_MIME_LEN_ACCEPT_ENCODING);
-
-    } else {
-      ret = TS_SUCCESS;
     }
     TSHandleMLocRelease(bufp, hdr, ce_loc);
 
