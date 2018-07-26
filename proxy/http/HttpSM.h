@@ -104,13 +104,14 @@ struct HttpVCTableEntry {
   VIO *write_vio;
   HttpSMHandler vc_handler;
   HttpVC_t vc_type;
+  HttpSM *sm;
   bool eos;
   bool in_tunnel;
 };
 
 struct HttpVCTable {
   static const int vc_table_max_entries = 4;
-  HttpVCTable();
+  HttpVCTable(HttpSM *);
 
   HttpVCTableEntry *new_entry();
   HttpVCTableEntry *find_entry(VConnection *);
@@ -122,6 +123,7 @@ struct HttpVCTable {
 
 private:
   HttpVCTableEntry vc_table[vc_table_max_entries];
+  HttpSM *sm = nullptr;
 };
 
 inline bool
@@ -203,8 +205,9 @@ public:
   virtual void destroy();
 
   static HttpSM *allocate();
-  HttpCacheSM &get_cache_sm();      // Added to get the object of CacheSM YTS Team, yamsat
-  HttpVCTableEntry *get_ua_entry(); // Added to get the ua_entry pointer  - YTS-TEAM
+  HttpCacheSM &get_cache_sm();          // Added to get the object of CacheSM YTS Team, yamsat
+  HttpVCTableEntry *get_ua_entry();     // Added to get the ua_entry pointer  - YTS-TEAM
+  HttpVCTableEntry *get_server_entry(); // Added to get the server_entry pointer
 
   void init();
 
@@ -221,6 +224,12 @@ public:
   get_server_session()
   {
     return server_session;
+  }
+
+  ProxyClientTransaction *
+  get_ua_session()
+  {
+    return ua_session;
   }
 
   // Called by transact.  Updates are fire and forget
@@ -561,13 +570,13 @@ protected:
   //   when the flag is set
   bool terminate_sm;
   bool kill_this_async_done;
-  bool parse_range_done;
   virtual int kill_this_async_hook(int event, void *data);
   void kill_this();
   void update_stats();
   void transform_cleanup(TSHttpHookID hook, HttpTransformInfo *info);
   bool is_transparent_passthrough_allowed();
   void plugin_agents_cleanup();
+  bool parse_range_done;
 
 public:
   LINK(HttpSM, debug_link);
@@ -609,6 +618,12 @@ inline HttpVCTableEntry *
 HttpSM::get_ua_entry()
 {
   return ua_entry;
+}
+
+inline HttpVCTableEntry *
+HttpSM::get_server_entry()
+{
+  return server_entry;
 }
 
 inline HttpSM *
