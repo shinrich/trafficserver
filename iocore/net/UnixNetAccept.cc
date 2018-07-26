@@ -118,10 +118,11 @@ net_accept(NetAccept *na, void *ep, bool blockable)
     vc->control_flags.set_flag(ContFlags::DEBUG_OVERRIDE, diags->test_override_ip(con.addr));
     SET_CONTINUATION_HANDLER(vc, (NetVConnHandler)&UnixNetVConnection::acceptEvent);
 
-    if (e->ethread->is_event_type(na->opt.etype))
-      vc->handleEvent(EVENT_NONE, e);
-    else
+    if (e->ethread->is_event_type(na->opt.etype)) {
+      vc->dispatchEvent(EVENT_NONE, e);
+    } else {
       eventProcessor.schedule_imm(vc, na->opt.etype);
+    }
   } while (loop);
 
 Ldone:

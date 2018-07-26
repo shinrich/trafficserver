@@ -1209,7 +1209,7 @@ HttpConfig::startup()
   c.codeNegCache.add(HTTP_STATUS_GATEWAY_TIMEOUT);
   c.codeNegCache.qsort(lt_sort);
 
-  http_config_cont->handleEvent(EVENT_NONE, nullptr);
+  http_config_cont->dispatchEvent(EVENT_NONE, nullptr);
 
   return;
 }
