@@ -27,6 +27,7 @@
 #include "ts/ink_error.h"
 #include "MgmtUtils.h"
 #include "ts/I_Layout.h"
+#include "ts/runroot.h"
 #include "LocalManager.h"
 #include "MgmtSocket.h"
 #include "ts/ink_cap.h"
@@ -1004,6 +1005,13 @@ LocalManager::startProxy(const char *onetime_options)
     if (strstr(real_proxy_options, MGMT_OPT) == nullptr) {
       ink_strlcat(real_proxy_options, " ", OPTIONS_SIZE);
       ink_strlcat(real_proxy_options, MGMT_OPT, OPTIONS_SIZE);
+    }
+
+    // pass the runroot option to traffic_server
+    std::string runroot_arg = get_runroot();
+    if (!runroot_arg.empty()) {
+      runroot_arg = " --run-root=" + runroot_arg;
+      ink_strlcat(real_proxy_options, runroot_arg.c_str(), OPTIONS_SIZE);
     }
 
     // Check if we need to pass down port/fd information to

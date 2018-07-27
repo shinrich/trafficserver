@@ -218,10 +218,10 @@ runroot_map(const std::string &file)
 
   std::ifstream yamlfile(file);
   RunrootMapType map;
-  std::string prefix  = file.substr(0, file.find_last_of("/"));
+  std::string prefix = file.substr(0, file.find_last_of("/"));
   std::string str;
   while (std::getline(yamlfile, str)) {
-    int pos = str.find(':');
+    int pos                 = str.find(':');
     map[str.substr(0, pos)] = str.substr(pos + 2);
   }
 
@@ -251,8 +251,8 @@ check_runroot()
   return runroot_map(runroot_file);
 }
 
-bool
-use_runroot()
+std::string
+get_runroot()
 {
-  return !runroot_file.empty();
+  return runroot_file;
 }

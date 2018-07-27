@@ -59,4 +59,4 @@ RunrootMapType runroot_map(const std::string &prefix);
 RunrootMapType check_runroot();
 
 // helper method for records config to check using runroot or not
-bool use_runroot();
+std::string get_runroot();
