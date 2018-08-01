@@ -26,6 +26,7 @@
 #include "ts/I_Layout.h"
 #include "I_RecProcess.h"
 #include "RecordsConfig.h"
+#include "ts/runroot.h"
 
 AppVersionInfo CtrlVersionInfo;
 
@@ -236,6 +237,7 @@ main(int argc, const char **argv)
        CtrlSubcommandUsage(nullptr, commands, countof(commands), args, nargs);
      }},
     VERSION_ARGUMENT_DESCRIPTION(),
+    RUNROOT_ARGUMENT_DESCRIPTION(),
   };
 
   BaseLogFile *base_log_file = new BaseLogFile("stderr");
@@ -256,6 +258,7 @@ main(int argc, const char **argv)
     return CtrlSubcommandUsage(nullptr, commands, countof(commands), argument_descriptions, countof(argument_descriptions));
   }
 
+  runroot_handler(argv);
   Layout::create();
   RecProcessInit(RECM_STAND_ALONE, diags);
   LibRecordsConfigInit();

@@ -421,7 +421,7 @@ main(int argc, const char **argv)
   const long MAX_LOGIN = ink_login_name_max();
 
   runroot_handler(argv);
-  
+
   // Before accessing file system initialize Layout engine
   Layout::create();
   mgmt_path = Layout::get()->sysconfdir.c_str();

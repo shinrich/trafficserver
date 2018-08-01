@@ -508,8 +508,9 @@ config_read_string(const char *name, char *val, size_t val_len, bool miss_ok = f
   if (config->second.data_type != RECD_STRING) {
     goto ConfigStrFatalError;
   }
-
-  ink_strlcpy(val, RecConfigOverrideFromEnvironment(name, config->second.data_value.c_str()), val_len);
+  if (RecConfigOverrideFromEnvironment(name, config->second.data_value.c_str())) {
+    ink_strlcpy(val, RecConfigOverrideFromEnvironment(name, config->second.data_value.c_str()), val_len);
+  }
   return;
 
 ConfigStrFatalError:
@@ -771,8 +772,12 @@ spawn_manager()
   if (manager_pid == 0) {
     EnableDeathSignal(SIGTERM);
 
+    std::string runroot_arg = get_runroot();
+    if (!runroot_arg.empty()) {
+      runroot_arg = "--run-root=" + runroot_arg;
+    }
     // Bind stdout and stderr of traffic_manager to traffic.out
-    execl(prog, prog, "--" TM_OPT_BIND_STDOUT, log_file, "--" TM_OPT_BIND_STDERR, log_file, nullptr);
+    execl(prog, prog, "--" TM_OPT_BIND_STDOUT, log_file, "--" TM_OPT_BIND_STDERR, log_file, runroot_arg.c_str(), nullptr);
     cop_log_trace("Somehow execv(%s, options, nullptr) failed: %s (%d)!\n", prog, strerror(errno), errno);
     exit(1);
   } else if (manager_pid == -1) {
