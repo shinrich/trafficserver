@@ -1149,6 +1149,11 @@ UnixNetVConnection::acceptEvent(int event, Event *e)
 
   thread = t;
 
+  if (action_.cancelled) {
+    free(thread);
+    return EVENT_DONE;
+  }
+
   SET_HANDLER((NetVConnHandler)&UnixNetVConnection::mainEvent);
 
   PollDescriptor *pd = get_PollDescriptor(thread);
