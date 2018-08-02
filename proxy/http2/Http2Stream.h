@@ -190,9 +190,12 @@ public:
   virtual bool
   ignore_keep_alive() override
   {
-    // If we return true here, Connection header will always be "close".
-    // It should be handled as the same as HTTP/1.1
-    return false;
+    // From the HttpSM perspective, we should be treating the connection as close.
+    // The HttpSM should always call do_io_close on the Stream backed transaction
+    // This will not shutdown the Http2ClientSession unless this is the last stream and
+    // the client has requested a shutdown or a timeout has occurred.
+    // By ignoring keep_alive in HttpSM, we simplify the processing there.
+    return true;
   }
 
   void restart_sending();
