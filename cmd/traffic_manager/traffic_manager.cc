@@ -689,6 +689,9 @@ main(int argc, const char **argv)
   ats_scoped_str apisock(Layout::relative_to(rundir, MGMTAPI_MGMT_SOCKET_NAME));
   ats_scoped_str eventsock(Layout::relative_to(rundir, MGMTAPI_EVENT_SOCKET_NAME));
 
+  Debug("lm", "using main socket file '%s'", apisock.get());
+  Debug("lm", "using event socket file '%s'", eventsock.get());
+
   mode_t oldmask = umask(0);
   mode_t newmode = api_socket_is_restricted() ? 00700 : 00777;
 
