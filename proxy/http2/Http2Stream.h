@@ -186,17 +186,7 @@ public:
   void update_read_request(int64_t read_len, bool send_update);
   bool update_write_request(IOBufferReader *buf_reader, int64_t write_len, bool send_update);
   void reenable(VIO *vio) override;
-  virtual void transaction_done() override;
-  virtual bool
-  ignore_keep_alive() override
-  {
-    // From the HttpSM perspective, we should be treating the connection as close.
-    // The HttpSM should always call do_io_close on the Stream backed transaction
-    // This will not shutdown the Http2ClientSession unless this is the last stream and
-    // the client has requested a shutdown or a timeout has occurred.
-    // By ignoring keep_alive in HttpSM, we simplify the processing there.
-    return true;
-  }
+  void transaction_done() override;
 
   void restart_sending();
   void send_response_body();
