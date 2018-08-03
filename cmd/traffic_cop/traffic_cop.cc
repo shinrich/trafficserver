@@ -561,12 +561,8 @@ config_read_runtime_dir()
 static std::string
 config_read_sysconfig_dir()
 {
-  char sysconfig_dir[PATH_NAME_MAX];
-
-  sysconfig_dir[0] = '\0';
-  config_read_string("proxy.config.config_dir", sysconfig_dir, sizeof(sysconfig_dir), true);
-  if (strlen(sysconfig_dir) > 0) {
-    return Layout::get()->relative(sysconfig_dir);
+  if (const char *env = getenv("PROXY_CONFIG_CONFIG_DIR")) {
+    return Layout::get()->relative(env);
   } else {
     return Layout::get()->sysconfdir;
   }
