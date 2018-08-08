@@ -72,8 +72,8 @@ const std::array<ts::string_view, static_cast<int>(OutboundConnTrack::MATCH_BOTH
   {"ip"_sv, "port"_sv, "host"_sv, "both"_sv}};
 
 // Make sure the clock is millisecond resolution or finer.
-static_assert(OutboundConnTrack::Group::Clock::period::num == 1);
-static_assert(OutboundConnTrack::Group::Clock::period::den >= 1000);
+static_assert(OutboundConnTrack::Group::Clock::period::num == 1, "System clock not a unit fraction");
+static_assert(OutboundConnTrack::Group::Clock::period::den >= 1000, "System clock not at least millisecond resolution");
 
 // Configuration callback functions.
 namespace

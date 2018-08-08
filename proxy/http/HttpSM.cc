@@ -1851,7 +1851,7 @@ HttpSM::state_http_server_open(int event, void *data)
     // If origin_max_connections or origin_min_keep_alive_connections is set then we are metering
     // the max and or min number of connections per host. Transfer responsibility for this to the
     // session object.
-    if (t_state.outbound_conn_track_state.is_active()) {
+    if (t_state.outbound_conn_track_state.has_reservation()) {
       DebugSM("http_ss", "[%" PRId64 "] max number of outbound connections: %d", sm_id, t_state.txn_conf->outbound_conntrack.max);
       session->enable_outbound_connection_tracking(t_state.outbound_conn_track_state.drop());
     }

@@ -23,7 +23,6 @@
 
 #pragma once
 
-#include <string_view>
 #include <chrono>
 #include <atomic>
 #include <sstream>
@@ -158,6 +157,8 @@ public:
     int reserve();
     /// Release a connection reservation.
     void release();
+    /// Active and reserved.
+    bool has_reservation() const;
     /// Reserve a queue / retry slot.
     int enqueue();
     /// Release a block
@@ -346,6 +347,12 @@ OutboundConnTrack::TxnState::release()
     _reserved_p = false;
     --_g->_count;
   }
+}
+
+inline bool
+OutboundConnTrack::TxnState::has_reservation() const
+{
+  return nullptr != _g && _reserved_p;
 }
 
 inline OutboundConnTrack::Group *
