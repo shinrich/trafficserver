@@ -37,6 +37,8 @@ constexpr ts::string_view OutboundConnTrack::CONFIG_VAR_QUEUE_SIZE;
 constexpr ts::string_view OutboundConnTrack::CONFIG_VAR_QUEUE_DELAY;
 constexpr ts::string_view OutboundConnTrack::CONFIG_VAR_ALERT_DELAY;
 
+constexpr ts::string_view OutboundConnTrack::BC_CONFIG_VAR_MAX;
+
 const MgmtConverter OutboundConnTrack::MAX_CONV{
   [](void *data) -> MgmtInt { return static_cast<MgmtInt>(*static_cast<decltype(TxnConfig::max) *>(data)); },
   [](void *data, MgmtInt i) -> void { *static_cast<decltype(TxnConfig::max) *>(data) = static_cast<decltype(TxnConfig::max)>(i); },
@@ -161,13 +163,21 @@ OutboundConnTrack::config_init(GlobalConfig *global, TxnConfig *txn)
                            // Per transaction lookup must be done at call time because it changes.
 
   RecRegisterConfigUpdateCb(CONFIG_VAR_MAX.data(), &Config_Update_Conntrack_Max, txn);
+  RecRegisterConfigUpdateCb(BC_CONFIG_VAR_MAX.data(), &Config_Update_Conntrack_Max, txn);
   RecRegisterConfigUpdateCb(CONFIG_VAR_MATCH.data(), &Config_Update_Conntrack_Match, txn);
   RecRegisterConfigUpdateCb(CONFIG_VAR_QUEUE_SIZE.data(), &Config_Update_Conntrack_Queue_Size, global);
   RecRegisterConfigUpdateCb(CONFIG_VAR_QUEUE_DELAY.data(), &Config_Update_Conntrack_Queue_Delay, global);
   RecRegisterConfigUpdateCb(CONFIG_VAR_ALERT_DELAY.data(), &Config_Update_Conntrack_Alert_Delay, global);
 
   // Load 'em up by firing off the config update callback.
-  RecLookupRecord(CONFIG_VAR_MAX.data(), &Load_Config_Var, nullptr, true);
+  // Special handling to maintain BC - only fire update if there is a non-default value.
+  RecSourceT source;
+  if (REC_ERR_OKAY == RecGetRecordSource(BC_CONFIG_VAR_MAX.data(), &source, true) && REC_SOURCE_DEFAULT != source) {
+    RecLookupRecord(BC_CONFIG_VAR_MAX.data(), &Load_Config_Var, nullptr, true);
+  }
+  if (REC_ERR_OKAY == RecGetRecordSource(CONFIG_VAR_MAX.data(), &source, true) && REC_SOURCE_DEFAULT != source) {
+    RecLookupRecord(CONFIG_VAR_MAX.data(), &Load_Config_Var, nullptr, true);
+  }
   RecLookupRecord(CONFIG_VAR_MATCH.data(), &Load_Config_Var, nullptr, true);
   RecLookupRecord(CONFIG_VAR_QUEUE_SIZE.data(), &Load_Config_Var, nullptr, true);
   RecLookupRecord(CONFIG_VAR_QUEUE_DELAY.data(), &Load_Config_Var, nullptr, true);

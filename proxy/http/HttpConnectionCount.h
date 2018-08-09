@@ -90,6 +90,9 @@ public:
   static constexpr ts::string_view CONFIG_VAR_QUEUE_DELAY{"proxy.config.http.per_server.connection.queue_delay"_sv};
   static constexpr ts::string_view CONFIG_VAR_ALERT_DELAY{"proxy.config.http.per_server.connection.alert_delay"_sv};
 
+  // Backwards compatibility configuration values.
+  static constexpr ts::string_view BC_CONFIG_VAR_MAX{"proxy.config.http.origin_max_connections"_sv};
+
   /// A record for the outbound connection count.
   /// These are stored per outbound session equivalence class, as determined by the session matching.
   struct Group {
