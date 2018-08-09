@@ -272,14 +272,17 @@ OutboundConnTrack::get(std::vector<Group const *> &groups)
 std::string
 OutboundConnTrack::to_json_string()
 {
+  constexpr size_t MAX_INT_WIDTH = std::numeric_limits<int>::digits10+1;
   std::string text;
   size_t extent = 0;
-  static const ts::BWFormat header_fmt{R"({{"count": {}, "list": [
+  size_t max_s = 0;
+  static const ts::string_view HDR_FMT_STRING {R"({{"count": {}, "list": [
 )"};
-  static const ts::BWFormat item_fmt{
-    R"(  {{"type": "{}", "ip": "{}", "fqdn": "{}", "current": {}, "max": {}, "blocked": {}, "queued": {}, "alert": {}}},
+  static const ts::BWFormat header_fmt{HDR_FMT_STRING};
+  static const ts::string_view ITEM_FMT_STRING {R"(  {{"type": "{}", "ip": "{}", "fqdn": "{}", "current": {}, "max": {}, "blocked": {}, "queued": {}, "alert": {}}},
 )"};
-  static const ts::string_view trailer{" \n]}"};
+  static const ts::BWFormat item_fmt{ITEM_FMT_STRING};
+  static const ts::string_view TRAILER_STRING{"]}\n"};
 
   static const auto printer = [](ts::BufferWriter &w, Group const *g) -> ts::BufferWriter & {
     w.print(item_fmt, g->_match_type, g->_addr, g->_fqdn, g->_count.load(), g->_count_max.load(), g->_blocked.load(),
@@ -292,21 +295,22 @@ OutboundConnTrack::to_json_string()
 
   self_type::get(groups);
 
-  null_bw.print(header_fmt, groups.size()).extent();
+  // Find the total size of the FQDNs - those are not dynamic
   for (auto g : groups) {
-    printer(null_bw, g);
+    max_s += g->_fqdn.size();
   }
-  extent = null_bw.extent() + trailer.size() - 2; // 2 for the trailing comma newline that will get clipped.
+  extent = HDR_FMT_STRING.size() + MAX_INT_WIDTH + TRAILER_STRING.size() + groups.size() * ( ITEM_FMT_STRING.size() + 4 + INET6_ADDRPORTSTRLEN + 5 * MAX_INT_WIDTH + max_s);
 
   text.resize(extent);
   ts::FixedBufferWriter w(const_cast<char *>(text.data()), text.size());
-  w.clip(trailer.size());
   w.print(header_fmt, groups.size());
   for (auto g : groups) {
     printer(w, g);
   }
-  w.extend(trailer.size());
-  w.write(trailer);
+  if (!groups.empty()) {
+    w.auxBuffer()[-2] = ' '; // I tried to do this nicely, but it just doesn't work.
+  }
+  w.write(TRAILER_STRING);
   return text;
 }
 
