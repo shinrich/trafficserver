@@ -39,7 +39,6 @@ ts.Disk.records_config.update({
 })
 
 tr = Test.AddTestRun("tr")
-tr.StartupTimeout = 30
 tr.Processes.Default.StartBefore(server)
 tr.Processes.Default.StartBefore(ts, ready=When.PortOpen(ts.Variables.port))
 tr.Processes.Default.StartBefore(dns)
