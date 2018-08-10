@@ -8350,7 +8350,7 @@ _conf_to_memberp(TSOverridableConfigKey conf, OverridableHttpConfigParams *overr
     conv = &OutboundConnTrack::MATCH_CONV;
     break;
   case TS_CONFIG_HTTP_ALLOW_MULTI_RANGE:
-    ret = &overridableHttpConfig->allow_multi_range;
+    ret = _memberp_to_generic(&overridableHttpConfig->allow_multi_range, conv);
     break;
   // This helps avoiding compiler warnings, yet detect unhandled enum members.
   case TS_CONFIG_NULL:
