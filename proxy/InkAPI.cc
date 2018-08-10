@@ -8771,7 +8771,7 @@ TSHttpTxnConfigFind(const char *name, int length, TSOverridableConfigKey *conf, 
       } else if (!strncmp(name, "proxy.config.http.number_of_redirections", length)) {
         cnf = TS_CONFIG_HTTP_NUMBER_OF_REDIRECTIONS;
       } else if (!strncmp(name, "proxy.config.http.origin_max_connections", length)) { // BC
-        cnf = TS_CONFIG_HTTP_PER_SERVER_CONNECTION_MAX;
+        cnf = TS_CONFIG_HTTP_ORIGIN_MAX_CONNECTIONS;
       }
       break;
     case 't':
