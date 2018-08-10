@@ -265,6 +265,12 @@ public:
     return ua_session == NULL || fini_received;
   }
 
+  void
+  set_seen_fini()
+  {
+    fini_received = true;
+  }
+
   bool
   is_recursing() const
   {

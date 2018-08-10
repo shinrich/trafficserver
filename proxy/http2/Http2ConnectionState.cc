@@ -653,8 +653,16 @@ rcv_goaway_frame(Http2ConnectionState &cstate, const Http2Frame &frame)
   Http2StreamDebug(cstate.ua_session, stream_id, "GOAWAY: last stream id=%d, error code=%d", goaway.last_streamid,
                    static_cast<int>(goaway.error_code));
 
-  cstate.handleEvent(HTTP2_SESSION_EVENT_FINI, nullptr);
-  // eventProcessor.schedule_imm(&cs, ET_NET, VC_EVENT_ERROR);
+  // If peer indicated an error, go ahead and shutdown hard
+  if (goaway.error_code != Http2ErrorCode::HTTP2_ERROR_NO_ERROR) {
+    cstate.send_goaway_frame(cstate.get_latest_stream_id_in(), Http2ErrorCode::HTTP2_ERROR_NO_ERROR);
+    cstate.ua_session->set_half_close_local_flag(true);
+    cstate.handleEvent(HTTP2_SESSION_EVENT_FINI, nullptr);
+  } else {
+    // Otherwise, try to hang around to finish any remaining steams
+    cstate.set_seen_fini();
+    cstate.release_stream(nullptr);
+  }
 
   return Http2Error(Http2ErrorClass::HTTP2_ERROR_CLASS_NONE);
 }
