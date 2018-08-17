@@ -68,7 +68,7 @@ Config::loadConfig(const std::string &filename)
     size_t n = info.st_size;
     std::string config_data;
     config_data.reserve(n);
-    auto read_len = read(fd, config_data.data(), n);
+    auto read_len = read(fd, const_cast<char *>(config_data.data()), n);
     if (read_len > 0) {
       config_data.resize(read_len);
     }

@@ -106,7 +106,7 @@ get_redis_auth_key(char *retKeyBuff, int buffSize)
       size_t n = info.st_size;
       std::string key_data;
       key_data.reserve(n);
-      auto read_len = read(fd, key_data.data(), n);
+      auto read_len = read(fd, const_cast<char *>(key_data.data()), n);
       strncpy(retKeyBuff, key_data.c_str(), read_len);
     }
   } else {

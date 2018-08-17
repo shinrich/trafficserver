@@ -84,7 +84,7 @@ AC_CHECK_HEADER([hiredis/hiredis.h], [], [has_hiredis=0])
 AC_CHECK_LIB([hiredis], redisConnect, [], [has_hiredis=0])
 
 if test "x$has_hiredis" == "x1"; then
-    AC_SUBST([LIB_HIREDIS], [-lredis])
+    AC_SUBST([LIB_HIREDIS], [-lhiredis])
 fi
 ])
 
