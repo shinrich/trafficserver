@@ -139,10 +139,9 @@ close_UnixNetVConnection(UnixNetVConnection *vc, EThread *t)
 static inline int
 read_signal_and_update(int event, UnixNetVConnection *vc)
 {
-  int retval = EVENT_CONT;
   vc->recursion++;
   if (vc->read.vio._cont) {
-    retval = vc->read.vio._cont->dispatchEvent(event, &vc->read.vio);
+    vc->read.vio._cont->handleEvent(event, &vc->read.vio);
   } else {
     switch (event) {
     case VC_EVENT_EOS:
@@ -164,17 +163,16 @@ read_signal_and_update(int event, UnixNetVConnection *vc)
     close_UnixNetVConnection(vc, vc->thread);
     return EVENT_DONE;
   } else {
-    return retval;
+    return EVENT_CONT;
   }
 }
 
 static inline int
 write_signal_and_update(int event, UnixNetVConnection *vc)
 {
-  int retval = EVENT_CONT;
   vc->recursion++;
   if (vc->write.vio._cont) {
-    retval = vc->write.vio._cont->dispatchEvent(event, &vc->write.vio);
+    vc->write.vio._cont->handleEvent(event, &vc->write.vio);
   } else {
     switch (event) {
     case VC_EVENT_EOS:
@@ -196,7 +194,7 @@ write_signal_and_update(int event, UnixNetVConnection *vc)
     close_UnixNetVConnection(vc, vc->thread);
     return EVENT_DONE;
   } else {
-    return retval;
+    return EVENT_CONT;
   }
 }
 
