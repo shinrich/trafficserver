@@ -154,6 +154,7 @@ public:
   void cancel_active_timeout() override;
   void cancel_inactivity_timeout() override;
   void set_action(Continuation *c) override;
+  Action *get_action();
   void add_to_keep_alive_queue() override;
   void remove_from_keep_alive_queue() override;
   bool add_to_active_queue() override;
@@ -433,6 +434,12 @@ TS_INLINE void
 UnixNetVConnection::set_action(Continuation *c)
 {
   action_ = c;
+}
+
+TS_INLINE Action *
+UnixNetVConnection::get_action()
+{
+  return &action_;
 }
 
 // declarations for local use (within the net module)
