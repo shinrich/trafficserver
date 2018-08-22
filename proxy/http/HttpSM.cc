@@ -1550,7 +1550,7 @@ plugins required to work with sni_routing.
           if (!plugin_lock) {
             api_timer = -Thread::get_hrtime_updated();
             HTTP_SM_SET_DEFAULT_HANDLER(&HttpSM::state_api_callout);
-            ink_assert(pending_action == nullptr);
+            ink_release_assert(pending_action == nullptr);
             pending_action = mutex->thread_holding->schedule_in(this, HRTIME_MSECONDS(10));
             // Should @a callout_state be reset back to HTTP_API_NO_CALLOUT here? Because the default
             // handler has been changed the value isn't important to the rest of the state machine
@@ -1832,6 +1832,7 @@ HttpSM::state_http_server_open(int event, void *data)
   STATE_ENTER(&HttpSM::state_http_server_open, event);
   // TODO decide whether to uncomment after finish testing redirect
   // ink_assert(server_entry == NULL);
+  ink_release_assert(pending_action == nullptr);
   pending_action                              = nullptr;
   milestones[TS_MILESTONE_SERVER_CONNECT_END] = Thread::get_hrtime();
   HttpServerSession *session;
@@ -2369,7 +2370,7 @@ HttpSM::state_hostdb_lookup(int event, void *data)
     Action *dns_lookup_action_handle =
       hostDBProcessor.getbyname_imm(this, (process_hostdb_info_pfn)&HttpSM::process_hostdb_info, host_name, 0, opt);
     if (dns_lookup_action_handle != ACTION_RESULT_DONE) {
-      ink_assert(!pending_action);
+      ink_release_assert(!pending_action);
       pending_action = dns_lookup_action_handle;
     } else {
       call_transact_and_set_next_state(nullptr);
@@ -7051,6 +7052,10 @@ HttpSM::kill_this()
   //   then the value of kill_this_async_done has changed so
   //   we must check it again
   if (kill_this_async_done == true) {
+    if (pending_action) {
+      pending_action->cancel();
+      pending_action = nullptr;
+    }
     ink_assert(pending_action == nullptr);
     if (t_state.http_config_param->enable_http_stats) {
       update_stats();
@@ -7730,7 +7735,7 @@ HttpSM::set_next_state()
     Action *action_handle = statPagesManager.handle_http(this, &t_state.hdr_info.client_request);
 
     if (action_handle != ACTION_RESULT_DONE) {
-      ink_assert(pending_action == nullptr);
+      ink_release_assert(pending_action == nullptr);
       pending_action = action_handle;
     }
 
