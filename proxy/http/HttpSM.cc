@@ -1924,6 +1924,9 @@ HttpSM::state_http_server_open(int event, void *data)
       HTTP_INCREMENT_DYN_STAT(http_origin_connections_throttled_stat);
       send_origin_throttled_response();
     } else {
+      // Go ahead and release the failed server session.  Since it didn't received a response, the release logic will
+      // see that it didn't get a valid response and it will close it rather than returning it to the server session pool
+      release_server_session();
       call_transact_and_set_next_state(HttpTransact::HandleResponse);
     }
     return 0;
@@ -2420,6 +2423,7 @@ HttpSM::state_hostdb_reverse_lookup(int event, void *data)
 int
 HttpSM::state_mark_os_down(int event, void *data)
 {
+  STATE_ENTER(&HttpSM::state_mark_os_down, event);
   HostDBInfo *mark_down = nullptr;
 
   if (event == EVENT_HOST_DB_LOOKUP && data) {
