@@ -1830,12 +1830,11 @@ HttpSM::state_http_server_open(int event, void *data)
 {
   DebugSM("http_track", "entered inside state_http_server_open");
   STATE_ENTER(&HttpSM::state_http_server_open, event);
-  // TODO decide whether to uncomment after finish testing redirect
-  // ink_assert(server_entry == NULL);
-  ink_release_assert(pending_action == nullptr);
+  ink_release_assert(event == EVENT_INTERVAL || pending_action == nullptr);
   pending_action                              = nullptr;
   milestones[TS_MILESTONE_SERVER_CONNECT_END] = Thread::get_hrtime();
   HttpServerSession *session;
+
 
   switch (event) {
   case NET_EVENT_OPEN:
