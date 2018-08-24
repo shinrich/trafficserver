@@ -92,6 +92,7 @@ public:
 
   // Backwards compatibility configuration values.
   static constexpr ts::string_view BC_CONFIG_VAR_MAX{"proxy.config.http.origin_max_connections"_sv};
+  static constexpr ts::string_view BC_CONFIG_VAR_QUEUE_SIZE{"proxy.config.http.origin_max_connections_queue"_sv};
 
   /// A record for the outbound connection count.
   /// These are stored per outbound session equivalence class, as determined by the session matching.

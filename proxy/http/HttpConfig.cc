@@ -120,7 +120,6 @@ static const ConfigEnumPair<TSServerSessionSharingPoolType> SessionSharingPoolSt
 ////////////////////////////////////////////////////////////////
 int HttpConfig::m_id = 0;
 HttpConfigParams HttpConfig::m_master;
-
 static volatile int http_config_changes = 1;
 static HttpConfigCont *http_config_cont = nullptr;
 
@@ -148,6 +147,39 @@ http_config_cb(const char * /* name ATS_UNUSED */, RecDataT /* data_type ATS_UNU
 
   eventProcessor.schedule_in(http_config_cont, HRTIME_SECONDS(1), ET_CALL);
   return 0;
+}
+
+bool
+http_config_var_is_default(char const *name)
+{
+  RecSourceT vs;
+  return REC_ERR_OKAY != RecGetRecordSource(name, &vs) || vs == REC_SOURCE_DEFAULT || vs == REC_SOURCE_NULL;
+}
+
+namespace {
+
+// This is equivalent to @c link_int in @c RecCore.cc but that's file scoped and can only be used
+// by something that also loads the value, something this approach is designed around preventing.
+int HttpConfigIntUpdate(const char *, RecDataT, RecData data, void * cookie) {
+  auto target = static_cast<RecInt *>(cookie);
+  ink_atomic_swap(target, data.rec_int);
+  return REC_ERR_OKAY;
+}
+
+} // namespace
+
+
+// Update handling for a configuration variable that is overloaded for backwards compatibility.
+// This doesn't set the target @c RecInt if the configuration variable hasn't been set.
+inline void HttpConfigEstablishOverload(RecInt& value, const char * name) {
+  RecInt n;
+  if (REC_ERR_OKAY == RecGetRecordInt(name, &n)) { // verify the name while getting the value.
+    if (!http_config_var_is_default(name)) {
+      value = n;
+    }
+    RecRegisterConfigUpdateCb(name, &HttpConfigIntUpdate, &value);
+    REC_RegisterConfigUpdateFunc(name, http_config_cb, nullptr);
+  }
 }
 
 // [amc] Not sure which is uglier, this switch or having a micro-function for each var.
@@ -935,7 +967,10 @@ HttpConfig::startup()
   HttpEstablishStaticConfigLongLong(c.server_max_connections, "proxy.config.http.server_max_connections");
   HttpEstablishStaticConfigLongLong(c.max_websocket_connections, "proxy.config.http.websocket.max_number_of_connections");
   HttpEstablishStaticConfigLongLong(c.oride.server_tcp_init_cwnd, "proxy.config.http.server_tcp_init_cwnd");
-  HttpEstablishStaticConfigLongLong(c.origin_min_keep_alive_connections, "proxy.config.http.per_server.min_keep_alive");
+
+  HttpConfigEstablishOverload(c.origin_min_keep_alive_connections, "proxy.config.http.origin_min_keep_alive_connections");
+  HttpConfigEstablishOverload(c.origin_min_keep_alive_connections, "proxy.config.http.per_server.min_keep_alive");
+  
   HttpEstablishStaticConfigByte(c.oride.attach_server_session_to_client, "proxy.config.http.attach_server_session_to_client");
   HttpEstablishStaticConfigByte(c.oride.safe_requests_retryable, "proxy.config.http.safe_requests_retryable");
 
