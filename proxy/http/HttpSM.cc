@@ -1830,14 +1830,16 @@ HttpSM::state_http_server_open(int event, void *data)
 {
   DebugSM("http_track", "entered inside state_http_server_open");
   STATE_ENTER(&HttpSM::state_http_server_open, event);
-  ink_release_assert(event == EVENT_INTERVAL || pending_action == nullptr);
-  pending_action                              = nullptr;
+  ink_release_assert(event == EVENT_INTERVAL || event == NET_EVENT_OPEN || pending_action == nullptr);
+  if (event != NET_EVENT_OPEN) {
+    pending_action                              = nullptr;
+  }
   milestones[TS_MILESTONE_SERVER_CONNECT_END] = Thread::get_hrtime();
   HttpServerSession *session;
 
 
   switch (event) {
-  case NET_EVENT_OPEN:
+  case NET_EVENT_OPEN: {
     session = (TS_SERVER_SESSION_SHARING_POOL_THREAD == t_state.http_config_param->server_session_sharing_pool) ?
                 THREAD_ALLOC_INIT(httpServerSessionAllocator, mutex->thread_holding) :
                 httpServerSessionAllocator.alloc();
@@ -1845,7 +1847,12 @@ HttpSM::state_http_server_open(int event, void *data)
     session->sharing_match = static_cast<TSServerSessionSharingMatchType>(t_state.txn_conf->server_session_sharing_match);
 
     session->attach_hostname(t_state.current.server->name);
-    session->new_connection(static_cast<NetVConnection *>(data));
+    UnixNetVConnection *vc = static_cast<UnixNetVConnection *>(data);
+    ink_release_assert(pending_action == nullptr || pending_action == vc->get_action());
+    pending_action = nullptr;
+
+    session->new_connection(vc);
+  
     session->state = HSS_ACTIVE;
 
     // If origin_max_connections or origin_min_keep_alive_connections is set then we are metering
@@ -1875,7 +1882,7 @@ HttpSM::state_http_server_open(int event, void *data)
       handle_http_server_open();
     }
     return 0;
-
+  }
   case VC_EVENT_WRITE_READY:
   case VC_EVENT_WRITE_COMPLETE:
     // Update the time out to the regular connection timeout.
