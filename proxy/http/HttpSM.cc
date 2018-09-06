@@ -5212,6 +5212,9 @@ HttpSM::do_http_server_open(bool raw)
     if (host && len > 0) {
       opt.set_sni_servername(host, len);
     }
+    if (t_state.server_info.name) {
+      opt.set_ssl_servername(t_state.server_info.name);
+    }
 
     SSLConfig::scoped_config params;
     // check if the overridden client cert filename is already attached to an existing ssl context
@@ -5590,7 +5593,6 @@ HttpSM::handle_http_server_open()
       vc->options.sockopt_flags          = t_state.txn_conf->sock_option_flag_out;
       vc->options.packet_mark            = t_state.txn_conf->sock_packet_mark_out;
       vc->options.packet_tos             = t_state.txn_conf->sock_packet_tos_out;
-      vc->options.clientVerificationFlag = t_state.txn_conf->ssl_client_verify_server;
       vc->apply_options();
     }
   }

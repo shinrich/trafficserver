@@ -1040,7 +1040,8 @@ SSLNetVConnection::sslStartHandShake(int event, int &err)
         clientVerify = nps->verifyLevel;
       } else {
         clientCTX    = params->client_ctx;
-        clientVerify = params->clientVerify;
+        // Let's keep config backward compatibility. Swap 2 and 1
+        clientVerify = params->clientVerify ? (params->clientVerify == 1 ? 2 : 1) : 0;
       }
       if (!clientCTX) {
         SSLErrorVC(this, "failed to create SSL client session");

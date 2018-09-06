@@ -68,6 +68,7 @@ NetVCOptions::reset()
   etype = ET_NET;
 
   sni_servername    = nullptr;
+  ssl_servername    = nullptr;
   clientCertificate = nullptr;
 }
 

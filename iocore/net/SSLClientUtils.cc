@@ -55,21 +55,24 @@ verify_callback(int preverify_ok, X509_STORE_CTX *ctx)
    */
   ssl                      = static_cast<SSL *>(X509_STORE_CTX_get_ex_data(ctx, SSL_get_ex_data_X509_STORE_CTX_idx()));
   SSLNetVConnection *netvc = SSLNetVCAccess(ssl);
-  if (!preverify_ok) {
+  bool enforce_mode = !(netvc && netvc->options.clientVerificationFlag == (uint8_t)LuaSNIConfig::Level::MODERATE);
+
+  if (!preverify_ok && netvc) {
     // Don't bother to check the hostname if we failed openssl's verification
     SSLDebug("verify error:num=%d:%s:depth=%d", err, X509_verify_cert_error_string(err), depth);
-    if (netvc && netvc->options.clientVerificationFlag == (uint8_t)LuaSNIConfig::Level::MODERATE) {
-      if (netvc->options.sni_servername)
-        Warning("Hostname verification failed for (%s) but still continuing with the connection establishment",
-                netvc->options.sni_servername.get());
-      else {
-        char buff[INET6_ADDRSTRLEN];
-        ats_ip_ntop(netvc->get_remote_addr(), buff, INET6_ADDRSTRLEN);
-        Warning("Server certificate verification failed for %s but still continuing with the connection establishment", buff);
-      }
-      return 1;
+    char buff[INET6_ADDRSTRLEN];
+    const char *sni_name;
+    ats_ip_ntop(netvc->get_remote_addr(), buff, INET6_ADDRSTRLEN);
+    if (netvc->options.sni_servername) {
+      sni_name = netvc->options.sni_servername.get();
+    } else {
+      sni_name = buff;
     }
-    return preverify_ok;
+    Warning("Core server certificate verification failed for (%s). Action=%s Error=%s server=%s(%s) depth=%d",
+            sni_name, enforce_mode ? "Terminate" : "Continue",
+            X509_verify_cert_error_string(err), netvc->options.ssl_servername.get(), buff, depth);
+    // If not enforcing ignore the error, just log warning
+    return enforce_mode ? preverify_ok : 1;
   }
   if (depth != 0) {
     // Not server cert....
@@ -78,34 +81,25 @@ verify_callback(int preverify_ok, X509_STORE_CTX *ctx)
 
   if (netvc) {
     // Match SNI if present
+    char *matched_name = nullptr;
+    unsigned char *sni_name;
+    char buff[INET6_ADDRSTRLEN];
+    ats_ip_ntop(netvc->get_remote_addr(), buff, INET6_ADDRSTRLEN);
     if (netvc->options.sni_servername) {
-      char *matched_name = nullptr;
-      if (validate_hostname(cert, reinterpret_cast<unsigned char *>(netvc->options.sni_servername.get()), false, &matched_name)) {
-        SSLDebug("Hostname %s verified OK, matched %s", netvc->options.sni_servername.get(), matched_name);
-        ats_free(matched_name);
-        return preverify_ok;
-      }
-      Warning("Hostname verification failed for (%s)", netvc->options.sni_servername.get());
+      sni_name = reinterpret_cast<unsigned char *>(netvc->options.sni_servername.get());
+    } else {
+      sni_name = reinterpret_cast<unsigned char *>(buff);
     }
-    // Otherwise match by IP
-    else {
-      char buff[INET6_ADDRSTRLEN];
-      ats_ip_ntop(netvc->get_remote_addr(), buff, INET6_ADDRSTRLEN);
-      if (validate_hostname(cert, reinterpret_cast<unsigned char *>(buff), true, nullptr)) {
-        SSLDebug("IP %s verified OK", buff);
-        return preverify_ok;
-      }
-      Warning("IP verification failed for (%s)", buff);
-    }
-
-    if (netvc->options.clientVerificationFlag == (uint8_t)LuaSNIConfig::Level::MODERATE) {
-      char buff[INET6_ADDRSTRLEN];
-      ats_ip_ntop(netvc->get_remote_addr(), buff, INET6_ADDRSTRLEN);
-      Warning("Server certificate verification failed but continuing with the connection establishment:%s:%s",
-              netvc->options.sni_servername.get(), buff);
+    if (validate_hostname(cert, sni_name, false, &matched_name)) {
+      SSLDebug("Hostname %s verified OK, matched %s", sni_name, matched_name);
+      ats_free(matched_name);
       return preverify_ok;
-    }
-    return 0;
+    } 
+    // If we got here the verification failed
+    Warning("SNI (%s) not in certificate. Action=%s server=%s(%s)", 
+            sni_name, enforce_mode ? "Terminate" : "Continue",
+            netvc->options.ssl_servername.get(), buff);
+    return enforce_mode ? 0 : preverify_ok;
   }
   return preverify_ok;
 }
