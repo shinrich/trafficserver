@@ -153,9 +153,13 @@ int
 SNIConfigParams::Initialize()
 {
   sni_filename = ats_stringdup(RecConfigReadConfigPath("proxy.config.ssl.servername.filename"));
+  Debug("ssl", "Loading ssl servername file: %s", sni_filename);
   lua_State *L = lua_open(); /* opens Lua */
   luaL_openlibs(L);
-  luaL_loadfile(L, sni_filename);
+  int retcode = luaL_loadfile(L, sni_filename);
+  if (retcode) {
+    Fatal("failed to load ssl servername file: %s", sni_filename);
+  }
   lua_pcall(L, 0, 0, 0);
   L_sni.loader(L);
   loadSNIConfig();
