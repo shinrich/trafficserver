@@ -2121,7 +2121,7 @@ Cache::open_done()
     return 0;
   }
 
-  if (total_good_nvol < total_nvol) {
+  if (total_good_nvol < total_nvol && cacheProcessor.waitForCache() == 3) {
     Emergency("Unable to initialize one or more stripes");
   }
 
