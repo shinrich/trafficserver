@@ -8003,6 +8003,8 @@ _memberp_to_generic(T *ptr, MgmtConverter const *&conv)
 static void *
 _conf_to_memberp(TSOverridableConfigKey conf, OverridableHttpConfigParams *overridableHttpConfig, MgmtConverter const *&conv)
 {
+  static MgmtInt bc_ts_config_http_origin_max_connections; // BC - otherwise regression tests break.
+
   void *ret = nullptr;
   conv      = nullptr;
 
@@ -8295,6 +8297,10 @@ _conf_to_memberp(TSOverridableConfigKey conf, OverridableHttpConfigParams *overr
     break;
   case TS_CONFIG_HTTP_SAFE_REQUESTS_RETRYABLE:
     ret = _memberp_to_generic(&overridableHttpConfig->safe_requests_retryable, conv);
+    break;
+  case TS_CONFIG_HTTP_ORIGIN_MAX_CONNECTIONS_QUEUE: // BC - no longer overridable, log an error on use.
+    Warning("proxy.config.http.origin_max_connections_queue is no longer overridable as of 7.1.2_40");
+    ret = _memberp_to_generic(&bc_ts_config_http_origin_max_connections, conv);
     break;
   case TS_CONFIG_WEBSOCKET_NO_ACTIVITY_TIMEOUT:
     ret = _memberp_to_generic(&overridableHttpConfig->websocket_inactive_timeout, conv);
@@ -8955,6 +8961,8 @@ TSHttpTxnConfigFind(const char *name, int length, TSOverridableConfigKey *conf, 
         cnf = TS_CONFIG_HTTP_CACHE_HEURISTIC_MIN_LIFETIME;
       } else if (!strncmp(name, "proxy.config.http.cache.heuristic_max_lifetime", length)) {
         cnf = TS_CONFIG_HTTP_CACHE_HEURISTIC_MAX_LIFETIME;
+      } else if (!strncmp(name, "proxy.config.http.origin_max_connections_queue", length)) {
+        cnf = TS_CONFIG_HTTP_ORIGIN_MAX_CONNECTIONS_QUEUE;
       }
       break;
     case 'r':
