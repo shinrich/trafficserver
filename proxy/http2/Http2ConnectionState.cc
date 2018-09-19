@@ -660,14 +660,18 @@ rcv_goaway_frame(Http2ConnectionState &cstate, const Http2Frame &frame)
                    static_cast<int>(goaway.error_code));
 
   // If peer indicated an error, go ahead and shutdown hard
-  if (goaway.error_code != Http2ErrorCode::HTTP2_ERROR_NO_ERROR) {
+  if (goaway.error_code != Http2ErrorCode::HTTP2_ERROR_NO_ERROR || cstate.get_client_stream_count() == 0) {
     cstate.send_goaway_frame(cstate.get_latest_stream_id_in(), Http2ErrorCode::HTTP2_ERROR_NO_ERROR);
     cstate.ua_session->set_half_close_local_flag(true);
     cstate.handleEvent(HTTP2_SESSION_EVENT_FINI, nullptr);
   } else {
-    // Otherwise, try to hang around to finish any remaining steams
-    cstate.set_seen_fini();
-    cstate.release_stream(nullptr);
+    // Otherwise, just make a note that we should not initiate any streams above goaway.last_streamid;
+    cstate.set_last_initiating_streamid(goaway.last_streamid);
+    // If last initiating stream_id is set to 0, then just disable push for the remainder of the session
+    if (goaway.last_streamid == 0) {
+      cstate.client_settings.set(HTTP2_SETTINGS_ENABLE_PUSH, 0);
+    }
+    cstate.set_post_stream_count(cstate.get_client_stream_count());
   }
 
   return Http2Error(Http2ErrorClass::HTTP2_ERROR_CLASS_NONE);
@@ -1080,6 +1084,10 @@ Http2ConnectionState::create_stream(Http2StreamId new_id, Http2Error &error)
     }
   }
 
+  // Has the client already sent a goaway?  Then track this as a post_away stream 
+  if (post_stream_count > 0) {
+    post_stream_count++;
+  }
   Http2Stream *new_stream = THREAD_ALLOC_INIT(http2StreamAllocator, this_ethread());
   new_stream->init(new_id, client_settings.get(HTTP2_SETTINGS_INITIAL_WINDOW_SIZE));
 
@@ -1172,6 +1180,10 @@ Http2ConnectionState::restart_streams()
 void
 Http2ConnectionState::cleanup_streams()
 {
+  if (post_stream_count > client_streams_in_count) {
+    HTTP2_SUM_THREAD_DYN_STAT(HTTP2_STAT_TOTAL_CLIENT_STREAM_POST_GOAWAY, this->mutex->thread_holding, post_stream_count - client_streams_in_count);
+  }
+
   Http2Stream *s = stream_list.head;
   while (s) {
     Http2Stream *next = static_cast<Http2Stream *>(s->link.next);
@@ -1555,7 +1567,8 @@ Http2ConnectionState::send_push_promise_frame(Http2Stream *stream, URL &url, con
   uint64_t sent               = 0;
   uint8_t flags               = 0x00;
 
-  if (client_settings.get(HTTP2_SETTINGS_ENABLE_PUSH) == 0) {
+  if (client_settings.get(HTTP2_SETTINGS_ENABLE_PUSH) == 0 || 
+      (last_initiating_streamid > 0 && last_initiating_streamid < (get_latest_stream_id_out() + 2))) {
     return;
   }
 

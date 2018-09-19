@@ -61,6 +61,7 @@ static const char *const HTTP2_STAT_SESSION_DIE_ACTIVE_NAME      = "proxy.proces
 static const char *const HTTP2_STAT_SESSION_DIE_INACTIVE_NAME    = "proxy.process.http2.session_die_inactive";
 static const char *const HTTP2_STAT_SESSION_DIE_EOS_NAME         = "proxy.process.http2.session_die_eos";
 static const char *const HTTP2_STAT_SESSION_DIE_ERROR_NAME       = "proxy.process.http2.session_die_error";
+static const char *const HTTP2_STAT_TOTAL_CLIENT_STREAM_POST_GOAWAY_NAME = "proxy.process.http2.total_client_stream_post_goaway";
 
 union byte_pointer {
   byte_pointer(void *p) : ptr(p) {}
@@ -794,6 +795,8 @@ Http2::init()
                      static_cast<int>(HTTP2_STAT_SESSION_DIE_INACTIVE), RecRawStatSyncSum);
   RecRegisterRawStat(http2_rsb, RECT_PROCESS, HTTP2_STAT_SESSION_DIE_ERROR_NAME, RECD_INT, RECP_PERSISTENT,
                      static_cast<int>(HTTP2_STAT_SESSION_DIE_ERROR), RecRawStatSyncSum);
+  RecRegisterRawStat(http2_rsb, RECT_PROCESS, HTTP2_STAT_TOTAL_CLIENT_STREAM_POST_GOAWAY_NAME, RECD_INT, RECP_PERSISTENT,
+                     static_cast<int>(HTTP2_STAT_TOTAL_CLIENT_STREAM_POST_GOAWAY), RecRawStatSyncSum);
 }
 
 #if TS_HAS_TESTS

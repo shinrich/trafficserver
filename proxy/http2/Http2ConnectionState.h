@@ -126,12 +126,14 @@ public:
       client_streams_in_count(0),
       client_streams_out_count(0),
       total_client_streams_count(0),
+      post_stream_count(0),
       continued_stream_id(0),
       _scheduled(false),
       fini_received(false),
       recursion(0),
       fini_event(nullptr),
-      zombie_event(nullptr)
+      zombie_event(nullptr),
+      last_initiating_streamid(0)
   {
     SET_HANDLER(&Http2ConnectionState::main_event_handler);
   }
@@ -243,6 +245,12 @@ public:
     return client_streams_in_count;
   }
 
+  void
+  set_post_stream_count(uint32_t count)
+  {
+    post_stream_count = count;
+  }
+
   // Connection level window size
   ssize_t client_rwnd, server_rwnd;
 
@@ -269,6 +277,12 @@ public:
   set_seen_fini()
   {
     fini_received = true;
+  }
+
+  void
+  set_last_initiating_streamid(Http2StreamId last_streamid)
+  {
+    last_initiating_streamid = last_streamid;
   }
 
   bool
@@ -341,6 +355,7 @@ private:
 
   // Counter for current active streams and streams in the process of shutting down
   uint32_t total_client_streams_count;
+  uint32_t post_stream_count;
 
   // NOTE: Id of stream which MUST receive CONTINUATION frame.
   //   - [RFC 7540] 6.2 HEADERS
@@ -358,6 +373,7 @@ private:
   Event *zombie_event               = nullptr;
   Http2ShutdownState shutdown_state = HTTP2_SHUTDOWN_NONE;
   Event *shutdown_cont_event        = nullptr;
+  Http2StreamId last_initiating_streamid = 0;
 };
 
 #endif // __HTTP2_CONNECTION_STATE_H__
