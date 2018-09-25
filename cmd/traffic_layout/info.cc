@@ -128,8 +128,6 @@ print_var(ts::string_view const &name, ts::string_view const &value, bool json, 
 void
 produce_layout(bool json)
 {
-  Layout::create();
-
   RecProcessInit(RECM_STAND_ALONE, nullptr /* diags */);
   LibRecordsConfigInit();
 
