@@ -35,7 +35,8 @@
 
 #include "common.h"
 
-static const unsigned char salt[] = {115, 97, 108, 117, 0, 85, 137, 229};
+const unsigned char salt[] = {115, 97, 108, 117, 0, 85, 137, 229};
+
 int
 encrypt_session(const char *session_data, int32_t session_data_len, const unsigned char *key, int key_length,
                 std::string &encrypted_data)
@@ -43,7 +44,6 @@ encrypt_session(const char *session_data, int32_t session_data_len, const unsign
   size_t len_all          = 0;
   size_t offset           = 0;
   char *pBuf              = nullptr;
-  EVP_CIPHER_CTX *context = nullptr;
 
   int encrypted_buffer_size    = 0;
   int encrypted_msg_len        = 0;
@@ -66,7 +66,7 @@ encrypt_session(const char *session_data, int32_t session_data_len, const unsign
   memcpy(pBuf + offset, session_data, session_data_len);
 
   // Initialize context
-  context = EVP_CIPHER_CTX_new();
+  EVP_CIPHER_CTX *context = EVP_CIPHER_CTX_new();
   unsigned char iv[EVP_MAX_IV_LENGTH];
   unsigned char gen_key[EVP_MAX_KEY_LENGTH];
 
@@ -83,11 +83,6 @@ encrypt_session(const char *session_data, int32_t session_data_len, const unsign
     goto Cleanup;
   }
 
-  //    if (ycrCreateSymmetricContext(&context, key, key_length) != YC_OK) {
-  //        TSError( "ycrCreateSymmetricContext failed.");
-  //        ret = -1;
-  //        goto Cleanup;
-  //    }
   int elen;
   encrypted_buffer_size = ENCRYPT_LEN(len_all);
   encrypted_msg_len     = encrypted_buffer_size;
@@ -104,13 +99,6 @@ encrypt_session(const char *session_data, int32_t session_data_len, const unsign
     goto Cleanup;
   }
   encrypted_msg_len += elen;
-  // encrypt with 3DES and attach MD5 hash
-  //    err = ycrEncryptSign64(context, (const char*)pBuf, len_all, (char *)encrypted_msg, &encrypted_msg_len, NULL, 0);
-  //    if (err == YC_ERROR || encrypted_msg_len <= 0) {
-  //        TSError("ycrEncryptSign64 failed.");
-  //        ret = -1;
-  //        goto Cleanup;
-  //    }
 
   encrypted_data.assign((char *)encrypted_msg, encrypted_msg_len);
 
@@ -138,7 +126,6 @@ decrypt_session(const std::string &encrypted_data, const unsigned char *key, int
                 int32_t &session_data_len)
 {
   unsigned char *ssl_sess_ptr  = nullptr;
-  EVP_CIPHER_CTX *context      = nullptr;
   int decrypted_buffer_size    = 0;
   int decrypted_msg_len        = 0;
   unsigned char *decrypted_msg = nullptr;
@@ -146,7 +133,7 @@ decrypt_session(const std::string &encrypted_data, const unsigned char *key, int
 
   // Initialize context
   // Initialize context
-  context = EVP_CIPHER_CTX_new();
+  EVP_CIPHER_CTX *context = EVP_CIPHER_CTX_new();
   unsigned char iv[EVP_MAX_IV_LENGTH];
   unsigned char gen_key[EVP_MAX_KEY_LENGTH];
 
@@ -161,12 +148,6 @@ decrypt_session(const std::string &encrypted_data, const unsigned char *key, int
     TSDebug(PLUGIN, "Decryption of encrypted session data failed");
     goto Cleanup;
   }
-  // Decryption
-  //  if (ycrCreateSymmetricContext(&context, key, key_length) != YC_OK) {
-  //    TSError("ycrCreateSymmetricContext failed.");
-  //    ret = -1;
-  //    goto Cleanup;
-  //  }
 
   decrypted_buffer_size = DECRYPT_LEN(encrypted_data.length());
   decrypted_msg         = (unsigned char *)new char[decrypted_buffer_size + 1];
@@ -178,17 +159,6 @@ decrypt_session(const std::string &encrypted_data, const unsigned char *key, int
     TSDebug(PLUGIN, "Decryption of encrypted session data failed");
     goto Cleanup;
   }
-  // err = ycrDecryptSign64(context, encrypted_data.c_str(), encrypted_data.length(), decrypted_msg, &decrypted_msg_len, NULL, 0);
-  //  if (err == YC_ERROR || decrypted_msg_len <= 0) {
-  //    TSError("ycrDecryptSign64 failed.");
-  //    TSDebug(PLUGIN,
-  //            "ycrDecryptSign64 failed. error: %s, decrypted_buffer_size:%d; (cipher-text) encrypted_data.length():%d, "
-  //            "encrypted_data.c_str(): %s",
-  //            strerror(errno), (int)decrypted_buffer_size, (int)encrypted_data.length(), encrypted_data.c_str());
-  //    /* if the above values look good, then it's possible key (for context) is wrong */
-  //    ret = -1;
-  //    goto Cleanup;
-  //  }
 
   // Retrieve ssl_session
   ssl_sess_ptr = (unsigned char *)decrypted_msg;

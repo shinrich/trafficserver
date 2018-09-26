@@ -197,6 +197,8 @@ RedisSubscriber::run()
         if (decode_id(key, session_id, session_id_len) == 0) { // Decrypt the data
           TSDebug(PLUGIN, "Add session encoded_id=%s decoded_id=%.*s", key.c_str(), session_id_len, session_id);
           add_session(session_id, session_id_len, data);
+        } else {
+          TSDebug(PLUGIN, "failed to decode key=%s", key.c_str());
         }
       }
 

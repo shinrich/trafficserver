@@ -21,5 +21,8 @@
   limitations under the License.
 
  */
+#pragma once 
 
 #define PLUGIN "ssl_session_reuse"
+
+extern const unsigned char salt[];

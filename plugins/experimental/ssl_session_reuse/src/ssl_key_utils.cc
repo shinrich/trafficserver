@@ -159,100 +159,97 @@ STEK_CreateNew(struct ssl_ticket_key_t *returnSTEK, int globalkey, int entropyEn
 static int
 STEK_encrypt(struct ssl_ticket_key_t *stek, const char *key, int key_length, char *retEncrypted, int *retLength)
 {
-  EVP_CIPHER_CTX *context = nullptr;
-  context                 = EVP_CIPHER_CTX_new();
+  EVP_CIPHER_CTX *context = EVP_CIPHER_CTX_new();
   unsigned char iv[EVP_MAX_IV_LENGTH];
-  RAND_bytes(iv, EVP_MAX_IV_LENGTH);
+  unsigned char gen_key[EVP_MAX_KEY_LENGTH];
+  int retval = 0;
 
   /* Encrypted stek will be placed in caller allocated retEncrypted buffer */
   /* NOTE: retLength must initially contain the size of the retEncrypted buffer */
   /* return 1 on success, 0 on failure  */
 
-  if (1 != EVP_EncryptInit_ex(context, EVP_aes_256_cbc(), nullptr, (const unsigned char *)key, iv)) {
-    TSDebug(PLUGIN, "Encryption of session data failed");
-    return 0;
-  }
-  //  if (ycrCreateSymmetricContext(&context, key, key_length) != YC_OK) {
-  //    TSError("ycrCreateSymmetricContext failed. No STEK passing. Likely problem with redis AUTH key");
-  //    return 0; // failure
-  //  }
-
   int stek_len     = sizeof(struct ssl_ticket_key_t);
   int stek_enc_len = 0;
+
+  // generate key and iv
+  int generated_key_len = EVP_BytesToKey(EVP_aes_256_cbc(), EVP_md5(), (const unsigned char *)salt, (const unsigned char *)key, key_length, 1, gen_key, iv);
+  if (generated_key_len <= 0) {
+    TSDebug(PLUGIN, "Key setup for encryption of session ticket failed");
+    goto cleanup;
+  }
+
+  if (1 != EVP_EncryptInit_ex(context, EVP_aes_256_cbc(), nullptr, (const unsigned char *)gen_key, iv)) {
+    TSDebug(PLUGIN, "Encryption init of session ticket failed");
+    goto cleanup;
+  }
+
   if (1 != EVP_EncryptUpdate(context, (unsigned char *)retEncrypted, &stek_enc_len, (const unsigned char *)stek, stek_len)) {
     TSDebug(PLUGIN, "Encryption of session ticket failed");
-    return 0;
+    goto cleanup;
   }
   *retLength = stek_enc_len;
   if (1 != EVP_EncryptFinal_ex(context, (unsigned char *)retEncrypted + stek_enc_len, &stek_enc_len)) {
-    TSDebug(PLUGIN, "Encryption of session ticket failed");
-    return 0;
+    TSDebug(PLUGIN, "Final encryption of session ticket failed");
+    goto cleanup;
   }
   *retLength += stek_enc_len;
-  //  err = ycrEncryptSign64(context, (const char *)stek, sizeof(struct ssl_ticket_key_t), retEncrypted, retLength, NULL, 0);
-  //  if (err == YC_ERROR || (*retLength) <= 0) {
-  //    TSError("ycrEncryptSign64 failed. No STEK passing");
-  //    ycrDestroyContext(context);
-  //    return 0; // failure
-  //  }
-  /* FYI...  ycrEncryptSign64() output of this is a 3DES encoding of the plaintext which
-              is base64 encoded and null terminated, so it's printable ASCII.  As such
-              encrypted size will be larger than plaintext */
 
+  retval = 1;
+cleanup:
   EVP_CIPHER_CTX_free(context);
-  return 1; // success
+  return retval; // success
 }
 
 static int
 STEK_decrypt(const std::string &encrypted_data, const char *key, int key_length, struct ssl_ticket_key_t *retSTEK)
 {
-  EVP_CIPHER_CTX *context = NULL;
-  context                 = EVP_CIPHER_CTX_new();
-  unsigned char iv[EVP_MAX_IV_LENGTH];
-  RAND_bytes(iv, EVP_MAX_IV_LENGTH);
+  if (!retSTEK)
+    return 0;
 
+  EVP_CIPHER_CTX *context = EVP_CIPHER_CTX_new();
+  unsigned char iv[EVP_MAX_IV_LENGTH];
+  unsigned char gen_key[EVP_MAX_KEY_LENGTH];
   unsigned char decryptBuff[4 * sizeof(struct ssl_ticket_key_t)] = {
     0,
   };
   int decryptLength = sizeof(decryptBuff);
+  int retval = 0;
 
-  if (!retSTEK)
-    return 0;
+  TSDebug(PLUGIN, "STEK_decrypt(): requested to decrypt %d bytes", static_cast<int>(encrypted_data.length()));
 
-  TSDebug(PLUGIN, "STEK_decrypt(): requested to decrypt %d bytes, encrypt=\"%s\"", static_cast<int>(encrypted_data.length()),
-          encrypted_data.c_str());
+  // generate key and iv
+  int generated_key_len = EVP_BytesToKey(EVP_aes_256_cbc(), EVP_md5(), (const unsigned char *)salt, (const unsigned char *)key, key_length, 1, gen_key, iv);
+  if (generated_key_len <= 0) {
+    TSDebug(PLUGIN, "Key setup for decryption of session ticket failed");
+    goto cleanup;
+  }
 
-  //  if (ycrCreateSymmetricContext(&context, key, key_length) != YC_OK) {
-  //    TSError("ycrCreateSymmetricContext failed. No STEK passing. Likely problem with redis AUTH key");
-  //    return 0; // failure
-  //  }
+  if (1 != EVP_DecryptInit_ex(context, EVP_aes_256_cbc(), nullptr, (const unsigned char *)gen_key, iv)) {
+    TSDebug(PLUGIN, "Encryption of session data failed");
+    goto cleanup;
+  }
+
   if (1 !=
       EVP_DecryptUpdate(context, decryptBuff, &decryptLength, (unsigned char *)encrypted_data.c_str(), encrypted_data.length())) {
     TSDebug(PLUGIN, "Decryption of encrypted ticket key failed");
-    return 0;
+    goto cleanup;
   }
-
-  //  err = ycrDecryptSign64(context, encrypted_data.c_str(), encrypted_data.length(), decryptBuff, &decryptLength, NULL, 0);
-  //  if (err == YC_ERROR) {
-  //    TSError("ycrDecryptSign64 failed. Can't decrypt STEK");
-  //    ycrDestroyContext(context);
-  //    return 0; // failure
-  //  }
 
   if (sizeof(struct ssl_ticket_key_t) != decryptLength) {
     TSError("STEK received is unexpected size length=%d not %d", decryptLength, static_cast<int>(sizeof(struct ssl_ticket_key_t)));
-    EVP_CIPHER_CTX_free(context);
-    return 0; // something weird going on; fail out.
+    goto cleanup;
   }
 
   memcpy(retSTEK, decryptBuff, sizeof(struct ssl_ticket_key_t));
   memset(decryptBuff, 0, sizeof(decryptBuff)); // warm fuzzies
+  retval = 1;
 
+cleanup:
   if (context) {
     EVP_CIPHER_CTX_free(context);
   }
 
-  return 1; /* ok, length of data in retSTEK will be sizeof(struct ssl_ticket_key_t) */
+  return retval; /* ok, length of data in retSTEK will be sizeof(struct ssl_ticket_key_t) */
 }
 
 int
