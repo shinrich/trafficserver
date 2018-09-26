@@ -277,8 +277,8 @@ do_stop()
 }
 
 # Make sure the NOFILES limit is set high in case this process is not 
-# started from a logged in prompt
-ulimit -n 5000000
+# started from a logged in prompt; make sure to have the hardlimit ≤ OS's limit (limits.conf pushed via CM3)
+ulimit -n 500000
 
 # main
 case "$1" in
