@@ -100,6 +100,8 @@ encrypt_session(const char *session_data, int32_t session_data_len, const unsign
   }
   encrypted_msg_len += elen;
 
+  TSDebug(PLUGIN, "Encrypted buffer of size %d to buffer of size %d\n", session_buffer_len, encrypted_msg_len);
+
   encrypted_data.assign((char *)encrypted_msg, encrypted_msg_len);
 
 Cleanup:
@@ -169,6 +171,7 @@ decrypt_session(const std::string &encrypted_data, const unsigned char *key, int
   // Length
   ret = *(int32_t *)ssl_sess_ptr;
   ssl_sess_ptr += sizeof(int32_t);
+  TSDebug(PLUGIN, "Decrypted buffer of size %d from buffer of size %d\n", ret, session_data_len);
   // If there is less data than the maxiumum buffer size, reduce accordingly
   if (ret < session_data_len) {
     session_data_len = ret;
