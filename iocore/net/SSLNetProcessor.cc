@@ -63,10 +63,10 @@ SSLNetProcessor::start(int, size_t stacksize)
   SSLPostConfigInitialize();
   SNIConfig::startup();
 
+  SSLTicketKeyConfig::startup();
+
   if (!SSLCertificateConfig::startup())
     return -1;
-
-  SSLTicketKeyConfig::startup();
 
   // Acquire a SSLConfigParams instance *after* we start SSL up.
   // SSLConfig::scoped_config params;
