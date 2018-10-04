@@ -68,9 +68,13 @@ Enumeration Members
 
 .. c:member:: TSHttpHookID TS_SSL_FIRST_HOOK
 
-.. c:macro:: TSHttpHookID TS_VCONN_START_HOOK
+.. c:member:: TSHttpHookID TS_VCONN_START_HOOK
 
-.. c:macro:: TSHttpHookID TS_VCONN_CLOSE_HOOK
+.. c:member:: TSHttpHookID TS_VCONN_OUTBOUND_START_HOOK
+
+.. c:member:: TSHttpHookID TS_VCONN_CLOSE_HOOK
+
+.. c:member:: TSHttpHookID TS_VCONN_OUTBOUND_CLOSE_HOOK
 
 .. c:member:: TSHttpHookID TS_SSL_SNI_HOOK
 
@@ -79,6 +83,8 @@ Enumeration Members
 .. c:member:: TSHttpHookID TS_SSL_SERVERNAME_HOOK
 
 .. c:member TSHttpHookID TS_SSL_VERIFY_SERVER_HOOK
+
+.. c:member TSHttpHookID TS_SSL_VERIFY_CLIENT_HOOK
 
 .. c:member TSHttpHookID TS_SSL_LAST_HOOK
 
