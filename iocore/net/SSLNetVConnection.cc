@@ -1321,6 +1321,28 @@ SSLNetVConnection::sslClientHandShakeEvent(int &err)
 
   ink_assert(SSLNetVCAccess(ssl) == this);
 
+  // Do outbound hook processing here
+  // Continue on if we are in the invoked state.  The hook has not yet reenabled
+  if (sslHandshakeHookState == HANDSHAKE_HOOKS_OUTBOUND_PRE_INVOKE) {
+    return SSL_WAIT_FOR_HOOK;
+  }
+
+  // Go do the preaccept hooks
+  if (sslHandshakeHookState == HANDSHAKE_HOOKS_OUTBOUND_PRE) {
+    if (!curHook) {
+      Debug("ssl", "Initialize outbound connect curHook from NULL");
+      curHook = ssl_hooks->get(TS_VCONN_START_OUTBOUND_INTERNAL_HOOK);
+    } else {
+      curHook = curHook->next();
+    }
+    // If no more hooks, carry on
+    if (nullptr != curHook) {
+      sslHandshakeHookState = HANDSHAKE_HOOKS_OUTBOUND_PRE_INVOKE;
+      ContWrapper::wrap(nh->mutex.get(), curHook->m_cont, TS_EVENT_VCONN_OUTBOUND_START, this);
+      return SSL_WAIT_FOR_HOOK;
+    }
+  }
+
   ssl_error = SSLConnect(ssl);
   switch (ssl_error) {
   case SSL_ERROR_NONE:
@@ -1476,6 +1498,9 @@ SSLNetVConnection::reenable(NetHandler *nh)
   case HANDSHAKE_HOOKS_PRE_INVOKE:
     sslHandshakeHookState = HANDSHAKE_HOOKS_PRE;
     break;
+  case HANDSHAKE_HOOKS_OUTBOUND_PRE_INVOKE;
+    sslHandshakeHookState = HANDSHAKE_HOOKS_OUTBOUND_PRE;
+    break;
   case HANDSHAKE_HOOKS_CERT_INVOKE:
     sslHandshakeHookState = HANDSHAKE_HOOKS_CERT;
     break;
@@ -1508,7 +1533,10 @@ SSLNetVConnection::reenable(NetHandler *nh)
       Debug("ssl", "Reenable preaccept");
       sslHandshakeHookState = HANDSHAKE_HOOKS_PRE_INVOKE;
       ContWrapper::wrap(nh->mutex.get(), curHook->m_cont, TS_EVENT_VCONN_START, this);
-    }
+    } else if (sslHandshakeHookState == HANDSHAKE_HOOKS_OUTBOUND_PRE) {
+      Debug("ssl", "Reenable outbound connect");
+      sslHandshakeHookState = HANDSHAKE_HOOKS_OUTBOUND_PRE_INVOKE;
+      ContWrapper::wrap(nh->mutex.get(), curHook->m_cont, TS_EVENT_VCONN_OUTBOUND_START, this);
     return;
   } else {
     // Move onto the "next" state
@@ -1526,6 +1554,8 @@ SSLNetVConnection::reenable(NetHandler *nh)
       break;
     case HANDSHAKE_HOOKS_CLIENT_CERT:
     case HANDSHAKE_HOOKS_CLIENT_CERT_INVOKE:
+    case HANDSHAKE_HOOKS_OUTBOUND_PRE:
+    case HANDSHAKE_HOOKS_OUTBOUND_PRE_INVOKE:
       sslHandshakeHookState = HANDSHAKE_HOOKS_DONE;
       break;
     default:
