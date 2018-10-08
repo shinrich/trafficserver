@@ -1498,7 +1498,7 @@ SSLNetVConnection::reenable(NetHandler *nh)
   case HANDSHAKE_HOOKS_PRE_INVOKE:
     sslHandshakeHookState = HANDSHAKE_HOOKS_PRE;
     break;
-  case HANDSHAKE_HOOKS_OUTBOUND_PRE_INVOKE;
+  case HANDSHAKE_HOOKS_OUTBOUND_PRE_INVOKE:
     sslHandshakeHookState = HANDSHAKE_HOOKS_OUTBOUND_PRE;
     break;
   case HANDSHAKE_HOOKS_CERT_INVOKE:
@@ -1537,6 +1537,7 @@ SSLNetVConnection::reenable(NetHandler *nh)
       Debug("ssl", "Reenable outbound connect");
       sslHandshakeHookState = HANDSHAKE_HOOKS_OUTBOUND_PRE_INVOKE;
       ContWrapper::wrap(nh->mutex.get(), curHook->m_cont, TS_EVENT_VCONN_OUTBOUND_START, this);
+    }
     return;
   } else {
     // Move onto the "next" state
