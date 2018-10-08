@@ -84,11 +84,23 @@ handshake processing will not proceed until :c:func:`TSSslVConnReenable()` is ca
 It may be useful to delay the TLS handshake processing if other resources must be consulted to select or create
 a certificate.
 
+TS_VCONN_OUTBOUND_START_HOOK
+------------------------
+
+This hook is invoked after ATS has connected to the upstream server and before the SSL handshake has started.  This gives the plugin the option of 
+overriding the default SSL connections on the SSL object.
+
+In theory this hook could apply and be useful for non-SSL connections as well, but at this point this hook is only called in the SSL sequence.
+
+The TLS handshake processing will not proceed until :c:func:`TSSslVConnReenable()` is called either from within the hook
+callback or from another piece of code.
+
+
 TLS Hook State Diagram
 ----------------------
 
 .. graphviz::
-   :alt: TLS Hook State Diagram
+   :alt: TLS Inbound Hook State Diagram
 
    digraph tls_hook_state_diagram{
      HANDSHAKE_HOOKS_PRE -> TS_VCONN_START_HOOK;
@@ -116,5 +128,13 @@ TLS Hook State Diagram
      HANDSHAKE_HOOKS_CERT_INVOKE [shape=box];
      HANDSHAKE_HOOKS_DONE [shape=box];
    }
+
+.. graphviz::
+   :alt: TLS Outbound Hook State Diagram
+
+   digraph tls_hook_state_diagram{
+     HANDSHAKE_HOOKS_PRE -> TS_VCONN_OUTBOUND_START_HOOK;
+     TS_VCONN_OUTBOUN_START_HOOK -> HANDSHAKE_HOOKS_PRE_INVOKE;
+     HANDSHAKE_HOOKS_PRE_INVOKE -> TSSslVConnReenable;
 
 
