@@ -1583,8 +1583,8 @@ bool
 SSLNetVConnection::callHooks(TSEvent eventId)
 {
   // Only dealing with the SNI/CERT hook so far.
-  ink_assert(eventId == TS_EVENT_SSL_CERT || eventId == TS_EVENT_SSL_SERVERNAME || eventId == TS_EVENT_SSL_SERVER_VERIFY_HOOK ||
-             eventId == TS_EVENT_SSL_VERIFY_CLIENT);
+  ink_assert(eventId == TS_EVENT_SSL_CERT || eventId == TS_EVENT_SSL_SERVERNAME || eventId == TS_EVENT_SSL_VERIFY_SERVER ||
+             eventId == TS_EVENT_SSL_VERIFY_CLIENT || eventId == TS_EVENT_VCONN_CLOSE);
   Debug("ssl", "callHooks sslHandshakeHookState=%d", this->sslHandshakeHookState);
 
   // Move state if it is appropriate
@@ -1608,8 +1608,12 @@ SSLNetVConnection::callHooks(TSEvent eventId)
   // Look for hooks associated with the event
   switch (this->sslHandshakeHookState) {
   case HANDSHAKE_HOOKS_SNI:
-    if (!curHook) {
-      curHook = ssl_hooks->get(TS_SSL_SERVERNAME_INTERNAL_HOOK);
+    // The server verify event addresses ATS to origin handshake
+    // All the other events are for client to ATS
+    if (eventId == TS_EVENT_SSL_VERIFY_SERVER) {
+      if (!curHook) {
+        curHook = ssl_hooks->get(TS_SSL_VERIFY_SERVER_INTERNAL_HOOK);
+      }
     } else {
       curHook = curHook->next();
     }
@@ -1646,7 +1650,7 @@ SSLNetVConnection::callHooks(TSEvent eventId)
   default:
    if (eventId == TS_EVENT_SSL_SERVER_VERIFY_HOOK) {
       if (!curHook) {
-        curHook = ssl_hooks->get(TS_SSL_SERVER_VERIFY_INTERNAL_HOOK);
+        curHook = ssl_hooks->get(TS_SSL_VERIFY_SERVER_INTERNAL_HOOK);
       }
     } else {
       curHook                     = nullptr;
