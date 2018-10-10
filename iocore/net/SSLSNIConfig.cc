@@ -54,8 +54,19 @@ SNIConfigParams::getPropertyConfig(cchar *servername) const
 {
   NextHopProperty *nps = nullptr;
   nps                  = next_hop_table.get(servername);
-  if (!nps)
-    nps = wild_next_hop_table.get(servername);
+  if (!nps) {
+    Vec<cchar *> keys;
+    wild_next_hop_table.get_keys(keys);
+
+    for (int i = 0; i < static_cast<int>(keys.length()); i++) {
+      ts::string_view sv{servername, strlen(servername)};
+      ts::string_view key_sv{keys.get(i)};
+      if (sv.size() >= key_sv.size() && sv.substr(sv.size() - key_sv.size()) == key_sv) {
+        return wild_next_hop_table.get(key_sv.data());
+      }
+    }
+  }
+
   return nps;
 }
 
@@ -64,7 +75,7 @@ SNIConfigParams::loadSNIConfig()
 {
   for (auto item : L_sni.items) {
     actionVector *aiVec = new actionVector();
-    Debug("ssl", "name: %s", item.fqdn.data());
+    Debug("ssl_sni", "sni server name: %s", item.fqdn.data());
     cchar *servername = item.fqdn.data();
     ats_wildcard_matcher w_Matcher;
     auto wildcard = w_Matcher.match(servername);
@@ -97,20 +108,36 @@ SNIConfigParams::loadSNIConfig()
     aiVec->push_back(ai3);
     // set the next hop properties
     SSLConfig::scoped_config params;
-    auto clientCTX  = params->getCTX(servername);
     cchar *certFile = item.client_cert.data();
-    if (!clientCTX && certFile) {
-      clientCTX = params->getNewCTX(certFile);
-      params->InsertCTX(certFile, clientCTX);
+
+    // NOTE: is the chunk below needed?
+    // auto clientCTX  = params->getCTX(certFile);
+    // if (!clientCTX && certFile) {
+    //   clientCTX = params->getNewCTX(certFile);
+    //   params->InsertCTX(certFile, clientCTX);
+    // }
+
+    auto clientCTX = params->getNewCTX(certFile);
+
+    Debug("ssl_sni", "Overriding verify_origin_server in %s's SSL context to that specified in ssl_server_name.config", servername);
+    if (!item.verify_origin_server) {
+      SSL_CTX_set_verify(clientCTX, SSL_VERIFY_PEER, nullptr);
+    } else {
+      SSL_CTX_set_verify(clientCTX, SSL_VERIFY_PEER, verify_callback);
     }
+
+
     NextHopProperty *nps = new NextHopProperty();
     nps->name            = ats_strdup(servername);
     nps->verifyLevel     = item.verify_origin_server;
     nps->ctx             = clientCTX;
-    if (wildcard)
-      wild_next_hop_table.put(nps->name, nps);
-    else
+    if (wildcard) {
+      ts::TextView domain{servername, strlen(servername)};
+      domain.take_prefix_at('.');
+      wild_next_hop_table.put(ats_stringdup(domain), nps);
+    } else {
       next_hop_table.put(nps->name, nps);
+    }
   } // end for
 }
 
