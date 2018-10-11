@@ -749,30 +749,13 @@ LocalManager::sendMgmtMsgToProcesses(MgmtMessageHdr *mh)
     break;
   case MGMT_EVENT_CONFIG_FILE_UPDATE:
   case MGMT_EVENT_CONFIG_FILE_UPDATE_NO_INC_VERSION:
-    bool found;
-    char *fname = nullptr;
-    Rollback *rb;
-    char *data_raw;
-
-    data_raw = (char *)mh + sizeof(MgmtMessageHdr);
-    fname    = REC_readString(data_raw, &found);
-
+    char *data_raw = (char *)mh + sizeof(MgmtMessageHdr);
     RecT rec_type;
     if (RecGetRecordType(data_raw, &rec_type) == REC_ERR_OKAY && rec_type == RECT_CONFIG) {
       RecSetSyncRequired(data_raw);
     } else {
       mgmt_log("[LocalManager:sendMgmtMsgToProcesses] Unknown file change: '%s'\n", data_raw);
     }
-    ink_assert(found);
-
-    if (!(fname && configFiles && configFiles->getRollbackObj(fname, &rb)) &&
-        (strcmp(data_raw, "proxy.config.cluster.cluster_configuration") != 0) &&
-        (strcmp(data_raw, "proxy.config.body_factory.template_sets_dir") != 0) &&
-        (strcmp(data_raw, "proxy.config.ssl.server.ticket_key.filename") != 0)) {
-      mgmt_fatal(0, "[LocalManager::sendMgmtMsgToProcesses] "
-                    "Invalid 'data_raw' for MGMT_EVENT_CONFIG_FILE_UPDATE\n");
-    }
-    ats_free(fname);
     break;
   }
 

@@ -387,7 +387,7 @@ ClusterCom::ClusterCom(unsigned long oip, char *host, int mcport, char *group, i
   //
   Debug("ccom", "[ClusterCom::ClusterCom] Using cluster file: %s", cluster_file);
   Debug("ccom", "[ClusterCom::ClusterCom] Using cluster conf: %s", cluster_conf);
-  cluster_file_rb = new Rollback(cluster_file, false);
+  cluster_file_rb = new Rollback(cluster_file, "icp.config", false);
 
   ats_free(cluster_file);
 

@@ -40,7 +40,7 @@
 
 class Rollback;
 
-typedef void (*FileCallbackFunc)(char *, bool);
+typedef void (*FileCallbackFunc)(char *, char *, bool);
 
 struct callbackListable {
 public:
@@ -116,10 +116,10 @@ class FileManager : public MultiFile
 public:
   FileManager();
   ~FileManager();
-  void addFile(const char *fileName, bool root_access_needed, Rollback *parentRollback = NULL, unsigned flags = 0);
+  void addFile(const char *fileName, const char *configName, bool root_access_needed, Rollback *parentRollback = NULL, unsigned flags = 0);
   bool getRollbackObj(const char *fileName, Rollback **rbPtr);
   void registerCallback(FileCallbackFunc func);
-  void fileChanged(const char *fileName, bool incVersion);
+  void fileChanged(const char *fileName, const char *configName, bool incVersion);
   textBuffer *filesManaged();
   void rereadConfig();
   bool isConfigStale();
@@ -149,7 +149,7 @@ private:
   void generateRestoreConfirm(char *snapName, textBuffer *output);
   bool checkValidName(const char *name);
   const char *getParentFileName(const char *fileName);
-  void addFileHelper(const char *fileName, bool root_access_needed, Rollback *parentRollback, unsigned flags = 0);
+  void addFileHelper(const char *fileName, const char *configName, bool root_access_needed, Rollback *parentRollback, unsigned flags = 0);
 };
 
 int snapEntryCmpFunc(const void *e1, const void *e2);

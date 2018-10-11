@@ -129,20 +129,20 @@ FileManager::registerCallback(FileCallbackFunc func)
 //  Pointers to the new objects are stored in the bindings hashtable
 //
 void
-FileManager::addFile(const char *fileName, bool root_access_needed, Rollback *parentRollback, unsigned flags)
+FileManager::addFile(const char *fileName, const char *configName, bool root_access_needed, Rollback *parentRollback, unsigned flags)
 {
   ink_mutex_acquire(&accessLock);
-  addFileHelper(fileName, root_access_needed, parentRollback, flags);
+  addFileHelper(fileName, configName, root_access_needed, parentRollback, flags);
   ink_mutex_release(&accessLock);
 }
 
 // caller must hold the lock
 void
-FileManager::addFileHelper(const char *fileName, bool root_access_needed, Rollback *parentRollback, unsigned flags)
+FileManager::addFileHelper(const char *fileName, const char *configName, bool root_access_needed, Rollback *parentRollback, unsigned flags)
 {
   ink_assert(fileName != nullptr);
 
-  Rollback *rb    = new Rollback(fileName, root_access_needed, parentRollback, flags);
+  Rollback *rb    = new Rollback(fileName, configName, root_access_needed, parentRollback, flags);
   rb->configFiles = this;
 
   ink_hash_table_insert(bindings, fileName, rb);
@@ -176,19 +176,21 @@ FileManager::getRollbackObj(const char *fileName, Rollback **rbPtr)
 //
 //
 void
-FileManager::fileChanged(const char *fileName, bool incVersion)
+FileManager::fileChanged(const char *fileName, const char *configName, bool incVersion)
 {
   callbackListable *cb;
-  char *filenameCopy;
+  char *filenameCopy, *confignameCopy;
   Debug("lm", "filename changed %s", fileName);
   ink_mutex_acquire(&cbListLock);
 
   for (cb = cblist.head; cb != nullptr; cb = cb->link.next) {
     // Dup the string for each callback to be
     //  defensive incase it modified when it is not supposed to be
+    confignameCopy = ats_strdup(configName);
     filenameCopy = ats_strdup(fileName);
-    (*cb->func)(filenameCopy, incVersion);
+    (*cb->func)(filenameCopy, confignameCopy, incVersion);
     ats_free(filenameCopy);
+    ats_free(confignameCopy);
   }
   ink_mutex_release(&cbListLock);
 }
@@ -657,7 +659,7 @@ FileManager::rereadConfig()
 
   for (size_t i = 0; i < parentFileNeedChange.n; i++) {
     if (!changedFiles.in(parentFileNeedChange[i])) {
-      fileChanged(parentFileNeedChange[i]->getFileName(), true);
+      fileChanged(parentFileNeedChange[i]->getFileName(), parentFileNeedChange[i]->getConfigName(), true);
     }
   }
   // INKqa11910
@@ -665,9 +667,9 @@ FileManager::rereadConfig()
   bool found;
   int enabled = (int)REC_readInteger("proxy.config.body_factory.enable_customizations", &found);
   if (found && enabled) {
-    fileChanged("proxy.config.body_factory.template_sets_dir", true);
+    fileChanged("proxy.config.body_factory.template_sets_dir", "proxy.config.body_factory.template_sets_dir", true);
   }
-  fileChanged("proxy.config.ssl.server.ticket_key.filename", true);
+  fileChanged("proxy.config.ssl.server.ticket_key.filename", "proxy.config.ssl.server.ticket_key.filename", true);
 }
 
 bool
@@ -758,7 +760,7 @@ FileManager::configFileChild(const char *parent, const char *child, unsigned fla
     parentRollback = (Rollback *)lookup;
   }
   if (htfound) {
-    addFileHelper(child, true, parentRollback, flags);
+    addFileHelper(child, "", true, parentRollback, flags);
   }
   ink_mutex_release(&accessLock);
 }
