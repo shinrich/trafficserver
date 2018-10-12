@@ -25,7 +25,8 @@ Test basic post redirection
 MAX_REDIRECT = 99
 
 Test.SkipUnless(
-    Condition.HasProgram("curl", "Curl need to be installed on system for this test to work")
+    Condition.HasProgram("curl", "Curl need to be installed on system for this test to work"),
+    Condition.HasProgram("truncate", "truncate need to be installed on system for this test to work")
 )
 
 Test.ContinueOnFail = True
@@ -36,11 +37,11 @@ redirect_serv2 = Test.MakeOriginServer("re_server2")
 dest_serv = Test.MakeOriginServer("dest_server")
 
 ts.Disk.records_config.update({
-    'proxy.config.http.redirection_enabled': 1,
     'proxy.config.http.number_of_redirections': MAX_REDIRECT,
     'proxy.config.http.post_copy_size' : 919430601,
-    'proxy.config.http.cache.http': 0  # ,
-    # 'proxy.config.diags.debug.enabled': 1
+    'proxy.config.http.cache.http': 0,
+    'proxy.config.http.redirect.actions': 'self:follow', # redirects to self are not followed by default
+    # 'proxy.config.diags.debug.enabled': 1,
 })
 
 redirect_request_header = {"headers": "POST /redirect1 HTTP/1.1\r\nHost: *\r\nContent-Length: 52428800\r\n\r\n", "timestamp": "5678", "body": ""}
@@ -63,13 +64,10 @@ ts.Disk.remap_config.AddLine(
 )
 
 tr = Test.AddTestRun()
-tr.Processes.Default.Command = 'curl -i http://127.0.0.1:{0}/redirect1'.format(ts.Variables.port)
+tr.Processes.Default.Command = 'touch largefile.txt && truncate largefile.txt -s 50M && curl -i http://127.0.0.1:{0}/redirect1 -F "filename=@./largefile.txt" && rm -f largefile.txt'.format(ts.Variables.port)
 tr.Processes.Default.StartBefore(ts)
 tr.Processes.Default.StartBefore(redirect_serv1)
 tr.Processes.Default.StartBefore(redirect_serv2)
 tr.Processes.Default.StartBefore(dest_serv)
 tr.Processes.Default.Streams.stdout = "gold/redirect_post.gold"
 tr.Processes.Default.ReturnCode = 0
-tr.StillRunningAfter = redirect_serv1
-tr.StillRunningAfter = redirect_serv2
-tr.StillRunningAfter = dest_serv

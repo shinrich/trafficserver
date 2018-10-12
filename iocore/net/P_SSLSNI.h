@@ -43,9 +43,10 @@
 
 // Properties for the next hop server
 struct NextHopProperty {
-  const char *name   = nullptr; // name of the server
-  int8_t verifyLevel = 0;       // whether to verify the next hop
-  SSL_CTX *ctx       = nullptr; // ctx generated off the certificate to present to this server
+  const char *name                               = nullptr;                         // name of the server
+  LuaSNIConfig::Policy verifyServerPolicy       = LuaSNIConfig::Policy::DISABLED; // whether to verify the next hop
+  LuaSNIConfig::Property verifyServerProperties = LuaSNIConfig::Property::NONE;   // what to verify on the next hop
+  SSL_CTX *ctx                                   = nullptr; // ctx generated off the certificate to present to this server
   NextHopProperty();
 };
 

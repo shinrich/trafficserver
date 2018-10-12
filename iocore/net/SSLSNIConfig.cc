@@ -35,6 +35,7 @@
 #include "P_SSLConfig.h"
 #include "ts/ink_memory.h"
 #include <ts/TextView.h>
+#include <sstream>
 
 #define SNI_NAME_TAG "dest_host"
 #define SNI_ACTION_TAG "action"
@@ -103,14 +104,16 @@ SNIConfigParams::loadSNIConfig()
       clientCTX = params->getNewCTX(certFile);
       params->InsertCTX(certFile, clientCTX);
     }
-    NextHopProperty *nps = new NextHopProperty();
-    nps->name            = ats_strdup(servername);
-    nps->verifyLevel     = item.verify_origin_server;
-    nps->ctx             = clientCTX;
-    if (wildcard)
+    NextHopProperty *nps        = new NextHopProperty();
+    nps->name                   = ats_strdup(servername);
+    nps->verifyServerPolicy     = item.verify_server_policy;
+    nps->verifyServerProperties = item.verify_server_properties;
+    nps->ctx                    = clientCTX;
+    if (wildcard) {
       wild_next_hop_table.put(nps->name, nps);
-    else
+    } else {
       next_hop_table.put(nps->name, nps);
+    }
   } // end for
 }
 
@@ -161,7 +164,10 @@ SNIConfigParams::Initialize()
     Fatal("failed to load ssl servername file: %s", sni_filename);
   }
   lua_pcall(L, 0, 0, 0);
-  L_sni.loader(L);
+  ts::Errata ret = L_sni.loader(L);
+  std::stringstream msg;
+  msg << ret;
+  Warning("Lua Load %s", msg.str().c_str());
   loadSNIConfig();
   return 0;
 }

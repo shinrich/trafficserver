@@ -46,8 +46,20 @@ TsConfigDescriptor LuaSNIConfig::Item::CLIENT_CERT_DESCRIPTOR = {TsConfigDescrip
 TsConfigEnumDescriptor LuaSNIConfig::Item::VERIFY_NEXT_SERVER_DESCRIPTOR = {TsConfigDescriptor::Type::ENUM,
                                                                             "enum",
                                                                             "Level",
-                                                                            "Level for client verification",
+                                                                            "Level for server certificate verification",
                                                                             {{"NONE", 0}, {"MODERATE", 1}, {"STRICT", 2}}};
+
+TsConfigEnumDescriptor LuaSNIConfig::Item::VERIFY_SERVER_POLICY_DESCRIPTOR = { TsConfigDescriptor::Type::ENUM,
+                                                                    "enum",
+                                                                    "Policy",
+                                                                    "How the verification should be enforced",
+                                                                    {{"DISABLED", 0}, {"PERMISSIVE", 1}, {"ENFORCED", 2}}};
+TsConfigEnumDescriptor LuaSNIConfig::Item::VERIFY_SERVER_PROPERTIES_DESCRIPTOR = { TsConfigDescriptor::Type::ENUM,
+                                                                        "enum",
+                                                                        "Property",
+                                                                        "Properties to be verified",
+                                                                        {{"NONE", 0}, {"SIGNATURE", 0x1}, {"NAME", 0x2}, {"ALL", 0x3}}};
+                                                                       
 
 ts::Errata
 LuaSNIConfig::loader(lua_State *L)
@@ -67,7 +79,7 @@ LuaSNIConfig::loader(lua_State *L)
       if (l_type == LUA_TTABLE) { // the item should be table
         // new Item
         LuaSNIConfig::Item item;
-        item.loader(L);
+        zret = item.loader(L);
         items.push_back(item);
       } else {
         zret.push(ts::Errata::Message(0, 0, "Invalid Entry at SNI config"));
@@ -106,6 +118,10 @@ LuaSNIConfig::Item::loader(lua_State *L)
       VERIFYCLIENT_CONFIG.loader(L);
     } else if (!strncmp(name, TS_verify_origin_server, strlen(TS_verify_origin_server))) {
       VERIFY_NEXT_SERVER_CONFIG.loader(L);
+    } else if (!strncmp(name, TS_verify_server_policy, strlen(TS_verify_server_policy))) {
+      VERIFY_SERVER_POLICY_CONFIG.loader(L);
+    } else if (!strncmp(name, TS_verify_server_properties, strlen(TS_verify_server_properties))) {
+      VERIFY_SERVER_PROPERTIES_CONFIG.loader(L);
     } else if (!strncmp(name, TS_client_cert, strlen(TS_client_cert))) {
       CLIENT_CERT_CONFIG.loader(L);
     } else if (!strncmp(name, TS_tunnel_route, strlen(TS_tunnel_route))) {
@@ -130,5 +146,19 @@ LuaSNIConfig::registerEnum(lua_State *L)
   LUA_ENUM(L, "NONE", i++);
   LUA_ENUM(L, "MODERATE", i++);
   LUA_ENUM(L, "STRICT", i++);
+
+  lua_newtable(L);
+  lua_setglobal(L, "PolicyTable");
+  LUA_ENUM(L, "DISABLED", 0);
+  LUA_ENUM(L, "PERMISSIVE", 1);
+  LUA_ENUM(L, "ENFORCED", 2);
+
+  lua_newtable(L);
+  lua_setglobal(L, "PropertyTable");
+  LUA_ENUM(L, "NONE", 0);
+  LUA_ENUM(L, "SIGNATURE", 1);
+  LUA_ENUM(L, "NAME", 2);
+  LUA_ENUM(L, "ALL", 3);
+
   return zret;
 }

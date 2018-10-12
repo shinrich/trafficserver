@@ -43,6 +43,8 @@ constexpr char TS_disable_H2[]           = "disable_h2";
 constexpr char TS_verify_client[]        = "verify_client";
 constexpr char TS_tunnel_route[]         = "tunnel_route";
 constexpr char TS_ip_allow[]             = "ip_allow";
+constexpr char TS_verify_server_policy[] = "verify_server_policy";
+constexpr char TS_verify_server_properties[] = "verify_server_properties";
 constexpr char TS_verify_origin_server[] = "verify_origin_server";
 constexpr char TS_client_cert[]          = "client_cert";
 
@@ -54,11 +56,14 @@ struct LuaSNIConfig : public TsConfigBase {
     verify_client,
     tunnel_route, // blind tunnel action
     ip_allow,
-    verify_origin_server, // this applies to server side vc only
+    verify_server_policy, // this applies to the server side vc only
+    verify_server_properties, // this applies to the server side vc only
     client_cert
 
   };
-  enum class Level { NONE = 0, MODERATE, STRICT };
+  enum class Level : uint8_t { NONE = 0, MODERATE, STRICT };
+  enum class Policy : uint8_t { DISABLED = 0, PERMISSIVE, ENFORCED };
+  enum class Property : uint8_t { NONE = 0, SIGNATURE_MASK = 0x1, NAME_MASK = 0x2, ALL_MASK = 0x3 };
   static TsConfigDescriptor desc;
   static TsConfigArrayDescriptor DESCRIPTOR;
 
@@ -72,7 +77,9 @@ struct LuaSNIConfig : public TsConfigBase {
         TUNNEL_DEST_CONFIG(TUNNEL_DEST_DESCRIPTOR, tunnel_destination),
         IP_ALLOW_CONFIG(IP_ALLOW_DESCRIPTOR, ip_allow),
         CLIENT_CERT_CONFIG(CLIENT_CERT_DESCRIPTOR, client_cert),
-        VERIFY_NEXT_SERVER_CONFIG(VERIFY_NEXT_SERVER_DESCRIPTOR, (int &)verify_origin_server)
+        VERIFY_NEXT_SERVER_CONFIG(VERIFY_NEXT_SERVER_DESCRIPTOR, (int &)verify_origin_server),
+        VERIFY_SERVER_POLICY_CONFIG(VERIFY_SERVER_POLICY_DESCRIPTOR, (int &)verify_server_policy),
+        VERIFY_SERVER_PROPERTIES_CONFIG(VERIFY_SERVER_PROPERTIES_DESCRIPTOR, (int &)verify_server_properties)
     {
     }
     ts::Errata loader(lua_State *s) override;
@@ -86,7 +93,9 @@ struct LuaSNIConfig : public TsConfigBase {
     uint8_t verify_client_level = 0;
     std::string tunnel_destination;
     std::string ip_allow;
-    uint8_t verify_origin_server = 0;
+    Level verify_origin_server = Level::NONE;
+    Policy verify_server_policy = Policy::DISABLED;
+    Property verify_server_properties = Property::NONE;
     std::string client_cert;
 
     // These need to be initialized statically.
@@ -105,6 +114,10 @@ struct LuaSNIConfig : public TsConfigBase {
     TsConfigString CLIENT_CERT_CONFIG;
     static TsConfigEnumDescriptor VERIFY_NEXT_SERVER_DESCRIPTOR;
     TsConfigEnum<self::Level> VERIFY_NEXT_SERVER_CONFIG;
+    static TsConfigEnumDescriptor VERIFY_SERVER_POLICY_DESCRIPTOR;
+    TsConfigEnum<self::Level> VERIFY_SERVER_POLICY_CONFIG;
+    static TsConfigEnumDescriptor VERIFY_SERVER_PROPERTIES_DESCRIPTOR;
+    TsConfigEnum<self::Level> VERIFY_SERVER_PROPERTIES_CONFIG;
     ~Item() {}
   };
   std::vector<self::Item> items;

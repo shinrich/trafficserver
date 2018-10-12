@@ -34,6 +34,7 @@
 #include "I_Socks.h"
 #include <ts/apidefs.h>
 #include <ts/string_view.h>
+#include "LuaSNIConfig.h"
 
 #define CONNECT_SUCCESS 1
 #define CONNECT_FAILURE 0
@@ -186,7 +187,17 @@ struct NetVCOptions {
   ats_scoped_str clientCertificate;
   /// Reset all values to defaults.
 
-  uint8_t clientVerificationFlag = 0;
+  /**
+   * Set to DISABLED, PERFMISSIVE, or ENFORCED
+   * Controls how the server certificate verification is handled
+   */
+  LuaSNIConfig::Policy verifyServerPolicy = LuaSNIConfig::Policy::DISABLED;
+
+  /**
+   * Bit mask of which features of the server certificate should be checked
+   * Currently SIGNATURE and NAME
+   */
+  LuaSNIConfig::Property verifyServerProperties = LuaSNIConfig::Property::NONE;
   void reset();
 
   void set_sock_param(int _recv_bufsize, int _send_bufsize, unsigned long _opt_flags, unsigned long _packet_mark = 0,
