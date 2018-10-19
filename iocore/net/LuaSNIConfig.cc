@@ -43,6 +43,8 @@ TsConfigDescriptor LuaSNIConfig::Item::IP_ALLOW_DESCRIPTOR = {TsConfigDescriptor
                                                               "Client IP allowed for this communication"};
 TsConfigDescriptor LuaSNIConfig::Item::CLIENT_CERT_DESCRIPTOR = {TsConfigDescriptor::Type::STRING, "String", TS_client_cert,
                                                                  "Client certificate to present to the next hop server"};
+TsConfigDescriptor LuaSNIConfig::Item::CLIENT_KEY_DESCRIPTOR = {TsConfigDescriptor::Type::STRING, "String", TS_client_key,
+                                                                 "Client key corresponding to certificate to present to the next hop server"};
 TsConfigEnumDescriptor LuaSNIConfig::Item::VERIFY_NEXT_SERVER_DESCRIPTOR = {TsConfigDescriptor::Type::ENUM,
                                                                             "enum",
                                                                             "Level",
@@ -124,6 +126,8 @@ LuaSNIConfig::Item::loader(lua_State *L)
       VERIFY_SERVER_PROPERTIES_CONFIG.loader(L);
     } else if (!strncmp(name, TS_client_cert, strlen(TS_client_cert))) {
       CLIENT_CERT_CONFIG.loader(L);
+    } else if (!strncmp(name, TS_client_key, strlen(TS_client_key))) {
+      CLIENT_KEY_CONFIG.loader(L);
     } else if (!strncmp(name, TS_tunnel_route, strlen(TS_tunnel_route))) {
       TUNNEL_DEST_CONFIG.loader(L);
     } else if (!strncmp(name, TS_ip_allow, strlen(TS_ip_allow))) {

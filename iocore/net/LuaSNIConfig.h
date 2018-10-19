@@ -47,6 +47,7 @@ constexpr char TS_verify_server_policy[] = "verify_server_policy";
 constexpr char TS_verify_server_properties[] = "verify_server_properties";
 constexpr char TS_verify_origin_server[] = "verify_origin_server";
 constexpr char TS_client_cert[]          = "client_cert";
+constexpr char TS_client_key[]           = "client_key";
 
 const int start = 0;
 struct LuaSNIConfig : public TsConfigBase {
@@ -58,8 +59,8 @@ struct LuaSNIConfig : public TsConfigBase {
     ip_allow,
     verify_server_policy, // this applies to the server side vc only
     verify_server_properties, // this applies to the server side vc only
-    client_cert
-
+    client_cert,
+    client_key
   };
   enum class Level : uint8_t { NONE = 0, MODERATE, STRICT };
   enum class Policy : uint8_t { DISABLED = 0, PERMISSIVE, ENFORCED };
@@ -77,6 +78,7 @@ struct LuaSNIConfig : public TsConfigBase {
         TUNNEL_DEST_CONFIG(TUNNEL_DEST_DESCRIPTOR, tunnel_destination),
         IP_ALLOW_CONFIG(IP_ALLOW_DESCRIPTOR, ip_allow),
         CLIENT_CERT_CONFIG(CLIENT_CERT_DESCRIPTOR, client_cert),
+        CLIENT_KEY_CONFIG(CLIENT_KEY_DESCRIPTOR, client_key),
         VERIFY_NEXT_SERVER_CONFIG(VERIFY_NEXT_SERVER_DESCRIPTOR, (int &)verify_origin_server),
         VERIFY_SERVER_POLICY_CONFIG(VERIFY_SERVER_POLICY_DESCRIPTOR, (int &)verify_server_policy),
         VERIFY_SERVER_PROPERTIES_CONFIG(VERIFY_SERVER_PROPERTIES_DESCRIPTOR, (int &)verify_server_properties)
@@ -97,6 +99,7 @@ struct LuaSNIConfig : public TsConfigBase {
     Policy verify_server_policy = Policy::DISABLED;
     Property verify_server_properties = Property::NONE;
     std::string client_cert;
+    std::string client_key;
 
     // These need to be initialized statically.
     static TsConfigObjectDescriptor OBJ_DESCRIPTOR;
@@ -112,6 +115,8 @@ struct LuaSNIConfig : public TsConfigBase {
     TsConfigString IP_ALLOW_CONFIG;
     static TsConfigDescriptor CLIENT_CERT_DESCRIPTOR;
     TsConfigString CLIENT_CERT_CONFIG;
+    static TsConfigDescriptor CLIENT_KEY_DESCRIPTOR;
+    TsConfigString CLIENT_KEY_CONFIG;
     static TsConfigEnumDescriptor VERIFY_NEXT_SERVER_DESCRIPTOR;
     TsConfigEnum<self::Level> VERIFY_NEXT_SERVER_CONFIG;
     static TsConfigEnumDescriptor VERIFY_SERVER_POLICY_DESCRIPTOR;
