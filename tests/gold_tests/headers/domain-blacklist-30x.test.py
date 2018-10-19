@@ -109,6 +109,9 @@ passthroughtr.StillRunningBefore = ts
 passthroughtr.StillRunningAfter = ts
 passthroughtr.Processes.Default.Command="python tcp_client.py 127.0.0.1 {0} {1} | grep -v '^Date: '| grep -v '^Server: ATS/'".\
     format(ts.Variables.port, 'data/{0}_get.txt'.format(PASSTHRU_HOST))
-passthroughtr.Processes.Default.TimeOut=5 # seconds
-passthroughtr.Processes.Default.ReturnCode=0
-passthroughtr.Processes.Default.Streams.stdout="passthrough_get.gold"
+passthroughtr.Processes.Default.TimeOut = 5  # seconds
+passthroughtr.Processes.Default.ReturnCode = 0
+passthroughtr.Processes.Default.Streams.stdout = "passthrough_get.gold"
+
+# Overriding the built in ERROR check since we expect some ERROR messages
+ts.Disk.diags_log.Content = Testers.ContainsExpression("unsupported redirect status 0", "This test is a failure test")
