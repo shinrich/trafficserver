@@ -154,7 +154,6 @@ def uServerUpAndRunning(serverHost, port, isSsl, isIPv6, request, clientcert='',
 
 AddWhenFunction(uServerUpAndRunning)
 
-
 def MakeOriginServer(obj, name, port=None, s_port=None, ip='INADDR_LOOPBACK', delay=None, ssl=False, lookup_key=DEFAULT_LOOKUP_KEY, clientcert='', clientkey='', both=False, options={}):
     data_dir = os.path.join(obj.RunDirectory, name)
     p = obj.Processes.Process(name)
