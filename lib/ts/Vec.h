@@ -149,7 +149,7 @@ public:
   int read(int fd);
   void qsort(bool (*lt)(C, C));
   void qsort(bool (*lt)(const C &, const C &));
-  void swap(C *p1, C *p2);
+  void _swap(C *p1, C *p2);
 
   bool bin_search(int start, int end, bool (*lt)(C, C), bool (*eq)(C, C), C item);
   bool binary_search(bool (*lt)(C, C), bool (*eq)(C, C), C item);
@@ -954,7 +954,7 @@ Vec<C, A, S>::read(int fd)
 
 template <class C>
 inline void
-swap(C *p1, C *p2)
+_swap(C *p1, C *p2)
 {
   C t = *p1;
   *p1 = *p2;
@@ -981,15 +981,15 @@ qsort_Vec(C *left, C *right, bool (*lt)(C, C))
 
     // find the median
     if (lt(*center, *left)) { // order left and center
-      swap(center, left);
+      _swap(center, left);
     }
     if (lt(*(right - 1), *left)) { // order left and right
-      swap(right - 1, left);
+      _swap(right - 1, left);
     }
     if (lt(*(right - 1), *center)) { // order right and center
-      swap((right - 1), center);
+      _swap((right - 1), center);
     }
-    swap(center, right - 2); // stash the median one from the right for now
+    _swap(center, right - 2); // stash the median one from the right for now
     median = *(right - 2);   // the median of left, center and right values
 
     // now partition, pivoting on the median value
@@ -1008,17 +1008,17 @@ qsort_Vec(C *left, C *right, bool (*lt)(C, C))
     }
     // until l and r meet,
     // compare l and median
-    // swap l for r if l is larger than median
+    // _swap l for r if l is larger than median
     while (l < r) {
       if (lt(*l, median)) {
         l++;
       } else {
-        swap(l, r - 1);
+        _swap(l, r - 1);
         r--;
       }
     }
 
-    swap(l, right - 2); // restore median to its rightful place
+    _swap(l, right - 2); // restore median to its rightful place
 
     // recurse for the littles (left segment)
     qsort_Vec<C>(left, l, lt);
@@ -1047,15 +1047,15 @@ qsort_VecRef(C *left, C *right, bool (*lt)(const C &, const C &), unsigned int *
 
     // find the median
     if (lt(*center, *left)) { // order left and center
-      swap(center, left);
+      _swap(center, left);
     }
     if (lt(*(right - 1), *left)) { // order left and right
-      swap(right - 1, left);
+      _swap(right - 1, left);
     }
     if (lt(*(right - 1), *center)) { // order right and center
-      swap((right - 1), center);
+      _swap((right - 1), center);
     }
-    swap(center, right - 2); // stash the median one from the right for now
+    _swap(center, right - 2); // stash the median one from the right for now
     median = *(right - 2);   // the median of left, center and right values
 
     // now partition, pivoting on the median value
@@ -1074,17 +1074,17 @@ qsort_VecRef(C *left, C *right, bool (*lt)(const C &, const C &), unsigned int *
     }
     // until l and r meet,
     // compare l and median
-    // swap l for r if l is larger than median
+    // _swap l for r if l is larger than median
     while (l < r) {
       if (lt(*l, median)) {
         l++;
       } else {
-        swap(l, r - 1);
+        _swap(l, r - 1);
         r--;
       }
     }
 
-    swap(l, right - 2); // restore median to its rightful place
+    _swap(l, right - 2); // restore median to its rightful place
 
     // recurse for the littles (left segment)
     qsort_VecRef<C>(left, l, lt, p_ctr);
