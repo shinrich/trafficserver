@@ -59,7 +59,7 @@ struct GlobalClusterPeriodicEvent : public Continuation {
   GlobalClusterPeriodicEvent();
   ~GlobalClusterPeriodicEvent();
   void init();
-  int calloutEvent(Event *e, void *data);
+  int calloutEvent(int, void *);
 
   // Private data
   Event *_thisCallout;

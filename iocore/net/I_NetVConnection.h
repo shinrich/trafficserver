@@ -246,9 +246,9 @@ struct NetVCOptions {
       /*
        * It is odd but necessary to null the scoped string pointer here
        * and then explicitly call release on them in the string assignements
-       * below.  
+       * below.
        * We a memcpy from that to this.  This will put that's string pointers into
-       * this's memory.  Therefore we must first explicitly null out 
+       * this's memory.  Therefore we must first explicitly null out
        * this's original version of the string.  The release after the
        * memcpy removes the extra reference to that's copy of the string
        * Removing the release will eventualy cause a double free crash
@@ -257,7 +257,7 @@ struct NetVCOptions {
       sni_servername    = nullptr; // release any current name.
       clientCertificate = nullptr;
       ssl_servername    = nullptr;
-      memcpy(this, &that, sizeof(self));
+      memcpy(static_cast<void*>(this), &that, sizeof(self));
       if (that.sni_servername) {
         sni_servername.release(); // otherwise we'll free the source string.
         this->sni_servername = ats_strdup(that.sni_servername);

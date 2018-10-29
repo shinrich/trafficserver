@@ -796,7 +796,7 @@ case $host_os_def in
       # -Wall is overzealous for us, so need to turn this off for now:
       #
       #  #873 is "has no corresponding operator delete"
-      common_opt="-pipe -Wall -wd873"
+      common_opt="-pipe -Wall -wd873 -Wno-cast-function-type"
       debug_opt="-ggdb3 $common_opt"
       release_opt="-g $common_opt $optimization_flags -axsse4.2 -fno-strict-aliasing"
       cxx_opt="-Wno-invalid-offsetof"
@@ -813,7 +813,7 @@ case $host_os_def in
     AS_IF([test "x$ax_cv_c_compiler_vendor" = "xgnu"], [
       # This is useful for finding odd conversions
       #    common_opt="-pipe -Wall -Wconversion -Wno-sign-conversion -Wno-format-truncation"
-      common_opt="-pipe -Wall -Wextra -Wno-ignored-qualifiers -Wno-unused-parameter -Wno-format-truncation -Wno-noexcept-type"
+      common_opt="-pipe -Wall -Wextra -Wno-ignored-qualifiers -Wno-unused-parameter -Wno-format-truncation -Wno-noexcept-type -Wno-cast-function-type"
       debug_opt="-ggdb3 $common_opt"
       release_opt="-g $common_opt $optimizing_flags -feliminate-unused-debug-symbols -fno-strict-aliasing"
       cxx_opt="-Wno-invalid-offsetof"

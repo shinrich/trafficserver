@@ -319,7 +319,7 @@ dump_time_buckets()
 
 GlobalClusterPeriodicEvent::GlobalClusterPeriodicEvent() : Continuation(new_ProxyMutex())
 {
-  SET_HANDLER((GClusterPEHandler)&GlobalClusterPeriodicEvent::calloutEvent);
+  SET_HANDLER(&GlobalClusterPeriodicEvent::calloutEvent);
 }
 
 GlobalClusterPeriodicEvent::~GlobalClusterPeriodicEvent()
@@ -334,7 +334,7 @@ GlobalClusterPeriodicEvent::init()
 }
 
 int
-GlobalClusterPeriodicEvent::calloutEvent(Event * /* e ATS_UNUSED */, void * /* data ATS_UNUSED */)
+GlobalClusterPeriodicEvent::calloutEvent(int, void*)
 {
   if (time_trace) {
     dump_time_buckets();

@@ -903,7 +903,7 @@ Env<K, C, A>::pop()
 
 template <class C, class AHashFns, int N, class A> inline NBlockHash<C, AHashFns, N, A>::NBlockHash() : n(1), i(0)
 {
-  memset(&e[0], 0, sizeof(e));
+  memset(static_cast<void*>(&e[0]), 0, sizeof(e));
   v = e;
 }
 

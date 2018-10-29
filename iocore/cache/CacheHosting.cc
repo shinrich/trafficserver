@@ -164,7 +164,7 @@ CacheHostMatcher::NewEntry(matcher_line *line_info)
 
   if (errNo) {
     // There was a problem so undo the effects this function
-    memset(cur_d, 0, sizeof(CacheHostRecord));
+    memset(static_cast<void*>(cur_d), 0, sizeof(CacheHostRecord));
     return;
   }
   Debug("cache_hosting", "hostname: %s, host record: %p", match_data, cur_d);

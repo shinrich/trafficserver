@@ -1669,7 +1669,8 @@ RemapObj::formatEleToRule()
   }
   // from port
   if (m_ele->from_port != TS_INVALID_PORT) {
-    snprintf(buf, sizeof(buf), "%s:%d", buf, m_ele->from_port);
+    size_t n = strlen(buf);
+    snprintf(buf+n, sizeof(buf)-n, ":%d", m_ele->from_port);
   }
   // from host path
   if (m_ele->from_path_prefix) {
@@ -1700,7 +1701,8 @@ RemapObj::formatEleToRule()
   }
   // to port
   if (m_ele->to_port != TS_INVALID_PORT) {
-    snprintf(buf, sizeof(buf), "%s:%d", buf, m_ele->to_port);
+    size_t n = strlen(buf);
+    snprintf(buf+n, sizeof(buf)-n, "%d", m_ele->to_port);
   }
   // to host path
   if (m_ele->to_path_prefix) {

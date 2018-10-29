@@ -3229,7 +3229,7 @@ main(int argc __attribute__((unused)), const char *argv[])
   setvbuf(stdout, (char *)NULL, _IOLBF, 0);
 
   fd = (FD *)malloc(MAXFDS * sizeof(FD));
-  memset(fd, 0, MAXFDS * sizeof(FD));
+  memset(static_cast<void*>(fd), 0, MAXFDS * sizeof(FD));
   process_args(&appVersionInfo, argument_descriptions, n_argument_descriptions, argv);
 
   if (!drand_seed) {
@@ -3892,7 +3892,8 @@ ink_web_canonicalize_url(const char *base_url, const char *emb_url, char *dest_u
 
           /* append emb_path */
 
-          sprintf(temp2, "%s%s", temp2, emb.path);
+          auto n { strlen (temp2) };
+          sprintf(temp2+n, "%s", emb.path);
 
           /* remove "." and ".." */
 

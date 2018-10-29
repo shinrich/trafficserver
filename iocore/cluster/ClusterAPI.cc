@@ -72,7 +72,6 @@ typedef struct RPCHandle {
 #define RPC_HANDLE_MAGIC 0x12345678
 
 class MachineStatusSM;
-using MachineStatusSMHandler = int (MachineStatusSM::*)(int, void *);
 class MachineStatusSM : public Continuation
 {
 public:
@@ -80,22 +79,22 @@ public:
   MachineStatusSM(TSNodeHandle_t h, TSNodeStatus_t s)
     : _node_handle(h), _node_status(s), _status_handle(0), _broadcast(1), _restart(0), _next_n(0)
   {
-    SET_HANDLER((MachineStatusSMHandler)&MachineStatusSM::MachineStatusSMEvent);
+    SET_HANDLER(&MachineStatusSM::MachineStatusSMEvent);
   }
   // Unicast constructor
   MachineStatusSM(TSNodeHandle_t h, TSNodeStatus_t s, TSClusterStatusHandle_t sh)
     : _node_handle(h), _node_status(s), _status_handle(sh), _broadcast(0), _restart(0), _next_n(0)
   {
-    SET_HANDLER((MachineStatusSMHandler)&MachineStatusSM::MachineStatusSMEvent);
+    SET_HANDLER(&MachineStatusSM::MachineStatusSMEvent);
   }
   // Send machine online list constructor
   MachineStatusSM(TSClusterStatusHandle_t sh)
     : _node_handle(0), _node_status(NODE_ONLINE), _status_handle(sh), _broadcast(0), _restart(0), _next_n(0)
   {
-    SET_HANDLER((MachineStatusSMHandler)&MachineStatusSM::MachineStatusSMEvent);
+    SET_HANDLER(&MachineStatusSM::MachineStatusSMEvent);
   }
   ~MachineStatusSM() override {}
-  int MachineStatusSMEvent(Event *e, void *d);
+  int MachineStatusSMEvent(int, void *);
 
 private:
   TSNodeHandle_t _node_handle;
@@ -107,7 +106,7 @@ private:
 };
 
 int
-MachineStatusSM::MachineStatusSMEvent(Event * /* e ATS_UNUSED */, void * /* d ATS_UNUSED */)
+MachineStatusSM::MachineStatusSMEvent(int, void *)
 {
   int n;
   EThread *et = this_ethread();
