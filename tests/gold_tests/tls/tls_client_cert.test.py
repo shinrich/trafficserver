@@ -89,12 +89,12 @@ ts.Disk.remap_config.AddLine(
     'map /case2 https://127.0.0.1:{0}/'.format(server2.Variables.Port)
 )
 
-ts.Disk.ssl_server_name_yaml.AddLine(
-    '- fqdn: bar.com')
-ts.Disk.ssl_server_name_yaml.AddLine(
-    '  client_cert: {0}/signed2-bar.pem'.format(ts.Variables.SSLDir))
-ts.Disk.ssl_server_name_yaml.AddLine(
-    '  client_key: {0}/signed-bar.key'.format(ts.Variables.SSLDir))
+ts.Disk.ssl_server_name_config.AddLines([
+  "server_config = {",
+  "{ fqdn='bar.com',",
+  "  client_cert='{0}/signed2-bar.pem',".format(ts.Variables.SSLDir),
+  "  client_key='{0}/signed-bar.key'".format(ts.Variables.SSLDir),
+  "}}"])
 
 
 # Should succeed
@@ -146,15 +146,15 @@ trbarfail.TimeOut = 5
 
 tr2 = Test.AddTestRun("Update config files")
 # Update the SNI config
-snipath = ts.Disk.ssl_server_name_yaml.AbsPath
+snipath = ts.Disk.ssl_server_name_config.AbsPath
 recordspath = ts.Disk.records_config.AbsPath
-tr2.Disk.File(snipath, id = "ssl_server_name_yaml", typename="ats:config"),
-tr2.Disk.ssl_server_name_yaml.AddLine(
-    '- fqdn: bar.com')
-tr2.Disk.ssl_server_name_yaml.AddLine(
-    '  client_cert: {0}/signed-bar.pem'.format(ts.Variables.SSLDir))
-tr2.Disk.ssl_server_name_yaml.AddLine(
-    '  client_key: {0}/signed-bar.key'.format(ts.Variables.SSLDir))
+tr2.Disk.File(snipath, id = "ssl_server_name_config", typename="ats:config"),
+tr2.Disk.ssl_server_name_config.AddLines([
+  "server_config = {",
+  "{ fqdn='bar.com',",
+  "  client_cert='{0}/signed-bar.pem',".format(ts.Variables.SSLDir),
+  "  client_key='{0}/signed-bar.key'".format(ts.Variables.SSLDir),
+  "}}"])
 # recreate the records.config with the cert filename changed
 tr2.Disk.File(recordspath, id = "records_config", typename="ats:config:records"),
 tr2.Disk.records_config.update({
