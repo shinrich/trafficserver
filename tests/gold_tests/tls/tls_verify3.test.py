@@ -93,7 +93,7 @@ ts.Disk.ssl_server_name_config.AddLines([
   "  verify_server_properties='ALL'},",
   "{ fqdn='bob.*.com',",
   "  verify_server_policy='ENFORCED',",
-  "  verify_server_properties=SIGNATURE'},",
+  "  verify_server_properties='SIGNATURE'},",
   "{ fqdn='*bar.com',",
   "  verify_server_policy='DISABLED'}}"
 ])
@@ -121,7 +121,7 @@ tr2.ReturnCode = 0
 tr2.StillRunningAfter = server
 tr2.Processes.Default.TimeOut = 5
 tr2.StillRunningAfter = ts
-tr2.Processes.Default.Streams.stdout = Testers.ContainsExpression("Could Not Connect", "Curl attempt should have succeeded")
+tr2.Processes.Default.Streams.stdout = Testers.ContainsExpression("Could Not Connect", "Curl attempt should not have succeeded")
 tr2.TimeOut = 5
 
 tr3 = Test.AddTestRun("bob.foo.com override-enforcing-name-test")
