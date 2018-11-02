@@ -66,7 +66,7 @@ ts.addSSLfile("ssl/signed-bar.key")
 ts.Variables.ssl_port = 4443
 ts.Disk.records_config.update({
     'proxy.config.diags.debug.enabled': 1,
-    'proxy.config.diags.debug.tags': 'ssl|http',
+    'proxy.config.diags.debug.tags': 'ssl_verify_test',
     'proxy.config.ssl.server.cert.path': '{0}'.format(ts.Variables.SSLDir),
     'proxy.config.ssl.server.private_key.path': '{0}'.format(ts.Variables.SSLDir),
     'proxy.config.http.server_ports': '{0}'.format(ts.Variables.port),
@@ -311,5 +311,3 @@ tr4fail.Processes.Default.TimeOut = 5
 tr4fail.Processes.Default.Streams.stdout = Testers.ContainsExpression("Could Not Connect", "Check response")
 tr4fail.TimeOut = 5
 
-# Allow for error messages in diags
-ts.Disk.diags_log.Content = Testers.ContainsExpression("ERROR", "Some connections should fail")

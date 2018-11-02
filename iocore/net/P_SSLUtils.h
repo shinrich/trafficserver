@@ -253,6 +253,7 @@ public:
       len      = hostnamelen;
       port     = port_;
     }
+    HostStruct(const std::string_view &name, int port_) : hostname(name), port(port_) {}
   };
 
   typedef HashMap<cchar *, StringHashFns, const HostStruct *> Tunnel_hashMap;
@@ -263,8 +264,7 @@ public:
   {
     std::string_view addr, port;
     if (ats_ip_parse(std::string_view(hostname), &addr, &port) == 0) {
-      auto *hs = new HostStruct(ats_strdup(addr.data()), addr.length(), atoi(port.data()));
-      TunnelhMap.put(ats_strdup(key), hs);
+      TunnelhMap.emplace(key, HostStruct(addr, atoi(port.data())));
     }
   }
 
