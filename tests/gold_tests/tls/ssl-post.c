@@ -91,7 +91,8 @@ void *spawn_same_session_send(void *arg)
   setsockopt(sfd, SOL_TCP, TCP_NODELAY, &one, sizeof(one));
   
   SSL_CTX *client_ctx = SSL_CTX_new(SSLv23_client_method());
-  SSL *ssl = SSL_new(client_ctx);
+  SSL *ssl            = SSL_new(client_ctx);
+  SSL_set_max_proto_version(ssl, TLS1_2_VERSION);
   SSL_set_session(ssl, tinfo->session);
 
   SSL_set_fd(ssl, sfd);
@@ -282,22 +283,23 @@ main(int argc, char *argv[])
   CRYPTO_set_locking_callback(SSL_locking_callback);
   CRYPTO_THREADID_set_callback(SSL_pthreads_thread_id);
 
+  SSL_CTX *client_ctx = SSL_CTX_new(SSLv23_client_method());
+  SSL *ssl            = SSL_new(client_ctx);
+  SSL_set_max_proto_version(ssl, TLS1_2_VERSION);
 
-   SSL_CTX *client_ctx = SSL_CTX_new(SSLv23_client_method());
-   SSL *ssl = SSL_new(client_ctx);
 
-   SSL_set_fd(ssl, sfd);
-   int ret = SSL_connect(ssl);
-   int read_count = 0;
-   int write_count = 1;
+  SSL_set_fd(ssl, sfd);
+  int ret = SSL_connect(ssl);
+  int read_count = 0;
+  int write_count = 1;
  
-   printf("Sent request\n");
-   if ((ret = SSL_write(ssl, req_buf, strlen(req_buf))) <= 0) {
-      int error = SSL_get_error(ssl, ret);
-      printf("SSL_write failed %d", error);
-      exit(1);
-   }
-   SSL_write(ssl, post_buf, sizeof(post_buf));
+  printf("Sent request\n");
+  if ((ret = SSL_write(ssl, req_buf, strlen(req_buf))) <= 0) {
+    int error = SSL_get_error(ssl, ret);
+    printf("SSL_write failed %d", error);
+    exit(1);
+  }
+  SSL_write(ssl, post_buf, sizeof(post_buf));
 
   char input_buf[1024];
   int read_bytes = SSL_read(ssl, input_buf, sizeof(input_buf));
