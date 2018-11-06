@@ -222,7 +222,7 @@ namespace detail
     void validate();
 
     /// @return The number of distinct ranges.
-    size_t getCount() const;
+    size_t count() const;
 
     /// Print all spans.
     /// @return This map.
@@ -257,19 +257,32 @@ namespace detail
     N *
     getHead()
     {
-      return static_cast<N *>(_list.getHead());
+      return static_cast<N *>(_list.head());
     }
     N *
     getTail()
     {
-      return static_cast<N *>(_list.getTail());
+      return static_cast<N *>(_list.tail());
     }
 
     N *_root; ///< Root node.
     /// In order list of nodes.
     /// For ugly compiler reasons, this is a list of base class pointers
     /// even though we really store @a N instances on it.
-    typedef IntrusiveDList<RBNode, &RBNode::_next, &RBNode::_prev> NodeList;
+    struct NodeLinkage {
+      static RBNode *&
+      next_ptr(RBNode *n)
+      {
+        return n->_next;
+      }
+
+      static RBNode *&
+      prev_ptr(RBNode *n)
+      {
+        return n->_prev;
+      }
+    };
+    using NodeList = IntrusiveDList<NodeLinkage>;
     /// This keeps track of all allocated nodes in order.
     /// Iteration depends on this list being maintained.
     NodeList _list;
@@ -300,7 +313,7 @@ namespace detail
   IpMapBase<N>::clear()
   {
     // Delete everything.
-    N *n = static_cast<N *>(_list.getHead());
+    N *n = static_cast<N *>(_list.head());
     while (n) {
       N *x = n;
       n    = next(n);
@@ -610,7 +623,7 @@ namespace detail
     else
       spot->_next->setChild(n, N::LEFT);
 
-    _list.insertAfter(spot, n);
+    _list.insert_after(spot, n);
     _root = static_cast<N *>(n->rebalanceAfterInsert());
   }
 
@@ -624,7 +637,7 @@ namespace detail
     else
       spot->_prev->setChild(n, N::RIGHT);
 
-    _list.insertBefore(spot, n);
+    _list.insert_before(spot, n);
     _root = static_cast<N *>(n->rebalanceAfterInsert());
   }
 
@@ -635,7 +648,7 @@ namespace detail
     if (!_root)
       _root = n;
     else
-      _root = static_cast<N *>(_list.getHead()->setChild(n, N::LEFT)->rebalanceAfterInsert());
+      _root = static_cast<N *>(_list.head()->setChild(n, N::LEFT)->rebalanceAfterInsert());
     _list.prepend(n);
   }
 
@@ -646,7 +659,7 @@ namespace detail
     if (!_root)
       _root = n;
     else
-      _root = static_cast<N *>(_list.getTail()->setChild(n, N::RIGHT)->rebalanceAfterInsert());
+      _root = static_cast<N *>(_list.tail()->setChild(n, N::RIGHT)->rebalanceAfterInsert());
     _list.append(n);
   }
 
@@ -655,7 +668,7 @@ namespace detail
   IpMapBase<N>::remove(N *n)
   {
     _root = static_cast<N *>(n->remove());
-    _list.take(n);
+    _list.erase(n);
     delete n;
   }
 
@@ -682,9 +695,9 @@ namespace detail
 
   template <typename N>
   size_t
-  IpMapBase<N>::getCount() const
+  IpMapBase<N>::count() const
   {
-    return _list.getCount();
+    return _list.count();
   }
   //----------------------------------------------------------------------------
   template <typename N>
@@ -1156,13 +1169,13 @@ IpMap::fill(in_addr_t min, in_addr_t max, void *data)
 }
 
 size_t
-IpMap::getCount() const
+IpMap::count() const
 {
   size_t zret = 0;
   if (_m4)
-    zret += _m4->getCount();
+    zret += _m4->count();
   if (_m6)
-    zret += _m6->getCount();
+    zret += _m6->count();
   return zret;
 }
 

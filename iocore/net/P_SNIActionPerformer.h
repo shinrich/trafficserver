@@ -129,7 +129,7 @@ class SNI_IpAllow : public ActionItem
         auto ssl_vc = reinterpret_cast<SSLNetVConnection *>(cont);
         auto ip = ssl_vc->get_remote_endpoint();
         // i.e, ip filtering is not required
-        if(ip_map.getCount()==0)
+        if(ip_map.count()==0)
                 return SSL_TLSEXT_ERR_OK;
         //else check the allowed ips
         if(ip_map.contains(ip))

@@ -261,6 +261,7 @@ test_tslib_SOURCES = \
 	unit-tests/test_ArgParser.cc \
 	unit-tests/test_BufferWriter.cc \
 	unit-tests/test_ink_inet.cc \
+  unit-tests/test_IntrusiveHashMap.cc \
 	unit-tests/test_PostScript.cc \
 	unit-tests/test_string_view.cc \
 	unit-tests/test_TextView.cc
