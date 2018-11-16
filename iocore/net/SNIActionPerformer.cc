@@ -45,7 +45,7 @@ SNIActionPerformer::PerformAction(Continuation *cont, cchar *servername)
   if (!actionvec)
     Debug("ssl_sni", "%s not available in the map", servername);
   else {
-    for (auto it : *actionvec) {
+    for (auto &it : *actionvec) {
       if (it) {
         auto ret = it->SNIAction(cont);
         if (ret != SSL_TLSEXT_ERR_OK) {

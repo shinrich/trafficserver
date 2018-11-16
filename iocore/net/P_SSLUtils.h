@@ -241,42 +241,6 @@ private:
   DFA regex;
 };
 
-class TunnelHashMap
-{
-public:
-  struct HostStruct {
-    std::string hostname;
-    int port;
-    HostStruct(cchar *name, size_t len, int port_) : hostname(name, len), port(port_) {}
-  };
-
-  typedef HashMap<cchar *, StringHashFns, const HostStruct *> Tunnel_hashMap;
-  Tunnel_hashMap TunnelhMap;
-
-  void
-  emplace(cchar *key, std::string const &hostname)
-  {
-    ts::string_view addr, port;
-    if (ats_ip_parse(ts::string_view{hostname}, &addr, &port) == 0) {
-      auto *hs = new HostStruct(addr.data(), addr.size(), svtoi(port));
-      TunnelhMap.put(ats_strdup(key), hs);
-    }
-  }
-
-  void
-  emplace(cchar *key, cchar *name, int hostnamelen, int port_)
-  {
-    auto *hs = new HostStruct(name, hostnamelen, port_);
-    TunnelhMap.put(ats_strdup(key), hs);
-  }
-
-  const HostStruct *
-  find(cchar *key)
-  {
-    return TunnelhMap.get(key);
-  }
-};
-
 typedef ats_scoped_resource<ssl::detail::SCOPED_X509_TRAITS> scoped_X509;
 typedef ats_scoped_resource<ssl::detail::SCOPED_BIO_TRAITS> scoped_BIO;
 

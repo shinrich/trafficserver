@@ -52,7 +52,7 @@ enum PropertyActions { TS_VERIFY_SERVER = 200, TS_CLIENT_CERT };
 class ActionItem
 {
 public:
-  virtual int SNIAction(Continuation *cont) = 0;
+  virtual int SNIAction(Continuation *cont) const = 0;
   virtual ~ActionItem(){};
 };
 
@@ -62,16 +62,38 @@ public:
   DisableH2() {}
   ~DisableH2() override {}
   int
-  SNIAction(Continuation *cont) override
+  SNIAction(Continuation *cont) const override
   {
-    auto ssl_vc     = reinterpret_cast<SSLNetVConnection *>(cont);
-    auto accept_obj = ssl_vc->accept_object;
+    auto ssl_vc     = dynamic_cast<SSLNetVConnection *>(cont);
+    auto accept_obj = ssl_vc ? ssl_vc->accept_object : nullptr;
     if (accept_obj && accept_obj->snpa && ssl_vc) {
       auto nps = snpsMap.get(accept_obj->id);
       ssl_vc->registerNextProtocolSet(reinterpret_cast<SSLNextProtocolSet *>(nps));
     }
     return SSL_TLSEXT_ERR_OK;
   }
+};
+
+class TunnelDestination : public ActionItem
+{
+public:
+  TunnelDestination(const ts::string_view &dest) 
+  {
+    destination = dest.data();
+  }
+  ~TunnelDestination() {}
+
+  int
+  SNIAction(Continuation *cont) const override
+  {
+    // Set the netvc option?
+    SSLNetVConnection *ssl_netvc = dynamic_cast<SSLNetVConnection *>(cont);
+    if (ssl_netvc) {
+      ssl_netvc->set_tunnel_destination(destination);
+    }
+    return SSL_TLSEXT_ERR_OK;
+  }
+  std::string destination;
 };
 
 class VerifyClient : public ActionItem
@@ -83,9 +105,9 @@ public:
   VerifyClient(uint8_t param) : mode(param) {}
   ~VerifyClient() override {}
   int
-  SNIAction(Continuation *cont) override
+  SNIAction(Continuation *cont) const override
   {
-    auto ssl_vc = reinterpret_cast<SSLNetVConnection *>(cont);
+    auto ssl_vc = dynamic_cast<SSLNetVConnection *>(cont);
     Debug("ssl_sni", "action verify param %d", this->mode);
     setClientCertLevel(ssl_vc->ssl, this->mode);
     return SSL_TLSEXT_ERR_OK;
@@ -94,54 +116,55 @@ public:
 
 class SNI_IpAllow : public ActionItem
 {
-    IpMap ip_map;
+  IpMap ip_map;
 
-    public:
-    SNI_IpAllow(std::string& ip_allow_list, cchar* servername){
-            // the server identified by item.fqdn requires ATS to do IP filtering
-    if(ip_allow_list.length()){
-        IpAddr addr1;
-        IpAddr addr2;
-        // check format first
-        // check if the input is a comma separated list of IPs
-        ts::TextView content(ip_allow_list);
-        while(!content.empty())
+public:
+  SNI_IpAllow(std::string& ip_allow_list, const std::string & servername){
+    // the server identified by item.fqdn requires ATS to do IP filtering
+    if (ip_allow_list.length()){
+      IpAddr addr1;
+      IpAddr addr2;
+      // check format first
+      // check if the input is a comma separated list of IPs
+      ts::TextView content(ip_allow_list);
+      while(!content.empty())
+      {
+        ts::TextView list{ content.take_prefix_at(',')};
+        if(0!=ats_ip_range_parse(list, addr1, addr2))
         {
-            ts::TextView list{ content.take_prefix_at(',')};
-            if(0!=ats_ip_range_parse(list, addr1, addr2))
-            {
-                Debug("ssl_sni","%.*s is not a valid format",static_cast<int>(list.size()),list.data());
-                break;
-            }
-            else
-            {
-                Debug("ssl_sni","%.*s added to the ip_allow list %s",static_cast<int>(list.size()),list.data(),servername);
-                ip_map.fill(IpEndpoint().assign(addr1),IpEndpoint().assign(addr2), reinterpret_cast<void *>(1));
-            }
-
+          Debug("ssl_sni","%.*s is not a valid format",static_cast<int>(list.size()),list.data());
+          break;
         }
-    }
-    } //end function SNI_IpAllow
-
-    int
-    SNIAction(Continuation* cont) override
-    {
-        auto ssl_vc = reinterpret_cast<SSLNetVConnection *>(cont);
-        auto ip = ssl_vc->get_remote_endpoint();
-        // i.e, ip filtering is not required
-        if(ip_map.count()==0)
-                return SSL_TLSEXT_ERR_OK;
-        //else check the allowed ips
-        if(ip_map.contains(ip))
-            return SSL_TLSEXT_ERR_OK;
         else
         {
-            char buff[256];
-            ats_ip_ntop(&ip.sa,buff,sizeof(buff));
-            Debug("ssl_sni","%s is not allowed. Denying connection",buff);
-            return SSL_TLSEXT_ERR_ALERT_FATAL;
+          Debug("ssl_sni","%.*s added to the ip_allow list %s",static_cast<int>(list.size()),list.data(),servername.c_str());
+          ip_map.fill(IpEndpoint().assign(addr1),IpEndpoint().assign(addr2), reinterpret_cast<void *>(1));
         }
+      }
     }
+  } // end function SNI_IpAllow
+
+  int
+  SNIAction(Continuation *cont) const override
+  {
+    // i.e, ip filtering is not required
+    if (ip_map.count() == 0) {
+      return SSL_TLSEXT_ERR_OK;
+    }
+
+    auto ssl_vc = dynamic_cast<SSLNetVConnection *>(cont);
+    auto ip     = ssl_vc->get_remote_endpoint();
+
+    // check the allowed ips
+    if (ip_map.contains(ip)) {
+      return SSL_TLSEXT_ERR_OK;
+    } else {
+      char buff[256];
+      ats_ip_ntop(&ip.sa, buff, sizeof(buff));
+      Debug("ssl_sni", "%s is not allowed. Denying connection", buff);
+      return SSL_TLSEXT_ERR_ALERT_FATAL;
+    }
+  }
 };
 
 class SNIActionPerformer

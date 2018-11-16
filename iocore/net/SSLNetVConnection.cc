@@ -945,6 +945,8 @@ SSLNetVConnection::free(EThread *t)
   free_handshake_buffers();
   sslTrace = false;
 
+  ats_free(tunnel_host);
+
   if (from_accept_thread) {
     sslNetVCAllocator.free(this);
   } else {
@@ -998,9 +1000,7 @@ SSLNetVConnection::sslStartHandShake(int event, int &err)
           this->ssl = NULL;
           return EVENT_DONE;
         } else {
-          SSLConfig::scoped_config params;
-          this->SNIMapping = params->sni_map_enable;
-          hookOpRequested  = SSL_HOOK_OP_TUNNEL;
+          hookOpRequested = SSL_HOOK_OP_TUNNEL;
         }
       }
 
@@ -1114,7 +1114,7 @@ SSLNetVConnection::sslServerHandShakeEvent(int &err)
   // without data replay.
   // Note we can't arrive here if a hook is active.
 
-  if (SSL_HOOK_OP_TUNNEL == hookOpRequested && !SNIMapping) {
+  if (SSL_HOOK_OP_TUNNEL == hookOpRequested) {
     this->attributes = HttpProxyPort::TRANSPORT_BLIND_TUNNEL;
     SSL_free(this->ssl);
     this->ssl = nullptr;
@@ -1644,9 +1644,6 @@ SSLNetVConnection::sslContextSet(void *ctx)
   return zret;
 }
 
-extern TunnelHashMap TunnelMap; // stores the name of the servers to tunnel to
-extern TunnelHashMap wildTunnelMap;
-
 bool
 SSLNetVConnection::callHooks(TSEvent eventId)
 {
@@ -1746,28 +1743,12 @@ SSLNetVConnection::callHooks(TSEvent eventId)
   bool reenabled = true;
 
   this->serverName = const_cast<char *>(SSL_get_servername(this->ssl, TLSEXT_NAMETYPE_host_name));
-  if (this->serverName) {
-    auto *hs = TunnelMap.find(this->serverName);
-    if (!hs) {
-      Vec<cchar *> keys;
-      wildTunnelMap.TunnelhMap.get_keys(keys);
-      for (int i = 0; i < static_cast<int>(keys.length()); i++) {
-        ts::string_view sv{this->serverName, strlen(this->serverName)};
-        ts::string_view key_sv{keys.get(i)};
-        if (sv.size() >= key_sv.size() && sv.substr(sv.size() - key_sv.size()) == key_sv) {
-          hs = wildTunnelMap.find(key_sv.data());
-        }
-      }
-    }
-
-    if (hs != nullptr) {
-      this->SNIMapping = true;
-      this->attributes = HttpProxyPort::TRANSPORT_BLIND_TUNNEL;
-      return reenabled;
-    }
+  if (this->has_tunnel_destination()) {
+    this->attributes = HttpProxyPort::TRANSPORT_BLIND_TUNNEL;
+    return reenabled;
   }
 
-  if (SSL_HOOK_OP_TUNNEL == hookOpRequested && SNIMapping) {
+  if (SSL_HOOK_OP_TUNNEL == hookOpRequested) {
     this->attributes = HttpProxyPort::TRANSPORT_BLIND_TUNNEL;
     // Don't mark the handshake as complete yet,
     // Will be checking for that flag not being set after
