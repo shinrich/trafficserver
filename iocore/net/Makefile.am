@@ -76,7 +76,7 @@ test_UDPNet_LDADD = \
 	$(top_builddir)/src/tscore/libtscore.la $(top_builddir)/src/tscpp/util/libtscpputil.la \
 	$(top_builddir)/proxy/ParentSelectionStrategy.o \
 	$(top_builddir)/lib/tsconfig/libtsconfig.la \
-	@LIBTCL@ @HWLOC_LIBS@ @OPENSSL_LIBS@ @YAMLCPP_LIBS@
+	@HWLOC_LIBS@ @OPENSSL_LIBS@ @LIBPCRE@ @YAMLCPP_LIBS@
 
 test_UDPNet_SOURCES = \
 	test_I_UDPNet.cc
@@ -134,7 +134,6 @@ libinknet_a_SOURCES = \
 	ProxyProtocol.h \
 	ProxyProtocol.cc \
 	Socks.cc \
-	SNIActionPerformer.cc \
 	SSLCertLookup.cc \
 	SSLSessionCache.cc \
 	SSLConfig.cc \

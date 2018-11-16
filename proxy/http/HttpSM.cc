@@ -68,7 +68,6 @@
 #define USE_NEW_EMPTY_MIOBUFFER
 
 extern int cache_config_read_while_writer;
-extern TunnelHashMap TunnelMap; // stores the name of the servers to tunnel to
 
 // We have a debugging list that can use to find stuck
 //  state machines
@@ -560,7 +559,7 @@ HttpSM::setup_blind_tunnel_port()
   NetVConnection *netvc     = ua_txn->get_netvc();
   SSLNetVConnection *ssl_vc = dynamic_cast<SSLNetVConnection *>(netvc);
   int host_len;
-  if (ssl_vc && ssl_vc->GetSNIMapping()) {
+  if (ssl_vc) {
     if (!t_state.hdr_info.client_request.url_get()->host_get(&host_len)) {
       // the URL object has not been created in the start of the transaction. Hence, we need to create the URL here
       URL u;
@@ -570,11 +569,11 @@ HttpSM::setup_blind_tunnel_port()
       t_state.hdr_info.client_request.url_create(&u);
       u.scheme_set(URL_SCHEME_TUNNEL, URL_LEN_TUNNEL);
       t_state.hdr_info.client_request.url_set(&u);
-      auto *hs = TunnelMap.find(ssl_vc->serverName);
-      if (hs != nullptr) {
-        t_state.hdr_info.client_request.url_get()->host_set(hs->hostname, hs->len);
-        if (hs->port > 0) {
-          t_state.hdr_info.client_request.url_get()->port_set(hs->port);
+      if (ssl_vc->has_tunnel_destination()) {
+        const char *tunnel_host = ssl_vc->get_tunnel_host();
+        t_state.hdr_info.client_request.url_get()->host_set(tunnel_host, strlen(tunnel_host));
+        if (ssl_vc->get_tunnel_port() > 0) {
+          t_state.hdr_info.client_request.url_get()->port_set(ssl_vc->get_tunnel_port());
         } else {
           t_state.hdr_info.client_request.url_get()->port_set(t_state.state_machine->ua_txn->get_netvc()->get_local_port());
         }
@@ -1379,19 +1378,18 @@ plugins required to work with sni_routing.
       NetVConnection *netvc     = ua_txn->get_netvc();
       SSLNetVConnection *ssl_vc = dynamic_cast<SSLNetVConnection *>(netvc);
 
-      if (ssl_vc && ssl_vc->GetSNIMapping()) {
-        auto *hs = TunnelMap.find(ssl_vc->serverName);
-        if (hs != nullptr) {
-          t_state.hdr_info.client_request.url_get()->host_set(hs->hostname, hs->len);
-          if (hs->port > 0) {
-            t_state.hdr_info.client_request.url_get()->port_set(hs->port);
-          } else {
-            t_state.hdr_info.client_request.url_get()->port_set(t_state.state_machine->ua_txn->get_netvc()->get_local_port());
-          }
+      if (ssl_vc && ssl_vc->has_tunnel_destination()) {
+        const char *tunnel_host = ssl_vc->get_tunnel_host();
+        t_state.hdr_info.client_request.url_get()->host_set(tunnel_host, strlen(tunnel_host));
+        ushort tunnel_port = ssl_vc->get_tunnel_port();
+        if (tunnel_port > 0) {
+          t_state.hdr_info.client_request.url_get()->port_set(tunnel_port);
         } else {
-          t_state.hdr_info.client_request.url_get()->host_set(ssl_vc->serverName, strlen(ssl_vc->serverName));
           t_state.hdr_info.client_request.url_get()->port_set(t_state.state_machine->ua_txn->get_netvc()->get_local_port());
         }
+      } else if (ssl_vc) {
+        t_state.hdr_info.client_request.url_get()->host_set(ssl_vc->serverName, strlen(ssl_vc->serverName));
+        t_state.hdr_info.client_request.url_get()->port_set(t_state.state_machine->ua_txn->get_netvc()->get_local_port());
       }
     }
   // FALLTHROUGH
