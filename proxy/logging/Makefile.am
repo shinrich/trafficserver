@@ -102,10 +102,12 @@ test_LogUtilsHttp_CPPFLAGS =  $(AM_CPPFLAGS)\
   -DTEST_LOG_UTILS_HTTP \
   -I$(abs_top_srcdir)/tests/include
 
+test_LogUtilsHttp_LDADD = \
+  $(top_builddir)/lib/ts/libtsutil.la
+
 test_LogUtilsHttp_SOURCES = \
   LogUtilsHttp.cc \
   LogCatUtilsHttp.cc \
-  unit-tests/BufferWriterFormat.cc \
   unit-tests/test_LogUtilsHttp.cc
 
 tidy-local: $(liblogging_a_SOURCES) $(liblogcollation_a_SOURCES) $(EXTRA_DIST)
