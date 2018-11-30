@@ -1395,14 +1395,14 @@ SSLPrivateKeyHandler(SSL_CTX *ctx, const SSLConfigParams *params, const std::str
       SSLError("failed to load server private key from %s", completeServerCertPath.c_str());
       return false;
     }
-  } else if (params->serverKeyPathOnly != nullptr) {
-    ats_scoped_str completeServerKeyPath(Layout::get()->relative_to(params->serverKeyPathOnly, keyPath));
-    if (!SSL_CTX_use_PrivateKey_file(ctx, completeServerKeyPath, SSL_FILETYPE_PEM)) {
-      SSLError("failed to load server private key from %s", (const char *)completeServerKeyPath);
+  } else if (!params->serverKeyPathOnly.empty()) {
+    std::string completeServerKeyPath(Layout::get()->relative_to(params->serverKeyPathOnly, keyPath));
+    if (!SSL_CTX_use_PrivateKey_file(ctx, completeServerKeyPath.c_str(), SSL_FILETYPE_PEM)) {
+      SSLError("failed to load server private key from %s", completeServerKeyPath.c_str());
       return false;
     }
     if (SSLConfigParams::load_ssl_file_cb) {
-      SSLConfigParams::load_ssl_file_cb(completeServerKeyPath, CONFIG_FLAG_UNVERSIONED);
+      SSLConfigParams::load_ssl_file_cb(completeServerKeyPath.c_str(), CONFIG_FLAG_UNVERSIONED);
     }
   } else {
     SSLError("empty SSL private key path in records.config");
@@ -1749,7 +1749,7 @@ SSLInitServerContext(const SSLConfigParams *params, const ssl_user_config *sslMu
         SSL_CTX_add_extra_chain_cert_bio(ctx, bio);
 
         const char *keyPath = key_tok.getNext();
-        if (!SSLPrivateKeyHandler(ctx, params, completeServerCertPath, keyPath)) {
+        if (!SSLPrivateKeyHandler(ctx, params, completeServerCertPath.c_str(), keyPath)) {
           goto fail;
         }
 
@@ -1758,15 +1758,15 @@ SSLInitServerContext(const SSLConfigParams *params, const ssl_user_config *sslMu
         // First, load any CA chains from the global chain file.  This should probably
         // eventually be a comma separated list too.  For now we will load it in all chains even
         // though it only makes sense in one chain
-        if (params->serverCertChainFilename) {
-          ats_scoped_str completeServerCertChainPath(
-            Layout::relative_to(params->serverCertPathOnly, params->serverCertChainFilename));
-          if (!SSL_CTX_add_extra_chain_cert_file(ctx, completeServerCertChainPath)) {
-            SSLError("failed to load global certificate chain from %s", (const char *)completeServerCertChainPath);
+        if (!params->serverCertChainFilename.empty()) {
+          std::string completeServerCertChainPath(
+            Layout::relative_to(params->serverCertPathOnly.c_str(), params->serverCertChainFilename.c_str()));
+          if (!SSL_CTX_add_extra_chain_cert_file(ctx, completeServerCertChainPath.c_str())) {
+            SSLError("failed to load global certificate chain from %s", completeServerCertChainPath.c_str());
             goto fail;
           }
           if (SSLConfigParams::load_ssl_file_cb) {
-            SSLConfigParams::load_ssl_file_cb(completeServerCertChainPath, CONFIG_FLAG_UNVERSIONED);
+            SSLConfigParams::load_ssl_file_cb(completeServerCertChainPath.c_str(), CONFIG_FLAG_UNVERSIONED);
           }
         }
 
@@ -1774,46 +1774,25 @@ SSLInitServerContext(const SSLConfigParams *params, const ssl_user_config *sslMu
         if (sslMultCertSettings->ca) {
           const char *ca_name = ca_tok.getNext();
           if (ca_name != nullptr) {
-            ats_scoped_str completeServerCertChainPath(Layout::relative_to(params->serverCertPathOnly, ca_name));
-            if (!SSL_CTX_add_extra_chain_cert_file(ctx, completeServerCertChainPath)) {
-              SSLError("failed to load certificate chain from %s", (const char *)completeServerCertChainPath);
+            std::string completeServerCertChainPath(Layout::relative_to(params->serverCertPathOnly.c_str(), ca_name));
+            if (!SSL_CTX_add_extra_chain_cert_file(ctx, completeServerCertChainPath.c_str())) {
+              SSLError("failed to load certificate chain from %s", completeServerCertChainPath.c_str());
               goto fail;
             }
             if (SSLConfigParams::load_ssl_file_cb) {
-              SSLConfigParams::load_ssl_file_cb(completeServerCertChainPath, CONFIG_FLAG_UNVERSIONED);
+              SSLConfigParams::load_ssl_file_cb(completeServerCertChainPath.c_str(), CONFIG_FLAG_UNVERSIONED);
             }
           }
         }
       }
     }
-
-    // SSL_CTX_load_verify_locations() builds the cert chain from the
-    // serverCACertFilename if that is not nullptr.  Otherwise, it uses the hashed
-    // symlinks in serverCACertPath.
-    //
-    // if ssl_ca_name is NOT configured for this cert in ssl_multicert.config
-    //     AND
-    // if proxy.config.ssl.CA.cert.filename and proxy.config.ssl.CA.cert.path
-    //     are configured
-    //   pass that file as the chain (include all certs in that file)
-    // else if proxy.config.ssl.CA.cert.path is configured (and
-    //       proxy.config.ssl.CA.cert.filename is nullptr)
-    //   use the hashed symlinks in that directory to build the chain
-    if (!sslMultCertSettings->ca && params->serverCACertPath != nullptr) {
-      if ((!SSL_CTX_load_verify_locations(ctx, params->serverCACertFilename, params->serverCACertPath)) ||
-          (!SSL_CTX_set_default_verify_paths(ctx))) {
-        SSLError("invalid CA Certificate file or CA Certificate path");
-        goto fail;
-      }
-    }
   }
-  if (params->clientCertLevel != 0) {
-    if (params->serverCACertFilename != nullptr && params->serverCACertPath != nullptr) {
-      if ((!SSL_CTX_load_verify_locations(ctx, params->serverCACertFilename, params->serverCACertPath)) ||
-          (!SSL_CTX_set_default_verify_paths(ctx))) {
-        SSLError("CA Certificate file or CA Certificate path invalid");
-        goto fail;
-      }
+  if (!params->serverCACertFilename.empty() || !params->serverCACertPath.empty()) {
+    if ((!SSL_CTX_load_verify_locations(ctx, params->serverCACertFilename.empty() ? nullptr : params->serverCACertFilename.c_str(),
+                                        params->serverCACertPath.empty() ? nullptr : params->serverCACertPath.c_str())) ||
+        (!SSL_CTX_set_default_verify_paths(ctx))) {
+      SSLError("CA Certificate file or CA Certificate path invalid");
+      goto fail;
     }
 
     if (params->clientCertLevel == 2) {
@@ -1823,7 +1802,9 @@ SSLInitServerContext(const SSLConfigParams *params, const ssl_user_config *sslMu
     } else {
       // disable client cert support
       server_verify_client = SSL_VERIFY_NONE;
-      Error("illegal client certification level %d in records.config", server_verify_client);
+      if (params->clientCertLevel != 0) {
+        Error("illegal client certification level %d in records.config", server_verify_client);
+      }
     }
     SSL_CTX_set_verify(ctx, server_verify_client, ssl_verify_client_callback);
     SSL_CTX_set_verify_depth(ctx, params->verify_depth); // might want to make configurable at some point.
@@ -1831,8 +1812,8 @@ SSLInitServerContext(const SSLConfigParams *params, const ssl_user_config *sslMu
 
   // Set the list of CA's to send to client if we ask for a client
   // certificate
-  if (params->serverCACertFilename) {
-    ca_list = SSL_load_client_CA_file(params->serverCACertFilename);
+  if (!params->serverCACertFilename.empty()) {
+    ca_list = SSL_load_client_CA_file(params->serverCACertFilename.c_str());
     if (ca_list) {
       SSL_CTX_set_client_CA_list(ctx, ca_list);
     }

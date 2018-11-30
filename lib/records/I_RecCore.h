@@ -149,6 +149,7 @@ RecErrT RecSetRecordCounter(const char *name, RecCounter rec_counter, RecSourceT
 int RecGetRecordInt(const char *name, RecInt *rec_int, bool lock = true);
 int RecGetRecordFloat(const char *name, RecFloat *rec_float, bool lock = true);
 int RecGetRecordString(const char *name, char *buf, int buf_len, bool lock = true);
+int RecGetRecordString(const char *name, std::string &value, bool lock = true);
 int RecGetRecordString_Xmalloc(const char *name, RecString *rec_string, bool lock = true);
 int RecGetRecordCounter(const char *name, RecCounter *rec_counter, bool lock = true);
 // Convenience to allow us to treat the RecInt as a single byte internally
@@ -224,6 +225,8 @@ void RecConfigWarnIfUnregistered();
 #define REC_ReadConfigStringAlloc(_var, _config_var_name) RecGetRecordString_Xmalloc(_config_var_name, (RecString *)&_var)
 
 #define REC_ReadConfigString(_var, _config_var_name, _len) RecGetRecordString(_config_var_name, _var, _len)
+
+#define REC_ReadConfigStringStd(_var, _config_var_name) RecGetRecordString(_config_var_name, _var)
 
 #define REC_RegisterConfigUpdateFunc(_config_var_name, func, flag) RecRegisterConfigUpdateCb(_config_var_name, func, flag)
 

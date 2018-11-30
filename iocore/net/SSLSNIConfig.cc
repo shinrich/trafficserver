@@ -80,18 +80,18 @@ SNIConfigParams::loadSNIConfig()
 
     // set the next hop properties
     SSLConfig::scoped_config params;
-    auto clientCTX       = params->getClientSSL_CTX();
+    SSL_CTX *clientCTX   = nullptr;
     const char *certFile = item.client_cert.data();
     const char *keyFile  = item.client_key.data();
     if (certFile) {
       clientCTX = params->getNewCTX(certFile, keyFile);
     }
 
-    auto nps = next_hop_list.emplace(next_hop_list.end());
-    nps->setGlobName(item.fqdn);
-    nps->prop.verifyServerPolicy     = item.verify_server_policy;
-    nps->prop.verifyServerProperties = item.verify_server_properties;
-    nps->prop.ctx                    = clientCTX;
+    auto &nps = next_hop_list.emplace_back();
+    nps.setGlobName(item.fqdn);
+    nps.prop.verifyServerPolicy     = item.verify_server_policy;
+    nps.prop.verifyServerProperties = item.verify_server_properties;
+    nps.prop.ctx                    = clientCTX;
   } // end for
 }
 

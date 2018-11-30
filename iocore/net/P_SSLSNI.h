@@ -47,6 +47,21 @@ struct NextHopProperty {
   YamlSNIConfig::Property verifyServerProperties = YamlSNIConfig::Property::NONE;   // what to verify on the next hop
   SSL_CTX *ctx                                   = nullptr; // ctx generated off the certificate to present to this server
   NextHopProperty();
+  NextHopProperty(NextHopProperty &&that)
+    : name(std::move(that.name)),
+      verifyServerPolicy(that.verifyServerPolicy),
+      verifyServerProperties(that.verifyServerProperties),
+      ctx(that.ctx)
+  {
+    that.ctx = nullptr;
+  }
+  ~NextHopProperty()
+  {
+    if (ctx) {
+      SSLReleaseContext(ctx);
+      ctx = nullptr;
+    }
+  }
 };
 
 using actionVector = std::vector<std::unique_ptr<ActionItem>>;

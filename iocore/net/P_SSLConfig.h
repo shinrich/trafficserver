@@ -60,11 +60,11 @@ struct SSLConfigParams : public ConfigInfo {
   SSLConfigParams();
   ~SSLConfigParams() override;
 
-  char *serverCertPathOnly;
-  char *serverCertChainFilename;
-  char *serverKeyPathOnly;
-  char *serverCACertFilename;
-  char *serverCACertPath;
+  std::string serverCertPathOnly;
+  std::string serverCertChainFilename;
+  std::string serverKeyPathOnly;
+  std::string serverCACertFilename;
+  std::string serverCACertPath;
   char *configFilePath;
   char *dhparamsFile;
   char *cipherSuite;
@@ -79,10 +79,10 @@ struct SSLConfigParams : public ConfigInfo {
   int ssl_session_cache_timeout;
   int ssl_session_cache_auto_clear;
 
-  char *clientCertPath;
-  char *clientKeyPath;
-  char *clientCACertFilename;
-  char *clientCACertPath;
+  std::string clientCertPath;
+  std::string clientKeyPath;
+  std::string clientCACertFilename;
+  std::string clientCACertPath;
   YamlSNIConfig::Policy verifyServerPolicy;
   YamlSNIConfig::Property verifyServerProperties;
   int client_verify_depth;
@@ -126,7 +126,7 @@ struct SSLConfigParams : public ConfigInfo {
   mutable ink_mutex ctxMapLock;
 
   SSL_CTX *getClientSSL_CTX(void) const;
-  SSL_CTX *getNewCTX(const char *client_cert, const char *key_file) const;
+  SSL_CTX *getNewCTX(std::string_view client_cert, std::string_view key_file) const;
 
   void initialize();
   void cleanup();

@@ -34,6 +34,6 @@
 #endif
 
 // Create and initialize a SSL client context.
-SSL_CTX *SSLInitClientContext(const struct SSLConfigParams *param);
+SSL_CTX *SSLInitClientContext(const struct SSLConfigParams *param, std::string_view certPath, std::string_view keyPath);
 
 int verify_callback(int preverify_ok, X509_STORE_CTX *ctx);

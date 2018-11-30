@@ -139,11 +139,11 @@ verify_callback(int signature_ok, X509_STORE_CTX *ctx)
 }
 
 SSL_CTX *
-SSLInitClientContext(const SSLConfigParams *params)
+SSLInitClientContext(const SSLConfigParams *params, std::string_view clientCertPath, std::string_view clientKeyPath)
 {
   ink_ssl_method_t meth = nullptr;
   SSL_CTX *client_ctx   = nullptr;
-  char *clientKeyPtr    = nullptr;
+  std::string_view clientKeyRef;
 
   // Note that we do not call RAND_seed() explicitly here, we depend on OpenSSL
   // to do the seeding of the PRNG for us. This is the case for all platforms that
@@ -185,24 +185,22 @@ SSLInitClientContext(const SSLConfigParams *params)
 
   // if no path is given for the client private key,
   // assume it is contained in the client certificate file.
-  clientKeyPtr = params->clientKeyPath;
-  if (clientKeyPtr == nullptr) {
-    clientKeyPtr = params->clientCertPath;
-  }
+  clientKeyRef = clientKeyPath.empty() ? clientCertPath : clientKeyPath;
 
-  if (params->clientCertPath != nullptr && params->clientCertPath[0] != '\0') {
-    if (!SSL_CTX_use_certificate_chain_file(client_ctx, params->clientCertPath)) {
-      SSLError("failed to load client certificate from %s", params->clientCertPath);
+  if (!clientCertPath.empty()) {
+    if (!SSL_CTX_use_certificate_chain_file(client_ctx, clientCertPath.data())) {
+      SSLError("failed to load client certificate from %s", clientCertPath.data());
       goto fail;
     }
 
-    if (!SSL_CTX_use_PrivateKey_file(client_ctx, clientKeyPtr, SSL_FILETYPE_PEM)) {
-      SSLError("failed to load client private key file from %s", clientKeyPtr);
+    if (!SSL_CTX_use_PrivateKey_file(client_ctx, clientKeyRef.data(), SSL_FILETYPE_PEM)) {
+      SSLError("failed to load client private key file from %s", clientKeyRef.data());
       goto fail;
     }
 
     if (!SSL_CTX_check_private_key(client_ctx)) {
-      SSLError("client private key (%s) does not match the certificate public key (%s)", clientKeyPtr, params->clientCertPath);
+      SSLError("client private key (%s) does not match the certificate public key (%s)", clientKeyRef.data(),
+               clientCertPath.data());
       goto fail;
     }
   }
@@ -210,10 +208,12 @@ SSLInitClientContext(const SSLConfigParams *params)
   SSL_CTX_set_verify(client_ctx, SSL_VERIFY_PEER, verify_callback);
   SSL_CTX_set_verify_depth(client_ctx, params->client_verify_depth);
 
-  if (params->clientCACertFilename != nullptr || params->clientCACertPath != nullptr) {
-    if (!SSL_CTX_load_verify_locations(client_ctx, params->clientCACertFilename, params->clientCACertPath)) {
-      SSLError("invalid client CA Certificate file (%s) or CA Certificate path (%s)", params->clientCACertFilename,
-               params->clientCACertPath);
+  if (!params->clientCACertFilename.empty() || !params->clientCACertPath.empty()) {
+    if (!SSL_CTX_load_verify_locations(client_ctx,
+                                       params->clientCACertFilename.empty() ? nullptr : params->clientCACertFilename.c_str(),
+                                       params->clientCACertPath.empty() ? nullptr : params->clientCACertPath.c_str())) {
+      SSLError("invalid client CA Certificate file (%s) or CA Certificate path (%s)", params->clientCACertFilename.c_str(),
+               params->clientCACertPath.c_str());
       goto fail;
     }
   } else if (!SSL_CTX_set_default_verify_paths(client_ctx)) {

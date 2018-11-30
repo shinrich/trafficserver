@@ -879,7 +879,8 @@ cmd_verify(char * /* cmd ATS_UNUSED */)
   }
 
   SSLConfig::scoped_config params;
-  if (!SSLInitClientContext(params)) {
+  // Isn't this call going to leak the returned SSL_CTX?
+  if (!SSLInitClientContext(params, params->clientCertPath, params->clientKeyPath)) {
     exitStatus |= (1 << 4);
     fprintf(stderr, "Can't initialize the SSL client, HTTPS in remap rules will not function %d\n\n", exitStatus);
   } else {

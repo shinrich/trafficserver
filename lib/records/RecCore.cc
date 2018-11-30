@@ -382,6 +382,36 @@ RecGetRecordFloat(const char *name, RecFloat *rec_float, bool lock)
 }
 
 int
+RecGetRecordString(const char *name, std::string &value, bool lock)
+{
+  int err = REC_ERR_OKAY;
+  if (lock) {
+    ink_rwlock_rdlock(&g_records_rwlock);
+  }
+  if (auto it = g_records_ht.find(name); it != g_records_ht.end()) {
+    RecRecord *r = it->second;
+
+    rec_mutex_acquire(&(r->lock));
+    if (!r->registered || (r->data_type != RECD_STRING)) {
+      err = REC_ERR_FAIL;
+    } else {
+      if (r->data.rec_string == nullptr) {
+        value.clear();
+      } else {
+        value = std::string{r->data.rec_string};
+      }
+    }
+    rec_mutex_release(&(r->lock));
+  } else {
+    err = REC_ERR_FAIL;
+  }
+  if (lock) {
+    ink_rwlock_unlock(&g_records_rwlock);
+  }
+  return err;
+}
+
+int
 RecGetRecordString(const char *name, char *buf, int buf_len, bool lock)
 {
   int err = REC_ERR_OKAY;

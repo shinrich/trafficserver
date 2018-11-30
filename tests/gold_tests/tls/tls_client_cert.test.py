@@ -65,7 +65,7 @@ ts.addSSLfile("ssl/signed-bar.key")
 ts.Variables.ssl_port = 4443
 ts.Disk.records_config.update({
     'proxy.config.diags.debug.enabled': 1,
-    'proxy.config.diags.debug.tags': 'ssl_verify_test',
+    'proxy.config.diags.debug.tags': 'ssl_verify_test|ssl',
     'proxy.config.ssl.server.cert.path': '{0}'.format(ts.Variables.SSLDir),
     'proxy.config.ssl.server.private_key.path': '{0}'.format(ts.Variables.SSLDir),
     'proxy.config.http.server_ports': '{0}'.format(ts.Variables.port),

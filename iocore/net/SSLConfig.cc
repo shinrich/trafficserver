@@ -93,14 +93,12 @@ SSLConfigParams::~SSLConfigParams()
 void
 SSLConfigParams::reset()
 {
-  serverCertPathOnly = serverCertChainFilename = configFilePath = serverCACertFilename = serverCACertPath = clientCertPath =
-    clientKeyPath = clientCACertFilename = clientCACertPath = cipherSuite = client_cipherSuite = dhparamsFile = serverKeyPathOnly =
-      nullptr;
-  server_tls13_cipher_suites = nullptr;
-  client_tls13_cipher_suites = nullptr;
-  server_groups_list         = nullptr;
-  client_groups_list         = nullptr;
-  client_ctx                 = nullptr;
+  configFilePath = cipherSuite = client_cipherSuite = dhparamsFile = nullptr;
+  server_tls13_cipher_suites                                       = nullptr;
+  client_tls13_cipher_suites                                       = nullptr;
+  server_groups_list                                               = nullptr;
+  client_groups_list                                               = nullptr;
+  client_ctx                                                       = nullptr;
   clientCertLevel = client_verify_depth = verify_depth = 0;
   verifyServerPolicy                                   = YamlSNIConfig::Policy::DISABLED;
   verifyServerProperties                               = YamlSNIConfig::Property::NONE;
@@ -118,20 +116,11 @@ SSLConfigParams::reset()
 void
 SSLConfigParams::cleanup()
 {
-  serverCertChainFilename = (char *)ats_free_null(serverCertChainFilename);
-  serverCACertFilename    = (char *)ats_free_null(serverCACertFilename);
-  serverCACertPath        = (char *)ats_free_null(serverCACertPath);
-  clientCertPath          = (char *)ats_free_null(clientCertPath);
-  clientKeyPath           = (char *)ats_free_null(clientKeyPath);
-  clientCACertFilename    = (char *)ats_free_null(clientCACertFilename);
-  clientCACertPath        = (char *)ats_free_null(clientCACertPath);
-  configFilePath          = (char *)ats_free_null(configFilePath);
-  serverCertPathOnly      = (char *)ats_free_null(serverCertPathOnly);
-  serverKeyPathOnly       = (char *)ats_free_null(serverKeyPathOnly);
-  cipherSuite             = (char *)ats_free_null(cipherSuite);
-  client_cipherSuite      = (char *)ats_free_null(client_cipherSuite);
-  dhparamsFile            = (char *)ats_free_null(dhparamsFile);
-  ssl_wire_trace_ip       = (IpAddr *)ats_free_null(ssl_wire_trace_ip);
+  configFilePath     = (char *)ats_free_null(configFilePath);
+  cipherSuite        = (char *)ats_free_null(cipherSuite);
+  client_cipherSuite = (char *)ats_free_null(client_cipherSuite);
+  dhparamsFile       = (char *)ats_free_null(dhparamsFile);
+  ssl_wire_trace_ip  = (IpAddr *)ats_free_null(ssl_wire_trace_ip);
 
   server_tls13_cipher_suites = (char *)ats_free_null(server_tls13_cipher_suites);
   client_tls13_cipher_suites = (char *)ats_free_null(client_tls13_cipher_suites);
@@ -151,27 +140,27 @@ SSLConfigParams::cleanup()
  XXX: Add handling for Windows?
  */
 static void
-set_paths_helper(const char *path, const char *filename, char **final_path, char **final_filename)
+set_paths_helper(const char *path, const char *filename, std::string *final_path, std::string *final_filename)
 {
   if (final_path) {
     if (path && path[0] != '/') {
-      *final_path = ats_stringdup(Layout::get()->relative_to(Layout::get()->prefix, path));
+      *final_path = Layout::get()->relative_to(Layout::get()->prefix, path);
     } else if (!path || path[0] == '\0') {
-      *final_path = ats_stringdup(RecConfigReadConfigDir());
+      *final_path = RecConfigReadConfigDir();
     } else {
-      *final_path = ats_strdup(path);
+      *final_path = path;
     }
   }
 
   if (final_filename && path) {
-    *final_filename = filename ? ats_stringdup(Layout::get()->relative_to(path, filename)) : nullptr;
+    *final_filename = filename ? Layout::get()->relative_to(path, filename) : "";
   }
 }
 
 void
 SSLConfigParams::initialize()
 {
-  char *serverCertRelativePath          = nullptr;
+  std::string serverCertRelativePath;
   char *ssl_server_private_key_path     = nullptr;
   char *CACertRelativePath              = nullptr;
   char *ssl_client_cert_filename        = nullptr;
@@ -284,10 +273,9 @@ SSLConfigParams::initialize()
   ssl_client_ctx_options |= SSL_OP_NO_SESSION_RESUMPTION_ON_RENEGOTIATION;
 #endif
 
-  REC_ReadConfigStringAlloc(serverCertChainFilename, "proxy.config.ssl.server.cert_chain.filename");
-  REC_ReadConfigStringAlloc(serverCertRelativePath, "proxy.config.ssl.server.cert.path");
-  set_paths_helper(serverCertRelativePath, nullptr, &serverCertPathOnly, nullptr);
-  ats_free(serverCertRelativePath);
+  RecGetRecordString("proxy.config.ssl.server.cert_chain.filename", serverCertChainFilename);
+  RecGetRecordString("proxy.config.ssl.server.cert.path", serverCertRelativePath);
+  set_paths_helper(serverCertRelativePath.c_str(), nullptr, &serverCertPathOnly, nullptr);
 
   configFilePath = ats_stringdup(RecConfigReadConfigPath("proxy.config.ssl.server.multicert.filename"));
   REC_ReadConfigInteger(configExitOnLoadError, "proxy.config.ssl.server.multicert.exit_on_load_fail");
@@ -461,7 +449,7 @@ SSLConfigParams::initialize()
   // Enable client regardless of config file settings as remap file
   // can cause HTTP layer to connect using SSL. But only if SSL
   // initialization hasn't failed already.
-  client_ctx = SSLInitClientContext(this);
+  client_ctx = SSLInitClientContext(this, clientCertPath, clientKeyPath);
   if (!client_ctx) {
     SSLError("Can't initialize the SSL client, HTTPS in remap rules will not function");
   }
@@ -469,29 +457,13 @@ SSLConfigParams::initialize()
 
 // creates a new context attaching the provided certificate
 SSL_CTX *
-SSLConfigParams::getNewCTX(const char *client_cert, const char *client_key) const
+SSLConfigParams::getNewCTX(std::string_view client_cert, std::string_view client_key) const
 {
   SSL_CTX *nclient_ctx = nullptr;
-  nclient_ctx          = SSLInitClientContext(this);
+  nclient_ctx          = SSLInitClientContext(this, client_cert, client_key);
   if (!nclient_ctx) {
     SSLError("Can't initialize the SSL client, HTTPS in remap rules will not function");
     return nullptr;
-  }
-  if (client_cert != nullptr && client_cert[0] != '\0') {
-    if (!SSL_CTX_use_certificate_chain_file(nclient_ctx, (const char *)client_cert)) {
-      SSLError("failed to load client certificate from %s", this->clientCertPath);
-      SSLReleaseContext(nclient_ctx);
-      return nullptr;
-    }
-  }
-  // If there is not private key specified, perhaps it is in the file with the cert
-  if (client_key == nullptr || client_key[0] == '\0') {
-    client_key = client_cert;
-  }
-  // Try loading the private key
-  if (client_key != nullptr && client_key[0] != '\0') {
-    // If it failed, then we are just going to use the previously set private key from records.config
-    SSL_CTX_use_PrivateKey_file(nclient_ctx, client_key, SSL_FILETYPE_PEM);
   }
   return nclient_ctx;
 }
