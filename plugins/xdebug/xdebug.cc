@@ -47,9 +47,11 @@ enum {
   XHEADER_X_TRANSACTION_ID = 1u << 6,
   XHEADER_X_DUMP_HEADERS   = 1u << 7,
   XHEADER_X_REMAP          = 1u << 8,
+  XHEADER_X_PROBE_HEADERS  = 1u << 9,
 };
 
 static int XArgIndex              = 0;
+static int BodyBuilderArgIndex    = 0;
 static TSCont XInjectHeadersCont  = nullptr;
 static TSCont XDeleteDebugHdrCont = nullptr;
 
@@ -359,12 +361,25 @@ XInjectResponseHeaders(TSCont /* contp */, TSEvent event, void *edata)
     InjectTxnUuidHeader(txn, buffer, hdr);
   }
 
+  if (xheaders & XHEADER_X_REMAP) {
+    InjectRemapHeader(txn, buffer, hdr);
+  }
+
+  // intentionally placed after all injected headers.
+
   if (xheaders & XHEADER_X_DUMP_HEADERS) {
     log_headers(txn, buffer, hdr, "ClientResponse");
   }
 
-  if (xheaders & XHEADER_X_REMAP) {
-    InjectRemapHeader(txn, buffer, hdr);
+  if (xheaders & XHEADER_X_PROBE_HEADERS) {
+    BodyBuilder *data = static_cast<BodyBuilder *>(TSHttpTxnArgGet(txn, BodyBuilderArgIndex));
+    TSDebug("xdebug_transform", "XInjectResponseHeaders(): client resp header ready");
+    if (data == nullptr) {
+      TSHttpTxnReenable(txn, TS_EVENT_HTTP_ERROR);
+      return TS_ERROR;
+    }
+    data->hdr_ready = true;
+    writePostBody(data);
   }
 
 done:
@@ -431,7 +446,7 @@ XScanRequestHeaders(TSCont /* contp */, TSEvent event, void *edata)
 
   // Make sure TSHttpTxnReenable(txn, TS_EVENT_HTTP_CONTINUE) is called before exiting function.
   //
-  ts::PostScript<std::function<void()> > ps([=]() -> void { TSHttpTxnReenable(txn, TS_EVENT_HTTP_CONTINUE); });
+  ts::PostScript<std::function<void()>> ps([=]() -> void { TSHttpTxnReenable(txn, TS_EVENT_HTTP_CONTINUE); });
 
   TSReleaseAssert(event == TS_EVENT_HTTP_READ_REQUEST_HDR);
 
@@ -515,6 +530,8 @@ XScanRequestHeaders(TSCont /* contp */, TSEvent event, void *edata)
         TSHttpTxnHookAdd(txn, TS_HTTP_READ_RESPONSE_HDR_HOOK, TSContCreate(read_resp_dump, nullptr));
 
       } else if (header_field_eq("probe", value, vsize)) {
+        xheaders |= XHEADER_X_PROBE_HEADERS;
+
         // prefix request headers and postfix response headers
         BodyBuilder *data = new BodyBuilder();
         data->txn         = txn;
@@ -523,9 +540,17 @@ XScanRequestHeaders(TSCont /* contp */, TSEvent event, void *edata)
         TSContDataSet(connp, data);
         TSHttpTxnHookAdd(txn, TS_HTTP_RESPONSE_TRANSFORM_HOOK, connp);
 
-        TSCont client_hdr_handler = TSContCreate(client_resp_handler, nullptr);
-        TSContDataSet(client_hdr_handler, data);
-        TSHttpTxnHookAdd(txn, TS_HTTP_SEND_RESPONSE_HDR_HOOK, client_hdr_handler);
+        // store data pointer in txnarg to use in global cont XInjectResponseHeaders
+        TSHttpTxnArgSet(txn, BodyBuilderArgIndex, data);
+
+        // create a self-cleanup on close
+        auto cleanupBodyBuilder = [](TSCont /* contp */, TSEvent event, void *edata) -> int {
+          TSHttpTxn txn     = (TSHttpTxn)edata;
+          BodyBuilder *data = static_cast<BodyBuilder *>(TSHttpTxnArgGet(txn, BodyBuilderArgIndex));
+          delete data;
+          return TS_EVENT_NONE;
+        };
+        TSHttpTxnHookAdd(txn, TS_HTTP_TXN_CLOSE_HOOK, TSContCreate(cleanupBodyBuilder, nullptr));
 
         // disable writing to cache because we are injecting data into the body.
         TSHttpTxnReqCacheableSet(txn, 0);
@@ -585,7 +610,7 @@ XDeleteDebugHdr(TSCont /* contp */, TSEvent event, void *edata)
 
   // Make sure TSHttpTxnReenable(txn, TS_EVENT_HTTP_CONTINUE) is called before exiting function.
   //
-  ts::PostScript<std::function<void()> > ps([=]() -> void { TSHttpTxnReenable(txn, TS_EVENT_HTTP_CONTINUE); });
+  ts::PostScript<std::function<void()>> ps([=]() -> void { TSHttpTxnReenable(txn, TS_EVENT_HTTP_CONTINUE); });
 
   TSReleaseAssert(event == TS_EVENT_HTTP_CACHE_LOOKUP_COMPLETE);
 
@@ -645,6 +670,7 @@ TSPluginInit(int argc, const char *argv[])
 
   // Setup the global hook
   TSReleaseAssert(TSHttpTxnArgIndexReserve("xdebug", "xdebug header requests", &XArgIndex) == TS_SUCCESS);
+  TSReleaseAssert(TSHttpTxnArgIndexReserve("bodyTransform", "BodyBuilder*", &XArgIndex) == TS_SUCCESS);
   TSReleaseAssert(XInjectHeadersCont = TSContCreate(XInjectResponseHeaders, nullptr));
   TSReleaseAssert(XDeleteDebugHdrCont = TSContCreate(XDeleteDebugHdr, nullptr));
   TSHttpHookAdd(TS_HTTP_READ_REQUEST_HDR_HOOK, TSContCreate(XScanRequestHeaders, nullptr));

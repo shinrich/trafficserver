@@ -21,10 +21,12 @@
 #include <stdio.h>
 #include <string.h>
 #include <functional>
+#include <atomic>
 
 #include "ts/ts.h"
 #include "ts/ink_error.h"
 #include "ts/ink_defs.h"
+
 
 struct BodyBuilder {
   TSVIO output_vio               = nullptr;
@@ -33,6 +35,7 @@ struct BodyBuilder {
   bool wrote_prebody             = false;
   bool wrote_body                = false;
   bool hdr_ready                 = false;
+  std::atomic_flag wrote_postbody;
 
   int64_t nbytes = 0;
   TSHttpTxn txn  = nullptr;
@@ -63,7 +66,7 @@ getPostBody(TSHttpTxn txn)
 static void
 writePostBody(BodyBuilder *data)
 {
-  if (data->wrote_body && data->hdr_ready) {
+  if (data->wrote_body && data->hdr_ready && !data->wrote_postbody.test_and_set()) {
     TSDebug("xdebug_transform", "body_transform(): Writing postbody headers...");
     std::string postbody = getPostBody(data->txn);
     TSIOBufferWrite(data->output_buffer, postbody.data(), postbody.length());
@@ -151,21 +154,4 @@ body_transform(TSCont contp, TSEvent event, void *edata)
     }
   }
   return 0;
-}
-
-static int
-client_resp_handler(TSCont contp, TSEvent event, void *edata)
-{
-  TSHttpTxn txnp    = static_cast<TSHttpTxn>(edata);
-  BodyBuilder *data = static_cast<BodyBuilder *>(TSContDataGet(contp));
-  TSDebug("xdebug_transform", "client_resp_handler(): client resp header ready");
-  if (data == nullptr) {
-    TSHttpTxnReenable(txnp, TS_EVENT_HTTP_ERROR);
-    return TS_ERROR;
-  }
-  data->hdr_ready = true;
-  writePostBody(data);
-  TSHttpTxnReenable(txnp, TS_EVENT_HTTP_CONTINUE);
-  TSContDestroy(contp);
-  return TS_SUCCESS;
 }
