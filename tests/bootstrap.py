@@ -29,7 +29,8 @@ pip_packages = [
     "autest==1.7.2",
     "hyper",
     "requests",
-    "dnslib"
+    "dnslib",
+    "traffic-replay" # this should install TRLib, MicroServer, MicroDNS, Traffic-Replay
 ]
 
 
