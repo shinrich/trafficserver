@@ -1679,7 +1679,8 @@ setClientCertLevel(SSL *ssl, uint8_t certLevel)
 }
 
 SSL_CTX *
-SSLInitServerContext(const SSLConfigParams *params, const ssl_user_config *sslMultCertSettings, std::vector<X509 *> &certList)
+SSLInitServerContext(const SSLConfigParams *params, const ssl_user_config *sslMultCertSettings, std::vector<X509 *> &certList,
+                     std::vector<std::string_view> &certNames)
 {
   int server_verify_client;
   SSL_CTX *ctx                 = SSLDefaultServerContext();
@@ -1810,6 +1811,7 @@ SSLInitServerContext(const SSLConfigParams *params, const ssl_user_config *sslMu
           goto fail;
         }
 
+        certNames.push_back(certname);
         certList.push_back(cert);
         if (SSLConfigParams::load_ssl_file_cb) {
           SSLConfigParams::load_ssl_file_cb(completeServerCertPath.c_str(), CONFIG_FLAG_UNVERSIONED);
@@ -2021,7 +2023,8 @@ SSL_CTX *
 SSLCreateServerContext(const SSLConfigParams *params)
 {
   std::vector<X509 *> cert_list;
-  SSL_CTX *ctx = SSLInitServerContext(params, nullptr, cert_list);
+  std::vector<std::string_view> cert_names;
+  SSL_CTX *ctx = SSLInitServerContext(params, nullptr, cert_list, cert_names);
   ink_assert(cert_list.empty());
   return ctx;
 }
@@ -2030,7 +2033,8 @@ static SSL_CTX *
 ssl_store_ssl_context(const SSLConfigParams *params, SSLCertLookup *lookup, const ssl_user_config *sslMultCertSettings)
 {
   std::vector<X509 *> cert_list;
-  SSL_CTX *ctx                   = SSLInitServerContext(params, sslMultCertSettings, cert_list);
+  std::vector<std::string_view> cert_names;
+  SSL_CTX *ctx                   = SSLInitServerContext(params, sslMultCertSettings, cert_list, cert_names);
   ssl_ticket_key_block *keyblock = nullptr;
   bool inserted                  = false;
 
@@ -2039,9 +2043,9 @@ ssl_store_ssl_context(const SSLConfigParams *params, SSLCertLookup *lookup, cons
     return nullptr;
   }
 
-  const char *certname = sslMultCertSettings->cert.get();
-  for (auto cert : cert_list) {
-    if (0 > SSLCheckServerCertNow(cert, certname)) {
+  for (size_t i = 0; i < cert_list.size(); i++) {
+    const char *certname = i < cert_names.size() ? cert_names[i].data() : "unknown";
+    if (0 > SSLCheckServerCertNow(cert_list[i], certname)) {
       /* At this point, we know cert is bad, and we've already printed a
          descriptive reason as to why cert is bad to the log file */
       Debug("ssl", "Marking certificate as NOT VALID: %s", certname);
@@ -2066,6 +2070,7 @@ ssl_store_ssl_context(const SSLConfigParams *params, SSLCertLookup *lookup, cons
       IpEndpoint ep;
 
       if (ats_ip_pton(sslMultCertSettings->addr, &ep) == 0) {
+        const char *certname = 0 < cert_names.size() ? cert_names[0].data() : "unknown";
         Debug("ssl", "mapping '%s' to certificate %s", (const char *)sslMultCertSettings->addr, (const char *)certname);
         if (lookup->insert(ep, SSLCertContext(ctx, sslMultCertSettings->opt, keyblock)) >= 0) {
           inserted = true;
@@ -2096,8 +2101,9 @@ ssl_store_ssl_context(const SSLConfigParams *params, SSLCertLookup *lookup, cons
   if (SSLConfigParams::ssl_ocsp_enabled) {
     Debug("ssl", "SSL OCSP Stapling is enabled");
     SSL_CTX_set_tlsext_status_cb(ctx, ssl_callback_ocsp_stapling);
-    for (auto cert : cert_list) {
-      if (!ssl_stapling_init_cert(ctx, cert, certname)) {
+    for (size_t i = 0; i < cert_list.size(); i++) {
+      const char *certname = i < cert_names.size() ? cert_names[i].data() : "unknown";
+      if (!ssl_stapling_init_cert(ctx, cert_list[i], certname)) {
         Warning("failed to configure SSL_CTX for OCSP Stapling info for certificate at %s", (const char *)certname);
       }
     }
@@ -2113,9 +2119,10 @@ ssl_store_ssl_context(const SSLConfigParams *params, SSLCertLookup *lookup, cons
   // Insert additional mappings. Note that this maps multiple keys to the same value, so when
   // this code is updated to reconfigure the SSL certificates, it will need some sort of
   // refcounting or alternate way of avoiding double frees.
-  Debug("ssl", "importing SNI names from %s", (const char *)certname);
-  for (auto cert : cert_list) {
-    if (ssl_index_certificate(lookup, SSLCertContext(ctx, sslMultCertSettings->opt), cert, certname)) {
+  for (size_t i = 0; i < cert_list.size(); i++) {
+    const char *certname = i < cert_names.size() ? cert_names[i].data() : "unknown";
+    Debug("ssl", "importing SNI names from %s", (const char *)certname);
+    if (ssl_index_certificate(lookup, SSLCertContext(ctx, sslMultCertSettings->opt), cert_list[i], certname)) {
       inserted = true;
     }
   }
