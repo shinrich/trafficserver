@@ -203,12 +203,6 @@ public:
     return client_vc ? client_vc->get_local_addr() : &cached_local_addr.sa;
   }
 
-  void
-  write_reenable()
-  {
-    write_vio->reenable();
-  }
-
   void set_upgrade_context(HTTPHdr *h);
 
   const Http2UpgradeContext &
@@ -306,6 +300,8 @@ public:
   // Record history from Http2ConnectionState
   void remember(const SourceLocation &location, int event, int reentrant = NO_REENTRANT);
 
+  int64_t write_avail();
+
   // noncopyable
   Http2ClientSession(Http2ClientSession &) = delete;
   Http2ClientSession &operator=(const Http2ClientSession &) = delete;
@@ -325,14 +321,14 @@ private:
 
   bool _should_do_something_else();
 
-  int64_t total_write_len        = 0;
-  SessionHandler session_handler = nullptr;
-  NetVConnection *client_vc      = nullptr;
-  MIOBuffer *read_buffer         = nullptr;
-  IOBufferReader *sm_reader      = nullptr;
-  MIOBuffer *write_buffer        = nullptr;
-  IOBufferReader *sm_writer      = nullptr;
-  Http2FrameHeader current_hdr   = {0, 0, 0, 0};
+  int64_t total_write_len             = 0;
+  SessionHandler session_handler      = nullptr;
+  NetVConnection *client_vc           = nullptr;
+  MIOBuffer *read_buffer              = nullptr;
+  IOBufferReader *sm_reader           = nullptr;
+  MIOBuffer *write_buffer             = nullptr;
+  IOBufferReader *write_buffer_reader = nullptr;
+  Http2FrameHeader current_hdr        = {0, 0, 0, 0};
 
   IpEndpoint cached_client_addr;
   IpEndpoint cached_local_addr;

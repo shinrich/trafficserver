@@ -38,6 +38,7 @@
   } while (0)
 
 #define Http2SsnDebug(fmt, ...) SsnDebug(this, "http2_cs", "[%" PRId64 "] " fmt, this->connection_id(), ##__VA_ARGS__)
+#define Http2SsnVDebug(fmt, ...) SsnDebug(this, "v_http2_cs", "[%" PRId64 "] " fmt, this->connection_id(), ##__VA_ARGS__)
 
 #define HTTP2_SET_SESSION_HANDLER(handler) \
   do {                                     \
@@ -171,12 +172,12 @@ Http2ClientSession::start()
   HTTP2_SET_SESSION_HANDLER(&Http2ClientSession::state_read_connection_preface);
 
   VIO *read_vio = this->do_io_read(this, INT64_MAX, this->read_buffer);
-  write_vio     = this->do_io_write(this, INT64_MAX, this->sm_writer);
+  write_vio     = this->do_io_write(this, INT64_MAX, this->write_buffer_reader);
 
   this->connection_state.init();
   send_connection_event(&this->connection_state, HTTP2_SESSION_EVENT_INIT, this);
 
-  if (this->sm_reader->is_read_avail_more_than(0)) {
+  if (this->write_buffer_reader->is_read_avail_more_than(0)) {
     this->handleEvent(VC_EVENT_READ_READY, read_vio);
   }
 }
@@ -207,8 +208,8 @@ Http2ClientSession::new_connection(NetVConnection *new_vc, MIOBuffer *iobuf, IOB
   this->read_buffer->water_mark = connection_state.server_settings.get(HTTP2_SETTINGS_MAX_FRAME_SIZE);
   this->sm_reader               = reader ? reader : this->read_buffer->alloc_reader();
 
-  this->write_buffer = new_MIOBuffer(HTTP2_HEADER_BUFFER_SIZE_INDEX);
-  this->sm_writer    = this->write_buffer->alloc_reader();
+  this->write_buffer        = new_MIOBuffer(HTTP2_HEADER_BUFFER_SIZE_INDEX);
+  this->write_buffer_reader = this->write_buffer->alloc_reader();
 
   do_api_callout(TS_HTTP_SSN_START_HOOK);
 }
@@ -353,7 +354,8 @@ Http2ClientSession::main_event_handler(int event, void *edata)
     total_write_len += frame->size();
     write_vio->nbytes = total_write_len;
     frame->xmit(this->write_buffer);
-    write_reenable();
+    this->write_vio->reenable();
+
     retval = 0;
     break;
   }
@@ -369,17 +371,20 @@ Http2ClientSession::main_event_handler(int event, void *edata)
   case VC_EVENT_INACTIVITY_TIMEOUT:
   case VC_EVENT_ERROR:
   case VC_EVENT_EOS:
+    Http2SsnVDebug("%s (%d)", get_vc_event_name(event), event);
+
     this->set_dying_event(event);
     this->do_io_close();
     retval = 0;
     break;
 
   case VC_EVENT_WRITE_READY:
-    retval = 0;
-    break;
-
   case VC_EVENT_WRITE_COMPLETE:
-    // Seems as this is being closed already
+    Http2SsnVDebug("%s (%d)", get_vc_event_name(event), event);
+
+    this->connection_state.restart_streams();
+    this->write_vio->reenable();
+
     retval = 0;
     break;
 
@@ -648,4 +653,10 @@ Http2ClientSession::_should_do_something_else()
 {
   // Do something else every 128 incoming frames
   return (this->_n_frame_read & 0x7F) == 0;
+}
+
+int64_t
+Http2ClientSession::write_avail()
+{
+  return this->write_buffer->write_avail();
 }

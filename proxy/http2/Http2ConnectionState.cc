@@ -1454,6 +1454,12 @@ Http2ConnectionState::send_a_data_frame(Http2Stream *stream, size_t &payload_len
     return Http2SendDataFrameResult::ERROR;
   }
 
+  SCOPED_MUTEX_LOCK(lock, this->ua_session->mutex, this_ethread());
+  if (this->ua_session->write_avail() == 0) {
+    Http2StreamDebug(this->ua_session, stream->get_id(), "Not write avail");
+    return Http2SendDataFrameResult::NOT_WRITE_AVAIL;
+  }
+
   // Select appropriate payload length
   if (current_reader->is_read_avail_more_than(0)) {
     // We only need to check for window size when there is a payload
@@ -1496,7 +1502,6 @@ Http2ConnectionState::send_a_data_frame(Http2Stream *stream, size_t &payload_len
   stream->update_sent_count(payload_length);
 
   // xmit event
-  SCOPED_MUTEX_LOCK(lock, this->ua_session->mutex, this_ethread());
   this->ua_session->handleEvent(HTTP2_SESSION_EVENT_XMIT, &data);
 
   if (flags & HTTP2_FLAGS_DATA_END_STREAM) {
