@@ -1231,6 +1231,8 @@ struct IpAddr {
                  size_t len  ///< [in] Size of buffer.
   ) const;
 
+  sockaddr *toSockAddr(sockaddr *dest) const;
+
   /// Equality.
   bool
   operator==(self const &that) const

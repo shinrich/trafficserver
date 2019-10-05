@@ -736,7 +736,7 @@ SSLNetVConnection::net_read_io(NetHandler *nh, EThread *lthread)
     break;
   case SSL_READ_ERROR:
     this->read.triggered = 0;
-    readSignalError(nh, static_cast<int>(r));
+    readSignalError(nh, errno ? errno : -ENET_CONNECT_FAILED);
     Debug("ssl", "read finished - read error");
     break;
   }

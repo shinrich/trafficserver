@@ -1,0 +1,17 @@
+' SPDX-License-Identifier: Apache-2.0
+
+@startuml
+
+hide empty description
+
+state HttpSM {
+  state do_http_server_open {
+  }
+}
+
+state HandleRequest #cyan
+state CallOSDNSLookup #cyan
+
+CallOSDNSLookup -> OSDNSLookup
+
+@enduml

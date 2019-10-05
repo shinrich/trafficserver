@@ -295,8 +295,8 @@ public:
   // Handles the setting of all state necessary before
   //   calling transact to process the hostdb lookup
   // A NULL 'r' argument indicates the hostdb lookup failed
-  void process_hostdb_info(HostDBInfo *r);
-  void process_srv_info(HostDBInfo *r);
+  void process_hostdb_info(HostDBRecord *record);
+  void process_srv_info(HostDBRecord *record);
 
   // Called by transact.  Synchronous.
   VConnection *do_transform_open();
@@ -449,6 +449,7 @@ protected:
   int state_read_client_request_header(int event, void *data);
   int state_watch_for_client_abort(int event, void *data);
   int state_read_push_response_header(int event, void *data);
+  int state_pre_resolve(int event, void *data);
   int state_hostdb_lookup(int event, void *data);
   int state_hostdb_reverse_lookup(int event, void *data);
   int state_mark_os_down(int event, void *data);
@@ -516,7 +517,7 @@ protected:
   void handle_server_setup_error(int event, void *data);
   void handle_http_server_open();
   void handle_post_failure();
-  void mark_host_failure(HostDBInfo *info, time_t time_down);
+  void mark_host_failure(ResolveInfo *info, ts_time time_down);
   void mark_server_down_on_client_abort();
   void release_server_session(bool serve_from_cache = false);
   void set_ua_abort(HttpTransact::AbortState_t ua_abort, int event);
