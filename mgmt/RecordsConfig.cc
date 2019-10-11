@@ -1466,8 +1466,10 @@ static const RecordElement RecordsConfig[] =
   //# Control how the host/sni name mismatches are handled
   //# 0 - no checking. 1 - log in mismatch. 2 - enforcing
   //#
-  //###########
   {RECT_CONFIG, "proxy.config.http.host_sni_policy", RECD_INT, "2", RECU_NULL, RR_NULL, RECC_NULL, "[0-2]", RECA_NULL},
+
+  // Temporary control to add back old remap plugin execution behavior
+  {RECT_CONFIG, "proxy.config.http.remap.old_behavior", RECD_INT, "0", RECU_RESTART_TS, RR_NULL, RECC_NULL, "[0-1]", RECA_NULL},
 };
 // clang-format on
 

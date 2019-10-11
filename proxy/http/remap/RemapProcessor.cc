@@ -46,6 +46,10 @@ RemapProcessor::setup_for_remap(HttpTransact::State *s, UrlRewrite *table)
   int request_port;
   bool proxy_request = false;
 
+  if (this->_old_remap_plugin_behavior < 0) {
+    REC_ReadConfigInteger(this->_old_remap_plugin_behavior, "proxy.config.http.remap.old_behavior");
+  }
+
   s->reverse_proxy = table->reverse_proxy;
   s->url_map.set(s->hdr_info.client_request.m_heap);
 
@@ -295,7 +299,7 @@ RemapProcessor::perform_remap(Continuation *cont, HttpTransact::State *s)
     return ACTION_RESULT_DONE;
   }
 
-  RemapPlugins plugins(s, request_url, request_header, hh_info);
+  RemapPlugins plugins(s, request_url, request_header, hh_info, _old_remap_plugin_behavior);
 
   while (!plugins.run_single_remap()) {
     ; // EMPTY
