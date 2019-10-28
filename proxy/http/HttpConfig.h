@@ -673,6 +673,8 @@ struct OverridableHttpConfigParams {
   char *ssl_client_cert_filename        = nullptr;
   char *ssl_client_private_key_filename = nullptr;
   char *ssl_client_ca_cert_filename     = nullptr;
+
+  MgmtByte http_host_sni_policy = 0;
 };
 
 /////////////////////////////////////////////////////////////

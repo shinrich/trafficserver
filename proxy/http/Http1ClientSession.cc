@@ -132,6 +132,7 @@ Http1ClientSession::new_connection(NetVConnection *new_vc, MIOBuffer *iobuf, IOB
 {
   ink_assert(new_vc != nullptr);
   ink_assert(client_vc == nullptr);
+  this->set_netvc(new_vc);
   client_vc      = new_vc;
   magic          = HTTP_CS_MAGIC_ALIVE;
   mutex          = new_vc->mutex;
@@ -526,7 +527,7 @@ bool
 Http1ClientSession::allow_half_open() const
 {
   // Only allow half open connections if the not over TLS
-  return (client_vc && dynamic_cast<SSLNetVConnection *>(client_vc) == nullptr);
+  return (client_vc && this->is_tls());
 }
 
 void
@@ -545,12 +546,6 @@ bool
 Http1ClientSession::is_chunked_encoding_supported() const
 {
   return true;
-}
-
-NetVConnection *
-Http1ClientSession::get_netvc() const
-{
-  return client_vc;
 }
 
 int
@@ -596,4 +591,12 @@ const char *
 Http1ClientSession::get_protocol_string() const
 {
   return "http";
+}
+
+void
+Http1ClientSession::set_netvc(NetVConnection *newvc)
+{
+  client_vc                 = newvc;
+  SSLNetVConnection *ssl_vc = dynamic_cast<SSLNetVConnection *>(newvc);
+  is_tls_vc                 = (ssl_vc != nullptr);
 }

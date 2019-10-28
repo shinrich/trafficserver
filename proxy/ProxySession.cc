@@ -250,3 +250,15 @@ ProxySession::get_local_addr()
   NetVConnection *netvc = get_netvc();
   return netvc ? netvc->get_local_addr() : nullptr;
 }
+
+NetVConnection *
+ProxySession::get_netvc() const
+{
+  return client_vc;
+}
+
+void
+ProxySession::set_netvc(NetVConnection *new_vc)
+{
+  client_vc = new_vc;
+}

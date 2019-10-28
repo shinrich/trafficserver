@@ -369,6 +369,22 @@ ssl_verify_client_callback(int preverify_ok, X509_STORE_CTX *ctx)
   return preverify_ok;
 }
 
+// See if any of the client-side-actions would trigger for this combination of servername
+// and client IP
+bool
+SSLNetVConnection::TestClientAction(const char *servername, const IpEndpoint &ep)
+{
+  bool retval = false;
+  SNIConfig::scoped_config params;
+  const actionVector *actionvec = params->get(servername);
+  if (actionvec) {
+    for (auto &&item : *actionvec) {
+      retval |= item->TestClientSNIAction(servername, ep);
+    }
+  }
+  return retval;
+}
+
 static int
 PerformAction(Continuation *cont, const char *servername)
 {

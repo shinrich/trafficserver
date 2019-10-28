@@ -501,7 +501,7 @@ HttpSM::attach_client_session(ProxyTransaction *client_vc, IOBufferReader *buffe
 
   // Collect log & stats information. We've already verified that the netvc is !nullptr above,
   // and netvc == ua_txn->get_netvc().
-  SSLNetVConnection *ssl_vc = dynamic_cast<SSLNetVConnection *>(netvc);
+  SSLNetVConnection *ssl_vc = (client_vc->is_tls()) ? static_cast<SSLNetVConnection *>(netvc) : nullptr;
 
   is_internal       = netvc->get_is_internal_request();
   mptcp_state       = netvc->get_mptcp_state();
@@ -605,7 +605,7 @@ void
 HttpSM::setup_blind_tunnel_port()
 {
   NetVConnection *netvc     = ua_txn->get_netvc();
-  SSLNetVConnection *ssl_vc = dynamic_cast<SSLNetVConnection *>(netvc);
+  SSLNetVConnection *ssl_vc = ua_txn->is_tls() ? static_cast<SSLNetVConnection *>(netvc) : nullptr;
   int host_len;
   if (ssl_vc) {
     if (!t_state.hdr_info.client_request.url_get()->host_get(&host_len)) {
@@ -1426,7 +1426,7 @@ plugins required to work with sni_routing.
       t_state.hdr_info.client_request.url_set(&u);
 
       NetVConnection *netvc     = ua_txn->get_netvc();
-      SSLNetVConnection *ssl_vc = dynamic_cast<SSLNetVConnection *>(netvc);
+      SSLNetVConnection *ssl_vc = ua_txn->is_tls() ? static_cast<SSLNetVConnection *>(netvc) : nullptr;
 
       if (ssl_vc && ssl_vc->has_tunnel_destination()) {
         const char *tunnel_host = ssl_vc->get_tunnel_host();
@@ -1588,7 +1588,7 @@ HttpSM::handle_api_return()
   switch (t_state.api_next_action) {
   case HttpTransact::SM_ACTION_API_SM_START: {
     NetVConnection *netvc     = ua_txn->get_netvc();
-    SSLNetVConnection *ssl_vc = dynamic_cast<SSLNetVConnection *>(netvc);
+    SSLNetVConnection *ssl_vc = ua_txn->is_tls() ? static_cast<SSLNetVConnection *>(netvc) : nullptr;
     bool forward_dest         = ssl_vc != nullptr && ssl_vc->decrypt_tunnel();
     if (t_state.client_info.port_attribute == HttpProxyPort::TRANSPORT_BLIND_TUNNEL || forward_dest) {
       setup_blind_tunnel_port();
@@ -3971,6 +3971,32 @@ HttpSM::do_remap_request(bool run_inline)
   SMDebug("http_seq", "[HttpSM::do_remap_request] Remapping request");
   SMDebug("url_rewrite", "Starting a possible remapping for request [%" PRId64 "]", sm_id);
   bool ret = remapProcessor.setup_for_remap(&t_state, m_remap);
+
+  // Check that the SNI and host name fields match for hostnames that
+  // would trigger client-side SNI policies
+  int host_len;
+  const char *host_name = t_state.hdr_info.client_request.host_get(&host_len);
+  if (host_name && host_len) {
+    if (ua_txn->is_tls() && t_state.txn_conf->http_host_sni_policy > 0) {
+      IpEndpoint ip = ua_txn->get_remote_endpoint();
+      if (SSLNetVConnection::TestClientAction(std::string{host_name, static_cast<size_t>(host_len)}.c_str(), ip)) {
+        // In a SNI/Host mismatch where the Host would have triggered SNI policy, mark the transaction to be rejected
+        // in the end_remap logic
+        const char *sni_value = ua_txn->get_server_name();
+        if (!sni_value || sni_value[0] == '\0') { // No SNI
+          Warning("No SNI for TLS request with hostname %.*s", host_len, host_name);
+          if (t_state.txn_conf->http_host_sni_policy == 2) {
+            this->t_state.client_connection_enabled = false;
+          }
+        } else if (strncmp(host_name, sni_value, host_len) != 0) { // Name mismatch
+          Warning("SNI/hostname mismatch sni=%s host=%.*s", sni_value, host_len, host_name);
+          if (t_state.txn_conf->http_host_sni_policy == 2) {
+            this->t_state.client_connection_enabled = false;
+          }
+        }
+      }
+    }
+  }
 
   // Preserve effective url before remap
   t_state.unmapped_url.create(t_state.hdr_info.client_request.url_get()->m_heap);

@@ -433,6 +433,8 @@ public:
   */
   virtual Action *send_OOB(Continuation *cont, char *buf, int len);
 
+  virtual const char *get_server_name() const;
+
   /**
     Cancels a scheduled send_OOB. Part of the message could have
     been sent already. Not callbacks to the cont are made after

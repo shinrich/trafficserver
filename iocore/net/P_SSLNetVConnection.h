@@ -399,6 +399,12 @@ public:
   // serverName value, this strategy will have to change.
   const char *serverName = nullptr;
 
+  const char *
+  get_server_name() const override
+  {
+    return serverName;
+  }
+
   /// Set by asynchronous hooks to request a specific operation.
   SslVConnOp hookOpRequested = SSL_HOOK_OP_DEFAULT;
 
@@ -423,6 +429,8 @@ public:
   {
     verify_cert = ctx;
   }
+
+  static bool TestClientAction(const char *servername, const IpEndpoint &ep);
 
 private:
   std::string_view map_tls_protocol_to_tag(const char *proto_string) const;

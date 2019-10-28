@@ -33,6 +33,12 @@
 #include "P_Net.h"
 #include "ts/apidefs.h"
 
+const char *
+NetVConnection::get_server_name() const
+{
+  return nullptr;
+}
+
 Action *
 NetVConnection::send_OOB(Continuation *, char *, int)
 {

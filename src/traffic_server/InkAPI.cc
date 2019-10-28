@@ -8576,6 +8576,9 @@ _conf_to_memberp(TSOverridableConfigKey conf, OverridableHttpConfigParams *overr
     ret  = &overridableHttpConfig->outbound_conntrack.match;
     conv = &OutboundConnTrack::MATCH_CONV;
     break;
+  case TS_CONFIG_HTTP_HOST_SNI_POLICY:
+    ret = _memberp_to_generic(&overridableHttpConfig->http_host_sni_policy, conv);
+    break;
   // This helps avoiding compiler warnings, yet detect unhandled enum members.
   case TS_CONFIG_NULL:
   case TS_CONFIG_LAST_ENTRY:
@@ -8938,7 +8941,8 @@ static const std::unordered_map<std::string_view, std::tuple<const TSOverridable
    {"proxy.config.ssl.client.cert.filename", {TS_CONFIG_SSL_CLIENT_CERT_FILENAME, TS_RECORDDATATYPE_STRING}},
    {"proxy.config.ssl.client.cert.path", {TS_CONFIG_SSL_CERT_FILEPATH, TS_RECORDDATATYPE_STRING}},
    {"proxy.config.ssl.client.private_key.filename", {TS_CONFIG_SSL_CLIENT_PRIVATE_KEY_FILENAME, TS_RECORDDATATYPE_STRING}},
-   {"proxy.config.ssl.client.CA.cert.filename", {TS_CONFIG_SSL_CLIENT_CA_CERT_FILENAME, TS_RECORDDATATYPE_STRING}}});
+   {"proxy.config.ssl.client.CA.cert.filename", {TS_CONFIG_SSL_CLIENT_CA_CERT_FILENAME, TS_RECORDDATATYPE_STRING}},
+   {"proxy.config.http.host_sni_policy", {TS_CONFIG_HTTP_HOST_SNI_POLICY, TS_RECORDDATATYPE_INT}}});
 
 TSReturnCode
 TSHttpTxnConfigFind(const char *name, int length, TSOverridableConfigKey *conf, TSRecordDataType *type)

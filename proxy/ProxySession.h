@@ -97,7 +97,8 @@ public:
   virtual void decrement_current_active_client_connections_stat() = 0;
 
   // Virtual Accessors
-  virtual NetVConnection *get_netvc() const       = 0;
+  virtual NetVConnection *get_netvc() const;
+  virtual void set_netvc(NetVConnection *new_vc);
   virtual int get_transact_count() const          = 0;
   virtual const char *get_protocol_string() const = 0;
 
@@ -143,6 +144,11 @@ public:
 
   APIHook *hook_get(TSHttpHookID id) const;
   HttpAPIHooks const *feature_hooks() const;
+
+  const char *get_server_name() const;
+  const bool is_tls() const;
+  IpEndpoint get_remote_endpoint() const;
+
   ////////////////////
   // Members
 
@@ -166,6 +172,9 @@ protected:
 
   int64_t con_id        = 0;
   Event *schedule_event = nullptr;
+
+  NetVConnection *client_vc = nullptr;
+  bool is_tls_vc            = false;
 
 private:
   void handle_api_return(int event);
@@ -266,4 +275,26 @@ inline bool
 ProxySession::has_hooks() const
 {
   return this->api_hooks.has_hooks() || http_global_hooks->has_hooks();
+}
+
+inline const char *
+ProxySession::get_server_name() const
+{
+  return client_vc ? client_vc->get_server_name() : nullptr;
+}
+
+inline const bool
+ProxySession::is_tls() const
+{
+  return is_tls_vc;
+}
+
+inline IpEndpoint
+ProxySession::get_remote_endpoint() const
+{
+  if (client_vc) {
+    return client_vc->get_remote_endpoint();
+  } else {
+    return IpEndpoint();
+  }
 }

@@ -76,9 +76,9 @@ public:
   void set_half_close_flag(bool flag) override;
   bool get_half_close_flag() const override;
   bool is_chunked_encoding_supported() const override;
-  NetVConnection *get_netvc() const override;
   int get_transact_count() const override;
-  virtual bool is_outbound_transparent() const;
+  bool is_outbound_transparent() const;
+  void set_netvc(NetVConnection *newvc) override;
 
   Http1ServerSession *get_server_session() const override;
   void set_active_timeout(ink_hrtime timeout_in) override;
@@ -106,11 +106,10 @@ private:
     HCS_CLOSED,
   };
 
-  NetVConnection *client_vc = nullptr;
-  int magic                 = HTTP_SS_MAGIC_DEAD;
-  int transact_count        = 0;
-  bool half_close           = false;
-  bool conn_decrease        = false;
+  int magic          = HTTP_SS_MAGIC_DEAD;
+  int transact_count = 0;
+  bool half_close    = false;
+  bool conn_decrease = false;
 
   MIOBuffer *read_buffer  = nullptr;
   IOBufferReader *_reader = nullptr;

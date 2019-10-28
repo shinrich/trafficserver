@@ -723,3 +723,10 @@ Http2ClientSession::add_url_to_pushed_table(const char *url, int url_len)
     h2_pushed_urls.emplace(url);
   }
 }
+
+void
+Http2ClientSession::set_netvc(NetVConnection *newvc)
+{
+  client_vc = newvc;
+  is_tls_vc = true;
+}

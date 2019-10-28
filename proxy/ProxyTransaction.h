@@ -101,6 +101,10 @@ public:
   Http1ServerSession *get_server_session() const;
   HttpSM *get_sm() const;
 
+  const char *get_server_name() const;
+  bool is_tls() const;
+  IpEndpoint get_remote_endpoint() const;
+
   // This function must return a non-negative number that is different for two in-progress transactions with the same proxy_ssn
   // session.
   //
@@ -212,4 +216,26 @@ inline const char *
 ProxyTransaction::protocol_contains(std::string_view tag_prefix) const
 {
   return _proxy_ssn ? _proxy_ssn->protocol_contains(tag_prefix) : nullptr;
+}
+
+inline const char *
+ProxyTransaction::get_server_name() const
+{
+  return _proxy_ssn ? _proxy_ssn->get_server_name() : nullptr;
+}
+
+inline bool
+ProxyTransaction::is_tls() const
+{
+  return _proxy_ssn ? _proxy_ssn->is_tls() : false;
+}
+
+inline IpEndpoint
+ProxyTransaction::get_remote_endpoint() const
+{
+  if (_proxy_ssn) {
+    return _proxy_ssn->get_remote_endpoint();
+  } else {
+    return IpEndpoint();
+  }
 }

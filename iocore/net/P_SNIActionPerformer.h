@@ -39,6 +39,12 @@ class ActionItem
 {
 public:
   virtual int SNIAction(Continuation *cont) const = 0;
+  virtual bool
+  TestClientSNIAction(const char *servername, const IpEndpoint &ep) const
+  {
+    // By default, the action has no client-side impact
+    return false;
+  }
   virtual ~ActionItem(){};
 };
 
@@ -101,6 +107,11 @@ public:
     Debug("ssl_sni", "action verify param %d", this->mode);
     setClientCertLevel(ssl_vc->ssl, this->mode);
     return SSL_TLSEXT_ERR_OK;
+  }
+  bool
+  TestClientSNIAction(const char *servername, const IpEndpoint &ep) const override
+  {
+    return true;
   }
 };
 
@@ -177,5 +188,12 @@ public:
       Debug("ssl_sni", "%s is not allowed. Denying connection", buff);
       return SSL_TLSEXT_ERR_ALERT_FATAL;
     }
+  }
+
+  bool
+  TestClientSNIAction(const char *servername, const IpEndpoint &ep) const override
+  {
+    // Affected of the IpAllow set includes the client IP
+    return ip_map.contains(ep);
   }
 };

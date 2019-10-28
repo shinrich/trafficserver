@@ -212,6 +212,8 @@ public:
   // Record history from Http2ConnectionState
   void remember(const SourceLocation &location, int event, int reentrant = NO_REENTRANT);
 
+  void set_netvc(NetVConnection *newvc) override;
+
   // noncopyable
   Http2ClientSession(Http2ClientSession &) = delete;
   Http2ClientSession &operator=(const Http2ClientSession &) = delete;
@@ -237,7 +239,6 @@ private:
 
   int64_t total_write_len        = 0;
   SessionHandler session_handler = nullptr;
-  NetVConnection *client_vc      = nullptr;
   MIOBuffer *read_buffer         = nullptr;
   IOBufferReader *_reader        = nullptr;
   MIOBuffer *write_buffer        = nullptr;
