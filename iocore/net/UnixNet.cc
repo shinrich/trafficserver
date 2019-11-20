@@ -64,6 +64,10 @@ public:
         continue;
       }
 
+      if (vc->ep.event_loop == nullptr) {
+        vc->do_io_close();
+        continue;
+      }
       if (vc->closed) {
         nh.free_netvc(vc);
         continue;

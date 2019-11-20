@@ -1384,7 +1384,7 @@ UnixNetVConnection::migrateToCurrentThread(Continuation *cont, EThread *t)
   // Go ahead and remove the fd from the original thread's epoll structure, so it is not
   // processed on two threads simultaneously
   this->ep.stop();
-  this->do_io_close();
+  // this->do_io_close();
 
   // Create new VC:
   if (save_ssl) {

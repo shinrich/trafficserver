@@ -154,7 +154,8 @@ ServerSessionPool::releaseSession(Http1ServerSession *ss)
   //  if it closes on us.  We will get called back in the
   //  continuation for this bucket, ensuring we have the lock
   //  to remove the connection from our lists
-  ss->do_io_read(this, INT64_MAX, ss->read_buffer);
+  // ss->do_io_read(this, INT64_MAX, ss->read_buffer);
+  ss->do_io_read(this, 0, nullptr);
 
   // Transfer control of the write side as well
   ss->do_io_write(this, 0, nullptr);

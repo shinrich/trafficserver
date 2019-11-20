@@ -707,11 +707,11 @@ EventIO::modify(int e)
 TS_INLINE int
 EventIO::refresh(int e)
 {
-  if (!this->syscall) {
+  if (!this->syscall || !event_loop) {
     return 0;
   }
 
-  ink_assert(event_loop);
+  // ink_assert(event_loop);
 #if TS_USE_KQUEUE && defined(USE_EDGE_TRIGGER)
   e = e & events;
   struct kevent ev[2];
