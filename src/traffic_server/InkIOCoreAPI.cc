@@ -242,6 +242,9 @@ TSMutex
 TSMutexCreate()
 {
   ProxyMutex *mutexp = new_ProxyMutex();
+
+  // Increment the mutex ref count in case it is
+  // being managed as a naked pointer
   mutexp->refcount_inc();
 
   // TODO: Remove this when allocations can never fail.
@@ -255,10 +258,13 @@ TSMutexDestroy(TSMutex m)
 {
   sdk_assert(sdk_sanity_check_mutex(m) == TS_SUCCESS);
   ProxyMutex *mutexp = reinterpret_cast<ProxyMutex *>(m);
-  // Decrement the refcount added in TSMutexCreate.  Delete if this
-  // was the last ref count
-  if (mutexp && mutexp->refcount_dec() == 0) {
-    mutexp->free();
+
+  // Remove the last reference to the Mutex if this was a naked TSMutex,
+  // which it should be if the plugin is holding a reference to it to call
+  // TSMutexDestroy.
+  // The object should delete itself if this was the last reference.
+  if (mutexp) {
+    mutexp->refcount_dec();
   }
 }
 

@@ -1022,7 +1022,12 @@ INKContInternal::init(TSEventFunc funcp, TSMutex mutexp, void *context)
 {
   SET_HANDLER(&INKContInternal::handle_event);
 
-  mutex        = (ProxyMutex *)mutexp;
+  mutex = (ProxyMutex *)mutexp;
+
+  // Take over one refcount for the mutex
+  if (mutex) {
+    mutex->refcount_dec();
+  }
   m_event_func = funcp;
   m_context    = context;
 }
@@ -1036,6 +1041,7 @@ void
 INKContInternal::free()
 {
   clear();
+  // Drop reference to the mutex
   this->mutex.clear();
   m_free_magic = INKCONT_INTERN_MAGIC_DEAD;
   INKContAllocator.free(this);
@@ -7010,8 +7016,13 @@ TSTransformCreate(TSEventFunc event_funcp, TSHttpTxn txnp)
 {
   sdk_assert(sdk_sanity_check_txn(txnp) == TS_SUCCESS);
 
-  return TSVConnCreate(event_funcp,
-                       reinterpret_cast<TSMutex>(static_cast<Continuation *>(reinterpret_cast<HttpSM *>(txnp))->getMutex()));
+  // Artifically increase the ProxyMutex refcount, so the INKContInternal::init() can decrement it
+  ProxyMutex *proxyMutex =
+    reinterpret_cast<ProxyMutex *>(static_cast<Continuation *>(reinterpret_cast<HttpSM *>(txnp))->getMutex());
+  if (proxyMutex) {
+    proxyMutex->refcount_inc();
+  }
+  return TSVConnCreate(event_funcp, reinterpret_cast<TSMutex>(proxyMutex));
 }
 
 TSVConn
