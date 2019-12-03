@@ -811,10 +811,9 @@ HttpTunnel::producer_run(HttpTunnelProducer *p)
     consumer_n = (producer_n = INT64_MAX);
   }
 
-  // Do the IO on the consumers first so
-  //  data doesn't disappear out from
-  //  under the tunnel
-  for (c = p->consumer_list.head; c;) {
+  // At least set up the consumer readers first so the data
+  // doesn't disappear out from under the tunnel
+  for (c = p->consumer_list.head; c; c = c->link.next) {
     // Create a reader for each consumer.  The reader allows
     // us to implement skip bytes
     if (c->vc_type == HT_CACHE_WRITE) {
@@ -845,45 +844,6 @@ HttpTunnel::producer_run(HttpTunnelProducer *p)
       ink_assert(c->skip_bytes <= c->buffer_reader->read_avail());
       c->buffer_reader->consume(c->skip_bytes);
     }
-    int64_t c_write = consumer_n;
-
-    // INKqa05109 - if we don't know the length leave it at
-    //  INT64_MAX or else the cache may bounce the write
-    //  because it thinks the document is too big.  INT64_MAX
-    //  is a special case for the max document size code
-    //  in the cache
-    if (c_write != INT64_MAX) {
-      c_write -= c->skip_bytes;
-    }
-    // Fix for problems with not chunked content being chunked and
-    // not sending the entire data.  The content length grows when
-    // it is being chunked.
-    if (p->do_chunking == true) {
-      c_write = INT64_MAX;
-    }
-
-    if (c_write == 0) {
-      // Nothing to do, call back the cleanup handlers
-      c->write_vio = nullptr;
-      consumer_handler(VC_EVENT_WRITE_COMPLETE, c);
-    } else {
-      // In the client half close case, all the data that will be sent
-      // from the client is already in the buffer.  Go ahead and set
-      // the amount to read since we know it.  We will forward the FIN
-      // to the server on VC_EVENT_WRITE_COMPLETE.
-      if (p->vc_type == HT_HTTP_CLIENT) {
-        ProxyTransaction *ua_vc = static_cast<ProxyTransaction *>(p->vc);
-        if (ua_vc->get_half_close_flag()) {
-          c_write          = c->buffer_reader->read_avail();
-          p->alive         = false;
-          p->handler_state = HTTP_SM_POST_SUCCESS;
-        }
-      }
-      c->write_vio = c->vc->do_io_write(this, c_write, c->buffer_reader);
-      ink_assert(c_write > 0);
-    }
-
-    c = c->link.next;
   }
 
   // YTS Team, yamsat Plugin
@@ -942,8 +902,57 @@ HttpTunnel::producer_run(HttpTunnelProducer *p)
       // (incorrectly) to INT64_MAX.  It needs to be set to 0 to prevent triggering another read.
       producer_n = 0;
     }
+    // Adjust the amount of chunked data to write if
+    // the only data was in the initial read
+    if (p->alive) {
+      consumer_n = INT64_MAX;
+    } else {
+      consumer_n = p->bytes_read + p->init_bytes_done;
+    }
   }
+  for (c = p->consumer_list.head; c; c = c->link.next) {
+    int64_t c_write = consumer_n;
 
+    // INKqa05109 - if we don't know the length leave it at
+    //  INT64_MAX or else the cache may bounce the write
+    //  because it thinks the document is too big.  INT64_MAX
+    //  is a special case for the max document size code
+    //  in the cache
+    if (c_write != INT64_MAX) {
+      c_write -= c->skip_bytes;
+    }
+    // Fix for problems with not chunked content being chunked and
+    // not sending the entire data.  The content length grows when
+    // it is being chunked.
+    if (p->do_chunking == true) {
+      c_write = INT64_MAX;
+    }
+
+    if (c_write == 0) {
+      // Nothing to do, call back the cleanup handlers
+      c->write_vio = nullptr;
+      consumer_handler(VC_EVENT_WRITE_COMPLETE, c);
+    } else {
+      // In the client half close case, all the data that will be sent
+      // from the client is already in the buffer.  Go ahead and set
+      // the amount to read since we know it.  We will forward the FIN
+      // to the server on VC_EVENT_WRITE_COMPLETE.
+      if (p->vc_type == HT_HTTP_CLIENT) {
+        ProxyTransaction *ua_vc = static_cast<ProxyTransaction *>(p->vc);
+        if (ua_vc->get_half_close_flag()) {
+          int tmp = c->buffer_reader->read_avail();
+          if (tmp < c_write) {
+            c_write = tmp;
+          }
+          p->alive         = false;
+          p->handler_state = HTTP_SM_POST_SUCCESS;
+        }
+      }
+      // Start the writes now that we know we will consume all the initial data
+      c->write_vio = c->vc->do_io_write(this, c_write, c->buffer_reader);
+      ink_assert(c_write > 0);
+    }
+  }
   if (p->alive) {
     ink_assert(producer_n >= 0);
 
@@ -1439,6 +1448,15 @@ HttpTunnel::finish_all_internal(HttpTunnelProducer *p, bool chain)
         total_bytes = p->chunked_handler.skip_bytes + p->chunked_handler.chunked_size;
       } else if (action == TCA_DECHUNK_CONTENT) {
         total_bytes = p->chunked_handler.skip_bytes + p->chunked_handler.dechunked_size;
+      } else if (action == TCA_PASSTHRU_CHUNKED_CONTENT) {
+        // if the only chunked data was in the initial read, make sure we don't consume too much
+        if (p->bytes_read == 0) {
+          int num_read = p->buffer_start->read_avail() - p->chunked_handler.chunked_reader->read_avail();
+          if (num_read < p->init_bytes_done) {
+            p->init_bytes_done = num_read;
+          }
+        }
+        total_bytes = p->bytes_read + p->init_bytes_done;
       } else {
         total_bytes = p->bytes_read + p->init_bytes_done;
       }
