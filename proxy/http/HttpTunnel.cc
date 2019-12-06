@@ -907,7 +907,11 @@ HttpTunnel::producer_run(HttpTunnelProducer *p)
     if (p->alive) {
       consumer_n = INT64_MAX;
     } else {
-      consumer_n = p->bytes_read + p->init_bytes_done;
+      if (p->do_chunked_passthru) {
+        consumer_n = p->bytes_read + p->init_bytes_done;
+      } else if (p->do_dechunking) {
+        consumer_n = p->chunked_handler.skip_bytes + p->chunked_handler.dechunked_size;
+      }
     }
   }
   for (c = p->consumer_list.head; c; c = c->link.next) {
