@@ -1137,8 +1137,8 @@ HttpTunnel::producer_handler(int event, HttpTunnelProducer *p)
     }
   } // end of added logic for partial copy of POST
 
-  Debug("http_redirect", "[HttpTunnel::producer_handler] enable_redirection: [%d %d %d] event: %d", p->alive == true,
-        sm->enable_redirection, (p->self_consumer && p->self_consumer->alive == true), event);
+  Debug("http_redirect", "[HttpTunnel::producer_handler] enable_redirection: [%d %d %d] event: %d, state: %d", p->alive == true,
+        sm->enable_redirection, (p->self_consumer && p->self_consumer->alive == true), event, p->chunked_handler.state);
 
   switch (event) {
   case VC_EVENT_READ_READY:
@@ -1306,6 +1306,9 @@ HttpTunnel::consumer_handler(int event, HttpTunnelConsumer *c)
 
   switch (event) {
   case VC_EVENT_WRITE_READY:
+    if (c && c->write_vio) {
+      c->write_vio->reenable();
+    }
     this->consumer_reenable(c);
     break;
 
@@ -1432,6 +1435,7 @@ HttpTunnel::finish_all_internal(HttpTunnelProducer *p, bool chain)
   HttpTunnelConsumer *c         = p->consumer_list.head;
   int64_t total_bytes           = 0;
   TunnelChunkingAction_t action = p->chunking_action;
+  bool done                     = false;
 
   while (c) {
     if (c->alive) {
@@ -1444,6 +1448,9 @@ HttpTunnel::finish_all_internal(HttpTunnelProducer *p, bool chain)
         case TCA_DECHUNK_CONTENT:
         case TCA_PASSTHRU_CHUNKED_CONTENT:
           total_bytes = p->chunked_handler.skip_bytes + p->chunked_handler.dechunked_size;
+          if (p->chunked_handler.state == ChunkedHandler::CHUNK_READ_DONE) {
+            done = true;
+          }
           break;
         default:
           break;
@@ -1452,6 +1459,9 @@ HttpTunnel::finish_all_internal(HttpTunnelProducer *p, bool chain)
         total_bytes = p->chunked_handler.skip_bytes + p->chunked_handler.chunked_size;
       } else if (action == TCA_DECHUNK_CONTENT) {
         total_bytes = p->chunked_handler.skip_bytes + p->chunked_handler.dechunked_size;
+        if (p->chunked_handler.state == ChunkedHandler::CHUNK_READ_DONE) {
+          done = true;
+        }
       } else if (action == TCA_PASSTHRU_CHUNKED_CONTENT) {
         // if the only chunked data was in the initial read, make sure we don't consume too much
         if (p->bytes_read == 0) {
@@ -1461,6 +1471,9 @@ HttpTunnel::finish_all_internal(HttpTunnelProducer *p, bool chain)
           }
         }
         total_bytes = p->bytes_read + p->init_bytes_done;
+        if (p->chunked_handler.state == ChunkedHandler::CHUNK_READ_DONE) {
+          done = true;
+        }
       } else {
         total_bytes = p->bytes_read + p->init_bytes_done;
       }
@@ -1483,8 +1496,15 @@ HttpTunnel::finish_all_internal(HttpTunnelProducer *p, bool chain)
       //   is nothing to do.  Check to see if there is
       //   nothing to do and take the appripriate
       //   action
-      if (c->write_vio && c->write_vio->nbytes == c->write_vio->ndone) {
-        consumer_handler(VC_EVENT_WRITE_COMPLETE, c);
+      if (c->write_vio) {
+        // If the chunked logic is done, but we still have more bytes to process
+        // kick it now
+        if (done) {
+          consumer_handler(VC_EVENT_WRITE_READY, c);
+        }
+        if (c->alive && c->write_vio->nbytes == c->write_vio->ndone) {
+          consumer_handler(VC_EVENT_WRITE_COMPLETE, c);
+        }
       }
     }
 
