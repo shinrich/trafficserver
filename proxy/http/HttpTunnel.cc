@@ -902,34 +902,30 @@ HttpTunnel::producer_run(HttpTunnelProducer *p)
       // (incorrectly) to INT64_MAX.  It needs to be set to 0 to prevent triggering another read.
       producer_n = 0;
     }
-    // Adjust the amount of chunked data to write if
-    // the only data was in the initial read
-    if (p->alive) {
-      consumer_n = INT64_MAX;
-    } else {
-      if (p->do_chunked_passthru) {
-        consumer_n = p->bytes_read + p->init_bytes_done;
-      } else if (p->do_dechunking) {
-        consumer_n = p->chunked_handler.skip_bytes + p->chunked_handler.dechunked_size;
-      }
-    }
   }
   for (c = p->consumer_list.head; c; c = c->link.next) {
     int64_t c_write = consumer_n;
 
-    // INKqa05109 - if we don't know the length leave it at
-    //  INT64_MAX or else the cache may bounce the write
-    //  because it thinks the document is too big.  INT64_MAX
-    //  is a special case for the max document size code
-    //  in the cache
-    if (c_write != INT64_MAX) {
-      c_write -= c->skip_bytes;
-    }
-    // Fix for problems with not chunked content being chunked and
-    // not sending the entire data.  The content length grows when
-    // it is being chunked.
-    if (p->do_chunking == true) {
-      c_write = INT64_MAX;
+    if (!p->alive) {
+      // Adjust the amount of chunked data to write if the only data was in the initial read
+      // The amount to write in some cases is dependent on the type of the consumer, so this
+      // value must be computed for each consumer
+      c_write = final_consumer_bytes_to_write(p, c);
+    } else {
+      // INKqa05109 - if we don't know the length leave it at
+      //  INT64_MAX or else the cache may bounce the write
+      //  because it thinks the document is too big.  INT64_MAX
+      //  is a special case for the max document size code
+      //  in the cache
+      if (c_write != INT64_MAX) {
+        c_write -= c->skip_bytes;
+      }
+      // Fix for problems with not chunked content being chunked and
+      // not sending the entire data.  The content length grows when
+      // it is being chunked.
+      if (p->do_chunking == true) {
+        c_write = INT64_MAX;
+      }
     }
 
     if (c_write == 0) {
@@ -1306,9 +1302,6 @@ HttpTunnel::consumer_handler(int event, HttpTunnelConsumer *c)
 
   switch (event) {
   case VC_EVENT_WRITE_READY:
-    if (c && c->write_vio) {
-      c->write_vio->reenable();
-    }
     this->consumer_reenable(c);
     break;
 
@@ -1422,7 +1415,49 @@ HttpTunnel::chain_abort_all(HttpTunnelProducer *p)
   }
 }
 
-// void HttpTunnel::chain_finish_internal(HttpTunnelProducer* p)
+//
+// Determine the number of bytes a consumer should read from a producer
+//
+int64_t
+HttpTunnel::final_consumer_bytes_to_write(HttpTunnelProducer *p, HttpTunnelConsumer *c)
+{
+  int64_t total_bytes = 0;
+  int64_t consumer_n  = 0;
+  if (p->alive) {
+    consumer_n = INT64_MAX;
+  } else {
+    TunnelChunkingAction_t action = p->chunking_action;
+    if (c->alive) {
+      if (c->vc_type == HT_CACHE_WRITE) {
+        switch (action) {
+        case TCA_CHUNK_CONTENT:
+        case TCA_PASSTHRU_DECHUNKED_CONTENT:
+          total_bytes = p->bytes_read + p->init_bytes_done;
+          break;
+        case TCA_DECHUNK_CONTENT:
+        case TCA_PASSTHRU_CHUNKED_CONTENT:
+          total_bytes = p->chunked_handler.skip_bytes + p->chunked_handler.dechunked_size;
+          break;
+        default:
+          break;
+        }
+      } else if (action == TCA_CHUNK_CONTENT) {
+        total_bytes = p->chunked_handler.skip_bytes + p->chunked_handler.chunked_size;
+      } else if (action == TCA_DECHUNK_CONTENT) {
+        total_bytes = p->chunked_handler.skip_bytes + p->chunked_handler.dechunked_size;
+      } else if (action == TCA_PASSTHRU_CHUNKED_CONTENT) {
+        total_bytes = p->bytes_read + p->init_bytes_done;
+      } else {
+        total_bytes = p->bytes_read + p->init_bytes_done;
+      }
+      consumer_n = total_bytes - c->skip_bytes;
+    }
+  }
+  return consumer_n;
+}
+
+//
+// void HttpTunnel::finish_all_internal(HttpTunnelProducer* p)
 //
 //    Internal function for finishing all consumers.  Takes
 //       chain argument about where to finish just immediate
@@ -1435,51 +1470,23 @@ HttpTunnel::finish_all_internal(HttpTunnelProducer *p, bool chain)
   HttpTunnelConsumer *c         = p->consumer_list.head;
   int64_t total_bytes           = 0;
   TunnelChunkingAction_t action = p->chunking_action;
-  bool done                     = false;
+
+  if (action == TCA_PASSTHRU_CHUNKED_CONTENT) {
+    // if the only chunked data was in the initial read, make sure we don't consume too much
+    if (p->bytes_read == 0) {
+      int num_read = p->buffer_start->read_avail() - p->chunked_handler.chunked_reader->read_avail();
+      if (num_read < p->init_bytes_done) {
+        p->init_bytes_done = num_read;
+      }
+    }
+  }
 
   while (c) {
     if (c->alive) {
-      if (c->vc_type == HT_CACHE_WRITE) {
-        switch (action) {
-        case TCA_CHUNK_CONTENT:
-        case TCA_PASSTHRU_DECHUNKED_CONTENT:
-          total_bytes = p->bytes_read + p->init_bytes_done;
-          break;
-        case TCA_DECHUNK_CONTENT:
-        case TCA_PASSTHRU_CHUNKED_CONTENT:
-          total_bytes = p->chunked_handler.skip_bytes + p->chunked_handler.dechunked_size;
-          if (p->chunked_handler.state == ChunkedHandler::CHUNK_READ_DONE) {
-            done = true;
-          }
-          break;
-        default:
-          break;
-        }
-      } else if (action == TCA_CHUNK_CONTENT) {
-        total_bytes = p->chunked_handler.skip_bytes + p->chunked_handler.chunked_size;
-      } else if (action == TCA_DECHUNK_CONTENT) {
-        total_bytes = p->chunked_handler.skip_bytes + p->chunked_handler.dechunked_size;
-        if (p->chunked_handler.state == ChunkedHandler::CHUNK_READ_DONE) {
-          done = true;
-        }
-      } else if (action == TCA_PASSTHRU_CHUNKED_CONTENT) {
-        // if the only chunked data was in the initial read, make sure we don't consume too much
-        if (p->bytes_read == 0) {
-          int num_read = p->buffer_start->read_avail() - p->chunked_handler.chunked_reader->read_avail();
-          if (num_read < p->init_bytes_done) {
-            p->init_bytes_done = num_read;
-          }
-        }
-        total_bytes = p->bytes_read + p->init_bytes_done;
-        if (p->chunked_handler.state == ChunkedHandler::CHUNK_READ_DONE) {
-          done = true;
-        }
-      } else {
-        total_bytes = p->bytes_read + p->init_bytes_done;
-      }
-
       if (c->write_vio) {
-        c->write_vio->nbytes = total_bytes - c->skip_bytes;
+        // Adjust the number of bytes to write in the case of
+        // a completed unlimited producer
+        c->write_vio->nbytes = final_consumer_bytes_to_write(p, c);
         ink_assert(c->write_vio->nbytes >= 0);
 
         if (c->write_vio->nbytes < 0) {
@@ -1496,15 +1503,8 @@ HttpTunnel::finish_all_internal(HttpTunnelProducer *p, bool chain)
       //   is nothing to do.  Check to see if there is
       //   nothing to do and take the appripriate
       //   action
-      if (c->write_vio) {
-        // If the chunked logic is done, but we still have more bytes to process
-        // kick it now
-        if (done) {
-          consumer_handler(VC_EVENT_WRITE_READY, c);
-        }
-        if (c->alive && c->write_vio->nbytes == c->write_vio->ndone) {
-          consumer_handler(VC_EVENT_WRITE_COMPLETE, c);
-        }
+      if (c->write_vio && c->alive && c->write_vio->nbytes == c->write_vio->ndone) {
+        consumer_handler(VC_EVENT_WRITE_COMPLETE, c);
       }
     }
 
