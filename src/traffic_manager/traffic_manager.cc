@@ -81,14 +81,14 @@ extern "C" int getpwnam_r(const char *name, struct passwd *result, char *buffer,
 
 static AppVersionInfo appVersionInfo; // Build info for this application
 
-static inkcoreapi DiagsConfig *diagsConfig;
-static char debug_tags[1024]  = "";
-static char action_tags[1024] = "";
-static int proxy_off          = false;
-static int listen_off         = false;
-static char bind_stdout[512]  = "";
-static char bind_stderr[512]  = "";
-static const char *mgmt_path  = nullptr;
+static inkcoreapi DiagsConfig *diagsConfig = nullptr;
+static char debug_tags[1024]               = "";
+static char action_tags[1024]              = "";
+static int proxy_off                       = false;
+static int listen_off                      = false;
+static char bind_stdout[512]               = "";
+static char bind_stderr[512]               = "";
+static const char *mgmt_path               = nullptr;
 
 // By default, set the current directory as base
 static const char *recs_conf = ts::filename::RECORDS;
@@ -107,6 +107,27 @@ static void SignalAlrmHandler(int sig);
 
 static std::atomic<int> sigHupNotifier;
 static void SigChldHandler(int sig);
+
+/** Reinitialize the logging mechanism based upon configuration. */
+static void
+reseatLogs()
+{
+  DiagsConfig *old_diagsConfig = diagsConfig;
+  diagsConfig                  = new DiagsConfig("Manager", DIAGS_LOG_FILENAME, debug_tags, action_tags, true);
+  diags                        = diagsConfig->diags;
+  RecSetDiags(diags);
+  diags->set_std_output(StdStream::STDOUT, bind_stdout);
+  diags->set_std_output(StdStream::STDERR, bind_stderr);
+
+  if (is_debug_tag_set("diags")) {
+    diags->dump();
+  }
+  diags->cleanup_func = mgmt_cleanup;
+  if (old_diagsConfig) {
+    delete (old_diagsConfig);
+    old_diagsConfig = nullptr;
+  }
+}
 
 static void
 rotateLogs()
@@ -587,21 +608,9 @@ main(int argc, const char **argv)
   RecLocalInitMessage();
   lmgmt->initAlarm();
 
-  if (diags) {
-    delete diagsConfig;
-  }
   // INKqa11968: need to set up callbacks and diags data structures
   // using configuration in records.config
-  diagsConfig = new DiagsConfig("Manager", DIAGS_LOG_FILENAME, debug_tags, action_tags, true);
-  diags       = diagsConfig->diags;
-  RecSetDiags(diags);
-  diags->set_std_output(StdStream::STDOUT, bind_stdout);
-  diags->set_std_output(StdStream::STDERR, bind_stderr);
-
-  if (is_debug_tag_set("diags")) {
-    diags->dump();
-  }
-  diags->cleanup_func = mgmt_cleanup;
+  reseatLogs();
 
   // Setup the exported manager version records.
   RecSetRecordString("proxy.node.version.manager.short", appVersionInfo.VersionStr, REC_SOURCE_DEFAULT);
@@ -902,6 +911,16 @@ SignalHandler(int sig)
 
   if (sig == SIGHUP) {
     sigHupNotifier = 1;
+    return;
+  }
+
+  if (sig == SIGUSR2) {
+    fprintf(stderr, "[TrafficManager] ==> received SIGUSR2, rotating the logs.\n");
+    mgmt_log("[TrafficManager] ==> received SIGUSR2, rotating the logs.\n");
+    if (lmgmt && lmgmt->watched_process_pid != -1) {
+      kill(lmgmt->watched_process_pid, sig);
+    }
+    reseatLogs();
     return;
   }
 

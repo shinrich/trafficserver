@@ -124,6 +124,7 @@ extern "C" int plock(int);
 
 static const long MAX_LOGIN = ink_login_name_max();
 
+static void reseatLogs();
 static void mgmt_restart_shutdown_callback(ts::MemSpan<void>);
 static void mgmt_drain_callback(ts::MemSpan<void>);
 static void mgmt_storage_device_cmd_callback(int cmd, std::string_view const &arg);
@@ -280,10 +281,10 @@ public:
       signal_received[SIGUSR2] = false;
 
       Debug("log", "received SIGUSR2, reloading traffic.out");
-
-      // reload output logfile (file is usually called traffic.out)
-      diags->set_std_output(StdStream::STDOUT, bind_stdout);
-      diags->set_std_output(StdStream::STDERR, bind_stderr);
+      // Reload the output logfile (file is usually called traffic.out) and diags.log.
+      reseatLogs();
+      // Reload any of the other moved log files (such as the ones in logging.yaml).
+      Log::reopen_moved_log_files();
     }
 
     if (signal_received[SIGTERM] || signal_received[SIGINT]) {
@@ -451,6 +452,26 @@ private:
   int64_t _memory_limit = 0;
   struct rusage _usage;
 };
+
+/** Reinitialize the logging mechanism based upon configuration. */
+static void
+reseatLogs()
+{
+  DiagsConfig *old_diagsConfig = diagsConfig;
+  diagsConfig                  = new DiagsConfig("Server", DIAGS_LOG_FILENAME, error_tags, action_tags, true);
+  diags                        = diagsConfig->diags;
+  RecSetDiags(diags);
+  diags->set_std_output(StdStream::STDOUT, bind_stdout);
+  diags->set_std_output(StdStream::STDERR, bind_stderr);
+  if (is_debug_tag_set("diags")) {
+    diags->dump();
+  }
+
+  if (old_diagsConfig) {
+    delete (old_diagsConfig);
+    old_diagsConfig = nullptr;
+  }
+}
 
 void
 set_debug_ip(const char *ip_string)
@@ -1823,20 +1844,7 @@ main(int /* argc ATS_UNUSED */, const char **argv)
   main_thread->set_specific();
 
   // Re-initialize diagsConfig based on records.config configuration
-  DiagsConfig *old_log = diagsConfig;
-  diagsConfig          = new DiagsConfig("Server", DIAGS_LOG_FILENAME, error_tags, action_tags, true);
-  diags                = diagsConfig->diags;
-  RecSetDiags(diags);
-  diags->set_std_output(StdStream::STDOUT, bind_stdout);
-  diags->set_std_output(StdStream::STDERR, bind_stderr);
-  if (is_debug_tag_set("diags")) {
-    diags->dump();
-  }
-
-  if (old_log) {
-    delete (old_log);
-    old_log = nullptr;
-  }
+  reseatLogs();
 
   DebugCapabilities("privileges"); // Can do this now, logging is up.
 
