@@ -80,6 +80,10 @@
     X, #X                       \
   }
 
+#ifndef ATS_UNUSED
+#define ATS_UNUSED __attribute__((unused))
+#endif
+
 /* for http config or cntl var */
 typedef struct {
   int nvar;
