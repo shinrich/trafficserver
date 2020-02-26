@@ -311,10 +311,7 @@ Http2Stream::do_io_write(Continuation *c, int64_t nbytes, IOBufferReader *abuffe
   write_vio.vc_server = this;
   write_vio.op        = VIO::WRITE;
   response_reader     = abuffer;
-
-  update_write_request(abuffer, nbytes, false);
-
-  return &write_vio;
+  return update_write_request(abuffer, nbytes, false) ? &write_vio : nullptr;
 }
 
 // Initiated from SM
@@ -524,12 +521,12 @@ Http2Stream::restart_sending()
   this->send_response_body(true);
 }
 
-void
+bool
 Http2Stream::update_write_request(IOBufferReader *buf_reader, int64_t write_len, bool call_update)
 {
-  if (!this->is_client_state_writeable() || closed || parent == nullptr || write_vio.mutex == nullptr ||
-      (buf_reader == nullptr && write_len == 0)) {
-    return;
+  bool retval = true;
+  if (!this->is_client_state_writeable() || closed || parent == nullptr || write_vio.mutex == nullptr) {
+    return retval;
   }
   if (this->get_thread() != this_ethread()) {
     SCOPED_MUTEX_LOCK(stream_lock, this->mutex, this_ethread());
@@ -537,7 +534,7 @@ Http2Stream::update_write_request(IOBufferReader *buf_reader, int64_t write_len,
       // Send to the right thread
       cross_thread_event = this->get_thread()->schedule_imm(this, VC_EVENT_WRITE_READY, nullptr);
     }
-    return;
+    return retval;
   }
   ink_release_assert(this->get_thread() == this_ethread());
   Http2ClientSession *parent = static_cast<Http2ClientSession *>(this->get_parent());
@@ -574,50 +571,41 @@ Http2Stream::update_write_request(IOBufferReader *buf_reader, int64_t write_len,
                    ", reader.read_avail=%" PRId64,
                    write_vio.nbytes, write_vio.ndone, write_vio.get_writer()->write_avail(), bytes_avail);
 
-  if (bytes_avail <= 0 && !is_done) {
-    return;
-  }
+  if (bytes_avail > 0 || is_done) {
+    // Process the new data
+    if (!this->response_header_done) {
+      // Still parsing the response_header
+      int bytes_used = 0;
+      int state      = this->response_header.parse_resp(&http_parser, this->response_reader, &bytes_used, false);
+      // HTTPHdr::parse_resp() consumed the response_reader in above
+      write_vio.ndone += this->response_header.length_get();
 
-  // Process the new data
-  if (!this->response_header_done) {
-    // Still parsing the response_header
-    int bytes_used = 0;
-    int state      = this->response_header.parse_resp(&http_parser, this->response_reader, &bytes_used, false);
-    // HTTPHdr::parse_resp() consumed the response_reader in above
-    write_vio.ndone += this->response_header.length_get();
+      switch (state) {
+      case PARSE_RESULT_DONE: {
+        this->response_header_done = true;
 
-    switch (state) {
-    case PARSE_RESULT_DONE: {
-      this->response_header_done = true;
-
-      {
-        SCOPED_MUTEX_LOCK(lock, parent->connection_state.mutex, this_ethread());
         // Send the response header back
         parent->connection_state.send_headers_frame(this);
-      }
 
-      // See if the response is chunked.  Set up the dechunking logic if it is
-      // Make sure to check if the chunk is complete and signal appropriately
-      this->response_initialize_data_handling(is_done);
-
-      // If there is additional data, send it along in a data frame.  Or if this was header only
-      // make sure to send the end of stream
-      if (this->response_is_data_available()) {
-        this->send_response_body(call_update);
+        // See if the response is chunked.  Set up the dechunking logic if it is
+        // Make sure to check if the chunk is complete and signal appropriately
+        if (this->response_initialize_data_handling()) {
+          this->send_response_body(call_update);
+        }
+        break;
       }
-      break;
+      case PARSE_RESULT_CONT:
+        // Let it ride for next time
+        break;
+      default:
+        break;
+      }
+    } else {
+      this->send_response_body(call_update);
     }
-    case PARSE_RESULT_CONT:
-      // Let it ride for next time
-      break;
-    default:
-      break;
-    }
-  } else {
-    this->send_response_body(call_update);
   }
 
-  return;
+  return retval;
 }
 
 void
