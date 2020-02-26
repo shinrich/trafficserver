@@ -554,7 +554,7 @@ Http2Stream::update_write_request(IOBufferReader *buf_reader, int64_t write_len,
   }
 
   if (this->response_get_data_reader() == nullptr) {
-    return;
+    return false;
   }
   int64_t bytes_avail = this->response_get_data_reader()->read_avail();
   if (write_vio.nbytes > 0 && write_vio.ntodo() > 0) {
@@ -572,6 +572,8 @@ Http2Stream::update_write_request(IOBufferReader *buf_reader, int64_t write_len,
                    write_vio.nbytes, write_vio.ndone, write_vio.get_writer()->write_avail(), bytes_avail);
 
   if (bytes_avail > 0 || is_done) {
+    bool stream_deleted = false;
+    int send_event = (write_vio.ntodo() == bytes_avail || is_done) ? VC_EVENT_WRITE_COMPLETE : VC_EVENT_WRITE_READY;
     // Process the new data
     if (!this->response_header_done) {
       // Still parsing the response_header
@@ -589,8 +591,29 @@ Http2Stream::update_write_request(IOBufferReader *buf_reader, int64_t write_len,
 
         // See if the response is chunked.  Set up the dechunking logic if it is
         // Make sure to check if the chunk is complete and signal appropriately
-        if (this->response_initialize_data_handling()) {
-          this->send_response_body(call_update);
+        this->response_initialize_data_handling(is_done);
+        if (is_done) {
+          send_event = VC_EVENT_WRITE_COMPLETE;
+        }
+      
+        // If there is additional data, send it along in a data frame.  Or if this was header only
+        // make sure to send the end of stream
+        if (this->response_is_data_available() || send_event == VC_EVENT_WRITE_COMPLETE) {
+          if (send_event != VC_EVENT_WRITE_COMPLETE) {
+            send_response_body(stream_deleted);
+            if (!stream_deleted) {
+              // As with update_read_request, should be safe to call handler directly here if
+              // call_update is true.  Commented out for now while tracking a performance regression
+              if (call_update) { // Coming from reenable.  Safe to call the handler directly
+                if (write_vio._cont && this->current_reader)
+                   write_vio._cont->handleEvent(send_event, &write_vio);
+              } else { // Called from do_io_write.  Might still be setting up state.  Send an event to let the dust settle
+                write_event = send_tracked_event(write_event, send_event, &write_vio);
+              }
+            }
+          } else {
+            send_response_body(stream_deleted);
+          }
         }
         break;
       }
