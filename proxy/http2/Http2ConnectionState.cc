@@ -875,6 +875,7 @@ rcv_continuation_frame(Http2ConnectionState &cstate, const Http2Frame &frame)
   // the recipient MUST respond with a connection error ([RFC 7540] Section
   // 5.4.1) of type PROTOCOL_ERROR.
   Http2Stream *stream = cstate.find_stream(stream_id);
+
   if (stream == nullptr) {
     if (cstate.is_valid_streamid(stream_id)) {
       return Http2Error(Http2ErrorClass::HTTP2_ERROR_CLASS_CONNECTION, Http2ErrorCode::HTTP2_ERROR_STREAM_CLOSED,
@@ -1205,7 +1206,7 @@ Http2ConnectionState::create_stream(Http2StreamId new_id, Http2Error &error)
     }
   }
 
-  Http2Stream *new_stream = THREAD_ALLOC_INIT(http2StreamAllocator, this_ethread());
+  Http2Stream *new_stream = new Http2Stream();
   new_stream->init(new_id, client_settings.get(HTTP2_SETTINGS_INITIAL_WINDOW_SIZE));
 
   ink_assert(nullptr != new_stream);
@@ -1234,6 +1235,9 @@ Http2ConnectionState::create_stream(Http2StreamId new_id, Http2Error &error)
   increment_stream_requests();
   ua_session->get_netvc()->add_to_active_queue();
 
+  // auto stream = new_stream;
+
+  ink_assert(new_stream->get_sm() == nullptr);
   return new_stream;
 }
 
@@ -1319,6 +1323,7 @@ bool
 Http2ConnectionState::delete_stream(Http2Stream *stream)
 {
   ink_assert(nullptr != stream);
+
   SCOPED_MUTEX_LOCK(lock, this->mutex, this_ethread());
 
   // If stream has already been removed from the list, just go on
@@ -1751,6 +1756,7 @@ Http2ConnectionState::send_push_promise_frame(Http2Stream *stream, URL &url, con
 
   Http2Error error(Http2ErrorClass::HTTP2_ERROR_CLASS_NONE);
   stream = this->create_stream(id, error);
+
   if (!stream) {
     h2_hdr.destroy();
     return false;

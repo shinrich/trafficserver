@@ -34,27 +34,25 @@ class ProxyTransaction : public VConnection
 {
 public:
   ProxyTransaction();
+  virtual ~ProxyTransaction();
 
   /// Virtual Methods
   //
   virtual void new_transaction(bool from_early_data = false);
   virtual void attach_server_session(Http1ServerSession *ssession, bool transaction_done = true);
   Action *adjust_thread(Continuation *cont, int event, void *data);
-  virtual void release(IOBufferReader *r);
   virtual void transaction_done() = 0;
-  virtual void destroy();
 
   /// Virtual Accessors
   //
   virtual void set_active_timeout(ink_hrtime timeout_in)     = 0;
   virtual void set_inactivity_timeout(ink_hrtime timeout_in) = 0;
   virtual void cancel_inactivity_timeout()                   = 0;
-  virtual int get_transaction_id() const                     = 0;
+  virtual int get_transaction_id() const;
   virtual int get_transaction_priority_weight() const;
   virtual int get_transaction_priority_dependence() const;
   virtual bool allow_half_open() const = 0;
   virtual void increment_txn_stat()    = 0;
-  virtual void decrement_txn_stat()    = 0;
 
   virtual NetVConnection *get_netvc() const;
   virtual bool is_first_transaction() const;
@@ -110,6 +108,7 @@ public:
   /// Variables
   //
   HttpSessionAccept::Options upstream_outbound_options; // overwritable copy of options
+  int _id = 0;                                          // TODO: init in constructor
 
 protected:
   ProxySession *_proxy_ssn = nullptr;
@@ -212,4 +211,10 @@ inline const char *
 ProxyTransaction::protocol_contains(std::string_view tag_prefix) const
 {
   return _proxy_ssn ? _proxy_ssn->protocol_contains(tag_prefix) : nullptr;
+}
+
+inline int
+ProxyTransaction::get_transaction_id() const
+{
+  return _id;
 }

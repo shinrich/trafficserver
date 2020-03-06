@@ -37,7 +37,7 @@
 // Emit a debug message conditional on whether this particular client session
 // has debugging enabled. This should only be called from within a client session
 // member function.
-#define SsnDebug(ssn, tag, ...) SpecificDebug((ssn)->debug(), tag, __VA_ARGS__)
+#define SsnDebug(ssn, tag, ...) SpecificDebug(((ssn != nullptr) ? (ssn)->debug() : false), tag, __VA_ARGS__)
 
 class ProxyTransaction;
 class Http1ServerSession; // TODO: refactor
@@ -143,6 +143,7 @@ public:
   bool is_active() const;
   bool is_draining() const;
   bool is_client_closed() const;
+  bool is_client() const;
 
   int64_t get_id() const;
   TSHttpHookID get_hookid() const;
@@ -172,8 +173,9 @@ protected:
   // that we can make the best use of internal alignment padding.
 
   // Session specific debug flag.
-  bool debug_on   = false;
-  bool in_destroy = false;
+  bool debug_on     = false;
+  bool in_destroy   = false;
+  bool _is_outbound = false;
 
   int64_t _id           = 0;
   Event *schedule_event = nullptr;
@@ -253,6 +255,12 @@ inline bool
 ProxySession::is_client_closed() const
 {
   return get_netvc() == nullptr;
+}
+
+inline bool
+ProxySession::is_client() const
+{
+  return !_is_outbound;
 }
 
 inline TSHttpHookID

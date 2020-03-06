@@ -35,6 +35,11 @@
 #include "HttpUpdateSM.h"
 #include "HttpDebugNames.h"
 
+#define SMTrace(fmt, ...)                                                                                                         \
+  Debug("TxnTrace", "sm#%li [id#%li.%i] " fmt, sm_id,                                                                             \
+        (ua_txn && ua_txn->get_proxy_ssn()) ? ua_txn->get_proxy_ssn()->get_id() : -1, ua_txn ? ua_txn->get_transaction_id() : -1, \
+        ##__VA_ARGS__)
+
 ClassAllocator<HttpUpdateSM> httpUpdateSMAllocator("httpUpdateSMAllocator");
 
 #define STATE_ENTER(state_name, event, vio)                                                             \
@@ -145,6 +150,7 @@ HttpUpdateSM::handle_api_return()
         //  copy is done - bail out
         ink_assert(transform_info.entry->in_tunnel == false);
         terminate_sm = true;
+        SMTrace("terminate_sm = true;");
       }
     }
     break;
@@ -170,6 +176,7 @@ HttpUpdateSM::handle_api_return()
 
     perform_cache_write_action();
     terminate_sm = true;
+    SMTrace("terminate_sm = true;");
     return;
   }
 
@@ -191,6 +198,7 @@ HttpUpdateSM::set_next_state()
     }
 
     terminate_sm = true;
+    SMTrace("terminate_sm = true;");
     ink_assert(tunnel.is_tunnel_active() == false);
     return;
   }

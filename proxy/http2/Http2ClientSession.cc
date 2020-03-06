@@ -81,6 +81,12 @@ Http2ClientSession::destroy()
 void
 Http2ClientSession::free()
 {
+  ink_assert(!schedule_event); // why are we freeing when stuff is still happening?
+
+  // Note that we are ready to be cleaned up
+  // One of the event handlers will retry if we fail this time.
+  kill_me = true;
+
   if (this->_reenable_event) {
     this->_reenable_event->cancel();
     this->_reenable_event = nullptr;
@@ -91,11 +97,12 @@ Http2ClientSession::free()
     client_vc = nullptr;
   }
 
+  // Don't clean up yet if we still have a hook outstanding
+  if (schedule_event)
+    return;
+
   // Make sure the we are at the bottom of the stack
   if (connection_state.is_recursing() || this->recursion != 0) {
-    // Note that we are ready to be cleaned up
-    // One of the event handlers will catch it
-    kill_me = true;
     return;
   }
 
@@ -373,6 +380,7 @@ Http2ClientSession::main_event_handler(int event, void *edata)
   case VC_EVENT_INACTIVITY_TIMEOUT:
   case VC_EVENT_ERROR:
   case VC_EVENT_EOS:
+    REMEMBER(event, this->recursion)
     this->set_dying_event(event);
     this->do_io_close();
     if (client_vc != nullptr) {
@@ -448,6 +456,7 @@ Http2ClientSession::state_read_connection_preface(int event, void *edata)
 
     if (memcmp(HTTP2_CONNECTION_PREFACE, buf, nbytes) != 0) {
       Http2SsnDebug("invalid connection preface");
+      REMEMBER(event, this->recursion)
       this->do_io_close();
       return 0;
     }
@@ -468,6 +477,7 @@ Http2ClientSession::state_read_connection_preface(int event, void *edata)
 
     // If we have unconsumed data, start tranferring frames now.
     if (this->_reader->is_read_avail_more_than(0)) {
+      REMEMBER(event, this->recursion)
       return this->handleEvent(VC_EVENT_READ_READY, vio);
     }
   }
@@ -506,6 +516,7 @@ Http2ClientSession::do_start_frame_read(Http2ErrorCode &ret_error)
   this->cur_frame_from_early_data = false;
   if (!http2_parse_frame_header(make_iovec(buf), this->current_hdr)) {
     Http2SsnDebug("frame header parse failure");
+    REMEMBER(NO_EVENT, this->recursion)
     this->do_io_close();
     return -1;
   }
@@ -620,6 +631,7 @@ Http2ClientSession::state_process_frame_read(int event, VIO *vio, bool inside_fr
       if (err > Http2ErrorCode::HTTP2_ERROR_NO_ERROR) {
         SCOPED_MUTEX_LOCK(lock, this->connection_state.mutex, this_ethread());
         if (!this->connection_state.is_state_closed()) {
+          REMEMBER(NO_EVENT, this->recursion)
           this->connection_state.send_goaway_frame(this->connection_state.get_latest_stream_id_in(), err);
           this->set_half_close_local_flag(true);
           this->do_io_close();

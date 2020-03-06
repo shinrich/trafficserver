@@ -25,40 +25,26 @@
 #include "Http1ClientSession.h"
 #include "HttpSM.h"
 
-void
-Http1Transaction::release(IOBufferReader *r)
-{
-  // Must set this inactivity count here rather than in the session because the state machine
-  // is not available then
-  MgmtInt ka_in = _sm->t_state.txn_conf->keep_alive_no_activity_timeout_in;
-  set_inactivity_timeout(HRTIME_SECONDS(ka_in));
-
-  _proxy_ssn->clear_session_active();
-  _proxy_ssn->ssn_last_txn_time = Thread::get_hrtime();
-
-  // Make sure that the state machine is returning
-  //  correct buffer reader
-  ink_assert(r == _reader);
-  if (r != _reader) {
-    this->do_io_close();
-  } else {
-    super_type::release(r);
-  }
-}
-
-void
-Http1Transaction::destroy() // todo make ~Http1Transaction()
-{
-  this->super_type::destroy();
-  delete this; // TODO: refactor into ~Http1Transaction()
-}
+Http1Transaction::~Http1Transaction() {}
 
 void
 Http1Transaction::transaction_done()
 {
   if (_proxy_ssn) {
-    static_cast<Http1ClientSession *>(_proxy_ssn)->release_transaction();
+    // Must set this inactivity count here rather than in the session because the state machine
+    // is not available then
+
+    if (_proxy_ssn->is_client()) {
+      HTTP_DECREMENT_DYN_STAT(http_current_client_transactions_stat);
+    } else {
+      HTTP_DECREMENT_DYN_STAT(http_current_server_transactions_stat);
+    }
+    _proxy_ssn->release(this);
+
+    _proxy_ssn = nullptr;
   }
+
+  delete this;
 }
 
 void
@@ -89,17 +75,6 @@ Http1Transaction::increment_txn_stat()
   }
 }
 
-void
-Http1Transaction::decrement_txn_stat()
-{
-  ink_assert(_proxy_ssn);
-  if (_proxy_ssn->get_netvc()->get_context() == NET_VCONNECTION_IN) {
-    HTTP_DECREMENT_DYN_STAT(http_current_client_transactions_stat);
-  } else {
-    HTTP_DECREMENT_DYN_STAT(http_current_server_transactions_stat);
-  }
-}
-
 // Implement VConnection interface.
 VIO *
 Http1Transaction::do_io_read(Continuation *c, int64_t nbytes, MIOBuffer *buf)
@@ -116,7 +91,6 @@ void
 Http1Transaction::do_io_close(int lerrno)
 {
   _proxy_ssn->do_io_close(lerrno);
-  // this->destroy(); Parent owns this data structure.  No need for separate destroy.
 }
 
 void

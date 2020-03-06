@@ -65,6 +65,11 @@
     }                                       \
   }
 
+#define SMTrace(fmt, ...)                                                                                                         \
+  Debug("TxnTrace", "sm#%li [id#%li.%i] " fmt, sm_id,                                                                             \
+        (ua_txn && ua_txn->get_proxy_ssn()) ? ua_txn->get_proxy_ssn()->get_id() : -1, ua_txn ? ua_txn->get_transaction_id() : -1, \
+        ##__VA_ARGS__)
+
 /*
  * Comment this off if you don't
  * want httpSM to use new_empty_MIOBuffer(..) call
@@ -396,6 +401,7 @@ HttpSM::set_ua_half_close_flag()
 inline int
 HttpSM::do_api_callout()
 {
+  SMTrace("");
   if (hooks_set) {
     return do_api_callout_internal();
   } else {
@@ -495,9 +501,11 @@ HttpSM::attach_client_session(ProxyTransaction *client_vc, IOBufferReader *buffe
 
   NetVConnection *netvc = client_vc->get_netvc();
   if (!netvc) {
+    SMTrace("no netvc?");
     return;
   }
   ua_txn = client_vc;
+  SMTrace("");
 
   // It seems to be possible that the ua_txn pointer will go stale before log entries for this HTTP transaction are
   // generated.  Therefore, collect information that may be needed for logging from the ua_txn object at this point.
@@ -603,6 +611,8 @@ HttpSM::attach_client_session(ProxyTransaction *client_vc, IOBufferReader *buffe
     --reentrancy_count;
     ink_assert(reentrancy_count >= 0);
   }
+
+  SMTrace("<end>");
 }
 
 void
@@ -659,6 +669,7 @@ int
 HttpSM::state_read_client_request_header(int event, void *data)
 {
   STATE_ENTER(&HttpSM::state_read_client_request_header, event);
+  SMTrace("%s", get_vc_event_name(event));
 
   ink_assert(ua_entry->read_vio == (VIO *)data);
   ink_assert(server_entry == nullptr);
@@ -693,6 +704,7 @@ HttpSM::state_read_client_request_header(int event, void *data)
     ua_entry = nullptr;
     set_ua_abort(HttpTransact::ABORTED, event);
     terminate_sm = true;
+    SMTrace("terminate_sm = true;");
     return 0;
   }
 
@@ -926,6 +938,7 @@ int
 HttpSM::state_watch_for_client_abort(int event, void *data)
 {
   STATE_ENTER(&HttpSM::state_watch_for_client_abort, event);
+  SMTrace("%s", get_vc_event_name(event));
 
   ink_assert(ua_entry->read_vio == (VIO *)data || ua_entry->write_vio == (VIO *)data);
   ink_assert(ua_entry->vc == ua_txn);
@@ -946,11 +959,13 @@ HttpSM::state_watch_for_client_abort(int event, void *data)
       ua_entry->eos = true;
     } else {
       ua_txn->do_io_close();
+      ua_txn           = nullptr;
       ua_buffer_reader = nullptr;
       vc_table.cleanup_entry(ua_entry);
       ua_entry = nullptr;
       tunnel.kill_tunnel();
-      terminate_sm = true; // Just die already, the requester is gone
+      terminate_sm = true;
+      SMTrace("terminate_sm = true;"); // Just die already, the requester is gone
       set_ua_abort(HttpTransact::ABORTED, event);
     }
     break;
@@ -984,6 +999,7 @@ HttpSM::state_watch_for_client_abort(int event, void *data)
     set_ua_abort(HttpTransact::ABORTED, event);
 
     terminate_sm = true;
+    SMTrace("terminate_sm = true;");
     break;
   }
   case VC_EVENT_READ_COMPLETE:
@@ -1286,6 +1302,7 @@ HttpSM::state_common_wait_for_transform_read(HttpTransformInfo *t_info, HttpSMHa
 {
   STATE_ENTER(&HttpSM::state_common_wait_for_transform_read, event);
   HttpTunnelConsumer *c = nullptr;
+  SMTrace("%s", get_vc_event_name(event));
 
   switch (event) {
   case HTTP_TUNNEL_EVENT_DONE:
@@ -1352,6 +1369,7 @@ HttpSM::state_common_wait_for_transform_read(HttpTransformInfo *t_info, HttpSMHa
          origin and (2) there's no user agent connection to which to send the error response.
       */
       terminate_sm = true;
+      SMTrace("terminate_sm = true;");
     } else {
       tunnel.kill_tunnel();
       call_transact_and_set_next_state(HttpTransact::HandleApiErrorJump);
@@ -1424,7 +1442,7 @@ HttpSM::state_api_callout(int event, void *data)
   if (event != EVENT_NONE) {
     STATE_ENTER(&HttpSM::state_api_callout, event);
   }
-
+  SMTrace("%s", HttpDebugNames::get_event_name(event));
   if (api_timer < 0) {
     // This happens when either the plugin lock was missed and the hook rescheduled or
     // the transaction got an event without the plugin calling TsHttpTxnReenable().
@@ -1498,6 +1516,7 @@ plugins required to work with sni_routing.
 
       SMDebug("http", "[%" PRId64 "] calling plugin on hook %s at hook %p", sm_id, HttpDebugNames::get_api_hook_name(cur_hook_id),
               cur_hook);
+      SMTrace("hook=%s", HttpDebugNames::get_api_hook_name(cur_hook_id));
 
       APIHook const *hook = cur_hook;
       // Need to delay the next hook update until after this hook is called to handle dynamic
@@ -1569,8 +1588,10 @@ plugins required to work with sni_routing.
     break;
 
   default:
+    Debug("SsnTrace", "%s sm_id#%li can't handle %s", __FUNCTION__, sm_id, HttpDebugNames::get_event_name(event));
     ink_assert(false);
     terminate_sm = true;
+    SMTrace("terminate_sm = true;");
     return 0;
   }
 
@@ -2625,6 +2646,7 @@ HttpSM::main_handler(int event, void *data)
 
   HttpSMHandler jump_point = nullptr;
   ink_assert(reentrancy_count >= 0);
+  ink_assert(terminate_sm == false);
   reentrancy_count++;
 
   // Don't use the state enter macro since it uses history
@@ -2704,6 +2726,7 @@ HttpSM::tunnel_handler_post_or_put(HttpTunnelProducer *p)
     // UA quit - shutdown the SM
     ink_assert(p->read_success == false);
     terminate_sm = true;
+    SMTrace("terminate_sm = true;");
     break;
   case HTTP_SM_POST_SUCCESS:
     // The post succeeded
@@ -2839,7 +2862,6 @@ int
 HttpSM::tunnel_handler_100_continue(int event, void *data)
 {
   STATE_ENTER(&HttpSM::tunnel_handler_100_continue, event);
-
   ink_assert(event == HTTP_TUNNEL_EVENT_DONE);
   ink_assert(data == &tunnel);
 
@@ -2875,6 +2897,7 @@ HttpSM::tunnel_handler_100_continue(int event, void *data)
     }
   } else {
     terminate_sm = true;
+    SMTrace("terminate_sm = true;");
   }
 
   return 0;
@@ -2883,6 +2906,7 @@ HttpSM::tunnel_handler_100_continue(int event, void *data)
 int
 HttpSM::tunnel_handler_push(int event, void *data)
 {
+  SMTrace("%s", get_vc_event_name(event));
   STATE_ENTER(&HttpSM::tunnel_handler_push, event);
 
   ink_assert(event == HTTP_TUNNEL_EVENT_DONE);
@@ -2895,6 +2919,7 @@ HttpSM::tunnel_handler_push(int event, void *data)
     // Client failed to send the body, it's gone.  Kill the
     // state machine
     terminate_sm = true;
+    SMTrace("terminate_sm = true;");
     return 0;
   }
 
@@ -2925,6 +2950,7 @@ HttpSM::tunnel_handler(int event, void *data)
   ink_assert(event == HTTP_TUNNEL_EVENT_DONE);
   // The tunnel calls this when it is done
   terminate_sm = true;
+  SMTrace("terminate_sm = true;");
 
   if (unlikely(t_state.is_websocket)) {
     HTTP_DECREMENT_DYN_STAT(http_websocket_current_active_client_connections_stat);
@@ -3233,6 +3259,7 @@ HttpSM::is_bg_fill_necessary(HttpTunnelConsumer *c)
 int
 HttpSM::tunnel_handler_ua(int event, HttpTunnelConsumer *c)
 {
+  SMTrace("event=%s", get_vc_event_name(event));
   bool close_connection     = true;
   HttpTunnelProducer *p     = nullptr;
   HttpTunnelConsumer *selfc = nullptr;
@@ -3351,9 +3378,8 @@ HttpSM::tunnel_handler_ua(int event, HttpTunnelConsumer *c)
     ua_txn->do_io_close();
   } else {
     ink_assert(ua_buffer_reader != nullptr);
-    ua_txn->release(ua_buffer_reader);
+    SMTrace("did not close!");
     ua_buffer_reader = nullptr;
-    // ua_txn       = NULL;
   }
 
   return 0;
@@ -5177,6 +5203,7 @@ HttpSM::do_http_server_open(bool raw)
 int
 HttpSM::do_api_callout_internal()
 {
+  SMTrace("%s", HttpDebugNames::get_action_name(t_state.api_next_action));
   switch (t_state.api_next_action) {
   case HttpTransact::SM_ACTION_API_SM_START:
     cur_hook_id = TS_HTTP_TXN_START_HOOK;
@@ -6721,6 +6748,7 @@ HttpSM::setup_push_transfer_to_cache()
       // Client failed to send the body, it's gone.  Kill the
       // state machine
       terminate_sm = true;
+      SMTrace("terminate_sm = true;");
       return nullptr;
     }
   }
@@ -6860,6 +6888,7 @@ HttpSM::plugin_agents_cleanup()
 void
 HttpSM::kill_this()
 {
+  SMTrace("");
   ink_release_assert(reentrancy_count == 1);
   this->postbuf_clear();
   enable_redirection = false;
@@ -6966,6 +6995,7 @@ HttpSM::kill_this()
 
     if (ua_txn) {
       ua_txn->transaction_done();
+      ua_txn = nullptr;
     }
 
     // In the async state, the plugin could have been
@@ -6995,7 +7025,7 @@ HttpSM::kill_this()
 #endif
 
     SMDebug("http", "[%" PRId64 "] deallocating sm", sm_id);
-    destroy();
+    this->destroy();
   }
 }
 
@@ -7393,6 +7423,7 @@ HttpSM::set_next_state()
         ua_txn->cancel_inactivity_timeout();
       } else if (!ua_txn) {
         terminate_sm = true;
+        SMTrace("terminate_sm = true;");
         return; // Give up if there is no session
       }
     }
@@ -7438,6 +7469,7 @@ HttpSM::set_next_state()
         ua_txn->cancel_inactivity_timeout();
       } else if (!ua_txn) {
         terminate_sm = true;
+        SMTrace("terminate_sm = true;");
         return; // Give up if there is no session
       }
     }

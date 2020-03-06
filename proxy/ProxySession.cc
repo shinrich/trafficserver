@@ -168,7 +168,7 @@ ProxySession::handle_api_return(int event)
     }
     break;
   case TS_HTTP_SSN_CLOSE_HOOK: {
-    free(); // You can now clean things up
+    this->free(); // You can now clean things up
     break;
   }
   default:
