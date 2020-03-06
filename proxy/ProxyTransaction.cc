@@ -40,7 +40,7 @@ ProxyTransaction::new_transaction(bool from_early_data)
   ink_release_assert(_proxy_ssn != nullptr);
   _sm = HttpSM::allocate();
   _sm->init(from_early_data);
-  HttpTxnDebug("[%" PRId64 "] Starting transaction %d using sm [%" PRId64 "]", _proxy_ssn->connection_id(),
+  HttpTxnDebug("[%" PRId64 "] Starting transaction %d using sm [%" PRId64 "]", _proxy_ssn->get_id(),
                _proxy_ssn->get_transact_count(), _sm->sm_id);
 
   PluginIdentity *pi = dynamic_cast<PluginIdentity *>(this->get_netvc());
@@ -49,20 +49,19 @@ ProxyTransaction::new_transaction(bool from_early_data)
     _sm->plugin_id  = pi->getPluginId();
   }
 
-  this->increment_client_transactions_stat();
+  this->increment_txn_stat();
   _sm->attach_client_session(this, _reader);
 }
 
 void
 ProxyTransaction::release(IOBufferReader *r)
 {
-  HttpTxnDebug("[%" PRId64 "] session released by sm [%" PRId64 "]", _proxy_ssn ? _proxy_ssn->connection_id() : 0,
-               _sm ? _sm->sm_id : 0);
-
-  this->decrement_client_transactions_stat();
+  HttpTxnDebug("[%" PRId64 "] session released by sm [%" PRId64 "]", _proxy_ssn ? _proxy_ssn->get_id() : 0, _sm ? _sm->sm_id : 0);
 
   // Pass along the release to the session
   if (_proxy_ssn) {
+    // TODO: why would we not have a session here?
+    this->decrement_txn_stat();
     _proxy_ssn->release(this);
   }
 }

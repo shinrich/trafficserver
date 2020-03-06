@@ -39,10 +39,10 @@
   }
 
 #define Http2ConDebug(ua_session, fmt, ...) \
-  SsnDebug(ua_session, "http2_con", "[%" PRId64 "] " fmt, ua_session->connection_id(), ##__VA_ARGS__);
+  SsnDebug(ua_session, "http2_con", "[%" PRId64 "] " fmt, ua_session->get_id(), ##__VA_ARGS__);
 
 #define Http2StreamDebug(ua_session, stream_id, fmt, ...) \
-  SsnDebug(ua_session, "http2_con", "[%" PRId64 "] [%u] " fmt, ua_session->connection_id(), stream_id, ##__VA_ARGS__);
+  SsnDebug(ua_session, "http2_con", "[%" PRId64 "] [%u] " fmt, ua_session->get_id(), stream_id, ##__VA_ARGS__);
 
 using http2_frame_dispatch = Http2Error (*)(Http2ConnectionState &, const Http2Frame &);
 
@@ -85,7 +85,7 @@ rcv_data_frame(Http2ConnectionState &cstate, const Http2Frame &frame)
   Http2StreamDebug(cstate.ua_session, id, "Received DATA frame");
 
   if (cstate.get_zombie_event()) {
-    Warning("Data frame for zombied session %" PRId64, cstate.ua_session->connection_id());
+    Warning("Data frame for zombied session %" PRId64, cstate.ua_session->get_id());
   }
 
   // If a DATA frame is received whose stream identifier field is 0x0, the
@@ -410,7 +410,7 @@ rcv_priority_frame(Http2ConnectionState &cstate, const Http2Frame &frame)
   Http2StreamDebug(cstate.ua_session, stream_id, "Received PRIORITY frame");
 
   if (cstate.get_zombie_event()) {
-    Warning("Priority frame for zombied session %" PRId64, cstate.ua_session->connection_id());
+    Warning("Priority frame for zombied session %" PRId64, cstate.ua_session->get_id());
   }
 
   // If a PRIORITY frame is received with a stream identifier of 0x0, the
@@ -471,7 +471,7 @@ rcv_priority_frame(Http2ConnectionState &cstate, const Http2Frame &frame)
     if (is_debug_tag_set("http2_priority")) {
       std::stringstream output;
       cstate.dependency_tree->dump_tree(output);
-      Debug("http2_priority", "[%" PRId64 "] reprioritize %s", cstate.ua_session->connection_id(), output.str().c_str());
+      Debug("http2_priority", "[%" PRId64 "] reprioritize %s", cstate.ua_session->get_id(), output.str().c_str());
     }
   } else {
     // PRIORITY frame is received before HEADERS frame.
@@ -557,7 +557,7 @@ rcv_settings_frame(Http2ConnectionState &cstate, const Http2Frame &frame)
   Http2StreamDebug(cstate.ua_session, stream_id, "Received SETTINGS frame");
 
   if (cstate.get_zombie_event()) {
-    Warning("Setting frame for zombied session %" PRId64, cstate.ua_session->connection_id());
+    Warning("Setting frame for zombied session %" PRId64, cstate.ua_session->get_id());
   }
 
   // Update SETTIGNS frame count per minute
@@ -1067,7 +1067,7 @@ Http2ConnectionState::main_event_handler(int event, void *edata)
       if (error.cls == Http2ErrorClass::HTTP2_ERROR_CLASS_CONNECTION) {
         if (error.msg) {
           Error("HTTP/2 connection error code=0x%02x client_ip=%s session_id=%" PRId64 " stream_id=%u %s",
-                static_cast<int>(error.code), client_ip, ua_session->connection_id(), stream_id, error.msg);
+                static_cast<int>(error.code), client_ip, ua_session->get_id(), stream_id, error.msg);
         }
         this->send_goaway_frame(this->latest_streamid_in, error.code);
         this->ua_session->set_half_close_local_flag(true);
@@ -1080,7 +1080,7 @@ Http2ConnectionState::main_event_handler(int event, void *edata)
       } else if (error.cls == Http2ErrorClass::HTTP2_ERROR_CLASS_STREAM) {
         if (error.msg) {
           Error("HTTP/2 stream error code=0x%02x client_ip=%s session_id=%" PRId64 " stream_id=%u %s", static_cast<int>(error.code),
-                client_ip, ua_session->connection_id(), stream_id, error.msg);
+                client_ip, ua_session->get_id(), stream_id, error.msg);
         }
         this->send_rst_stream_frame(stream_id, error.code);
       }
@@ -1338,7 +1338,7 @@ Http2ConnectionState::delete_stream(Http2Stream *stream)
       if (is_debug_tag_set("http2_priority")) {
         std::stringstream output;
         dependency_tree->dump_tree(output);
-        Debug("http2_priority", "[%" PRId64 "] %s", ua_session->connection_id(), output.str().c_str());
+        Debug("http2_priority", "[%" PRId64 "] %s", ua_session->get_id(), output.str().c_str());
       }
       dependency_tree->remove(node);
       // ink_release_assert(dependency_tree->find(stream->get_id()) == nullptr);

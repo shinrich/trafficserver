@@ -34,7 +34,7 @@
   }
 
 #define Http2StreamDebug(fmt, ...) \
-  SsnDebug(_proxy_ssn, "http2_stream", "[%" PRId64 "] [%u] " fmt, _proxy_ssn->connection_id(), this->get_id(), ##__VA_ARGS__);
+  SsnDebug(_proxy_ssn, "http2_stream", "[%" PRId64 "] [%u] " fmt, _proxy_ssn->get_id(), this->get_id(), ##__VA_ARGS__);
 
 ClassAllocator<Http2Stream> http2StreamAllocator("http2StreamAllocator");
 
@@ -744,7 +744,7 @@ Http2Stream::destroy()
   ink_release_assert(this->closed);
   ink_release_assert(reentrancy_count == 0);
 
-  uint64_t cid = 0;
+  uint64_t ssn_id = 0;
 
   // Safe to initiate SSN_CLOSE if this is the last stream
   if (_proxy_ssn) {
@@ -757,8 +757,6 @@ Http2Stream::destroy()
 
     h2_proxy_ssn->connection_state.decrement_stream_count();
 
-    // Update session's stream counts, so it accurately goes into keep-alive state
-    h2_proxy_ssn->connection_state.release_stream();
     // Do not access `_proxy_ssn` in below. It might be freed by `release_stream`.
   }
 
@@ -780,7 +778,7 @@ Http2Stream::destroy()
           "tx_hdrs: %.3f "
           "tx_data: %.3f "
           "close: %.3f",
-          cid, static_cast<uint32_t>(this->_id), this->_http_sm_id,
+          ssn_id, static_cast<uint32_t>(this->_id), this->_http_sm_id,
           ink_hrtime_to_msec(this->_milestones[Http2StreamMilestone::OPEN]),
           this->_milestones.difference_sec(Http2StreamMilestone::OPEN, Http2StreamMilestone::START_DECODE_HEADERS),
           this->_milestones.difference_sec(Http2StreamMilestone::OPEN, Http2StreamMilestone::START_TXN),
@@ -908,16 +906,22 @@ Http2Stream::release(IOBufferReader *r)
 }
 
 void
-Http2Stream::increment_client_transactions_stat()
+Http2Stream::increment_txn_stat()
 {
-  HTTP2_INCREMENT_THREAD_DYN_STAT(HTTP2_STAT_CURRENT_CLIENT_STREAM_COUNT, _thread);
-  HTTP2_INCREMENT_THREAD_DYN_STAT(HTTP2_STAT_TOTAL_CLIENT_STREAM_COUNT, _thread);
+  ink_assert(_proxy_ssn);
+  if (_proxy_ssn->get_netvc()->get_context() == NET_VCONNECTION_IN) {
+    HTTP2_INCREMENT_THREAD_DYN_STAT(HTTP2_STAT_CURRENT_CLIENT_STREAM_COUNT, _thread);
+    HTTP2_INCREMENT_THREAD_DYN_STAT(HTTP2_STAT_TOTAL_CLIENT_STREAM_COUNT, _thread);
+  }
 }
 
 void
-Http2Stream::decrement_client_transactions_stat()
+Http2Stream::decrement_txn_stat()
 {
-  HTTP2_DECREMENT_THREAD_DYN_STAT(HTTP2_STAT_CURRENT_CLIENT_STREAM_COUNT, _thread);
+  ink_assert(_proxy_ssn);
+  if (_proxy_ssn->get_netvc()->get_context() == NET_VCONNECTION_IN) {
+    HTTP2_DECREMENT_THREAD_DYN_STAT(HTTP2_STAT_CURRENT_CLIENT_STREAM_COUNT, _thread);
+  }
 }
 
 ssize_t
