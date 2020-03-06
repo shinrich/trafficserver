@@ -4008,32 +4008,30 @@ HttpSM::check_sni_host()
   int host_len;
   const char *host_name = t_state.hdr_info.client_request.host_get(&host_len);
   if (host_name && host_len) {
-    if (ua_txn->support_sni()) {
-      int host_sni_policy   = t_state.http_config_param->http_host_sni_policy;
-      NetVConnection *netvc = ua_txn->get_netvc();
-      if (netvc) {
-        IpEndpoint ip = netvc->get_remote_endpoint();
-        if (SNIConfig::TestClientAction(std::string{host_name, static_cast<size_t>(host_len)}.c_str(), ip, host_sni_policy) &&
-            host_sni_policy > 0) {
-          // In a SNI/Host mismatch where the Host would have triggered SNI policy, mark the transaction
-          // to be considered for rejection after the remap phase passes.  Gives the opportunity to conf_remap
-          // override the policy.:w
-          //
-          //
-          // to be rejected
-          // in the end_remap logic
-          const char *sni_value    = netvc->get_server_name();
-          const char *action_value = host_sni_policy == 2 ? "terminate" : "continue";
-          if (!sni_value || sni_value[0] == '\0') { // No SNI
-            Warning("No SNI for TLS request with hostname %.*s action=%s", host_len, host_name, action_value);
-            if (host_sni_policy == 2) {
-              this->t_state.client_connection_enabled = false;
-            }
-          } else if (strncmp(host_name, sni_value, host_len) != 0) { // Name mismatch
-            Warning("SNI/hostname mismatch sni=%s host=%.*s action=%s", sni_value, host_len, host_name, action_value);
-            if (host_sni_policy == 2) {
-              this->t_state.client_connection_enabled = false;
-            }
+    NetVConnection *netvc = ua_txn->get_netvc();
+    if (netvc && netvc->support_sni()) {
+      int host_sni_policy = t_state.http_config_param->http_host_sni_policy;
+      IpEndpoint ip       = netvc->get_remote_endpoint();
+      if (SNIConfig::TestClientAction(std::string{host_name, static_cast<size_t>(host_len)}.c_str(), ip, host_sni_policy) &&
+          host_sni_policy > 0) {
+        // In a SNI/Host mismatch where the Host would have triggered SNI policy, mark the transaction
+        // to be considered for rejection after the remap phase passes.  Gives the opportunity to conf_remap
+        // override the policy.:w
+        //
+        //
+        // to be rejected
+        // in the end_remap logic
+        const char *sni_value    = netvc->get_server_name();
+        const char *action_value = host_sni_policy == 2 ? "terminate" : "continue";
+        if (!sni_value || sni_value[0] == '\0') { // No SNI
+          Warning("No SNI for TLS request with hostname %.*s action=%s", host_len, host_name, action_value);
+          if (host_sni_policy == 2) {
+            this->t_state.client_connection_enabled = false;
+          }
+        } else if (strncmp(host_name, sni_value, host_len) != 0) { // Name mismatch
+          Warning("SNI/hostname mismatch sni=%s host=%.*s action=%s", sni_value, host_len, host_name, action_value);
+          if (host_sni_policy == 2) {
+            this->t_state.client_connection_enabled = false;
           }
         }
       }

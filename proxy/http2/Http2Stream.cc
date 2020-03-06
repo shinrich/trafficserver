@@ -748,8 +748,7 @@ Http2Stream::destroy()
 
   // Safe to initiate SSN_CLOSE if this is the last stream
   if (_proxy_ssn) {
-    cid = _proxy_ssn->connection_id();
-
+    ssn_id                           = _proxy_ssn->get_id();
     Http2ClientSession *h2_proxy_ssn = static_cast<Http2ClientSession *>(_proxy_ssn);
     SCOPED_MUTEX_LOCK(lock, h2_proxy_ssn->connection_state.mutex, this_ethread());
     // Make sure the stream is removed from the stream list and priority tree
@@ -760,7 +759,6 @@ Http2Stream::destroy()
 
     // Update session's stream counts, so it accurately goes into keep-alive state
     h2_proxy_ssn->connection_state.release_stream();
-
     // Do not access `_proxy_ssn` in below. It might be freed by `release_stream`.
   }
 

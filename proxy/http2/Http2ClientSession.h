@@ -142,8 +142,6 @@ public:
   // Variables
   Http2ConnectionState connection_state;
 
-  bool support_sni() const override;
-
 private:
   int main_event_handler(int, void *);
 

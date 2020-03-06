@@ -89,8 +89,6 @@ public:
   void increment_current_active_client_connections_stat() override;
   void decrement_current_active_client_connections_stat() override;
 
-  bool support_sni() const override;
-
 private:
   Http1ClientSession(Http1ClientSession &);
 
