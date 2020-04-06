@@ -39,7 +39,6 @@
 #include <sstream>
 #include <pcre.h>
 
-static ConfigUpdateHandler<SNIConfig> *sniConfigUpdate;
 static constexpr int OVECSIZE{30};
 
 const NextHopProperty *
@@ -94,9 +93,7 @@ SNIConfigParams::loadSNIConfig()
         nps->prop.client_key_file = Layout::get()->relative_to(params->clientKeyPathOnly, item.client_key.data());
       }
 
-      params->getCTX(nps->prop.client_cert_file.c_str(),
-                     nps->prop.client_key_file.empty() ? nullptr : nps->prop.client_key_file.c_str(), params->clientCACertFilename,
-                     params->clientCACertPath);
+      params->getCTX(nps->prop.client_cert_file, nps->prop.client_key_file, params->clientCACertFilename, params->clientCACertPath);
     }
 
     nps->setGlobName(item.fqdn);
@@ -190,8 +187,7 @@ SNIConfigParams::~SNIConfigParams()
 void
 SNIConfig::startup()
 {
-  sniConfigUpdate = new ConfigUpdateHandler<SNIConfig>();
-  sniConfigUpdate->attach("proxy.config.ssl.servername.filename");
+  sslClientUpdate->attach("proxy.config.ssl.servername.filename");
   reconfigure();
 }
 
