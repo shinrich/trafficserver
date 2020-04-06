@@ -9162,6 +9162,52 @@ TSSslContextFindByAddr(struct sockaddr const *addr)
 }
 
 /**
+ * This function sets the secret cache value for a given secret name.  This allows
+ * plugins to load cert/key PEM information on for use by the TLS core
+ */
+tsapi TSReturnCode
+TSSslSecretSet(const char *secret_name, int secret_name_length, int version, const char *secret_data, int secret_data_len)
+{
+  TSReturnCode retval          = TS_SUCCESS;
+  SSLConfigParams *load_params = SSLConfig::load_acquire();
+  SSLConfigParams *params      = SSLConfig::acquire();
+  if (load_params != nullptr) { // Update the current data structure
+    if (!load_params->secrets.setSecret(std::string(secret_name, secret_name_length), version, secret_data, secret_data_len)) {
+      retval = TS_ERROR;
+    }
+    SSLConfig::load_release(params);
+  }
+  if (params != nullptr) {
+    if (!params->secrets.setSecret(std::string(secret_name, secret_name_length), version, secret_data, secret_data_len)) {
+      retval = TS_ERROR;
+    }
+    SSLConfig::release(params);
+  }
+  return retval;
+}
+
+tsapi TSReturnCode
+TSSslSecretGet(const char *secret_name, int secret_name_length, int *version, const char **secret_data_return, int *secret_data_len)
+{
+  bool loading            = true;
+  TSReturnCode retval     = TS_SUCCESS;
+  SSLConfigParams *params = SSLConfig::load_acquire();
+  if (params == nullptr) {
+    params  = SSLConfig::acquire();
+    loading = false;
+  }
+  if (!params->secrets.getSecret(std::string(secret_name, secret_name_length), *version, secret_data_return, secret_data_len)) {
+    retval = TS_ERROR;
+  }
+  if (loading) {
+    SSLConfig::load_release(params);
+  } else {
+    SSLConfig::release(params);
+  }
+  return retval;
+}
+
+/**
  * This function retrieves an array of lookup keys for client contexts loaded in
  * traffic server. Given a 2-level mapping for client contexts, every 2 lookup keys
  * can be used to locate and identify 1 context.

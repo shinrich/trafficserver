@@ -1,5 +1,5 @@
 '''
-Test offering client cert to origin
+Test offering client cert to origin, but using plugin for cert loading
 '''
 #  Licensed to the Apache Software Foundation (ASF) under one
 #  or more contributor license agreements.  See the NOTICE file
@@ -18,9 +18,10 @@ Test offering client cert to origin
 #  limitations under the License.
 
 import subprocess
+import os
 
 Test.Summary = '''
-Test different combinations of TLS handshake hooks to ensure they are applied consistently.
+Test offering client cert to origin, but using plugin for cert loading
 '''
 
 ts = Test.MakeATSProcess("ts", command="traffic_manager", select_ports=True)
@@ -52,6 +53,9 @@ request_header = {"headers": "GET / HTTP/1.1\r\nHost: bar.com\r\n\r\n", "timesta
 response_header = {"headers": "HTTP/1.1 200 OK\r\nConnection: close\r\n\r\n", "timestamp": "1469733493.993", "body": ""}
 server.addResponse("sessionlog.json", request_header, response_header)
 
+#
+# Certs and keys loaded into the ts/ssl directory, but the paths in the 
+# configs omit the ssl subdirectory.  The ssl_secret_load_test plugin adds this back in
 ts.addSSLfile("ssl/server.pem")
 ts.addSSLfile("ssl/server.key")
 ts.addSSLfile("ssl/signed-foo.pem")
@@ -61,16 +65,18 @@ ts.addSSLfile("ssl/signed-bar.pem")
 ts.addSSLfile("ssl/signed2-bar.pem")
 ts.addSSLfile("ssl/signed-bar.key")
 
+Test.PreparePlugin(os.path.join(Test.Variables.AtsTestToolsDir, 'plugins', 'ssl_secret_load_test.cc'), ts)
+
 ts.Disk.records_config.update({
     'proxy.config.diags.debug.enabled': 1,
-    'proxy.config.diags.debug.tags': 'ssl_verify_test',
+    'proxy.config.diags.debug.tags': 'ssl_secret_load_test|ssl',
     'proxy.config.ssl.server.cert.path': '{0}'.format(ts.Variables.SSLDir),
     'proxy.config.ssl.server.private_key.path': '{0}'.format(ts.Variables.SSLDir),
     'proxy.config.ssl.client.verify.server':  0,
     'proxy.config.ssl.server.cipher_suite': 'ECDHE-RSA-AES128-GCM-SHA256:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-RSA-AES128-SHA256:ECDHE-RSA-AES256-SHA384:AES128-GCM-SHA256:AES256-GCM-SHA384:ECDHE-RSA-RC4-SHA:ECDHE-RSA-AES128-SHA:ECDHE-RSA-AES256-SHA:RC4-SHA:RC4-MD5:AES128-SHA:AES256-SHA:DES-CBC3-SHA!SRP:!DSS:!PSK:!aNULL:!eNULL:!SSLv2',
-    'proxy.config.ssl.client.cert.path': '{0}'.format(ts.Variables.SSLDir),
+    'proxy.config.ssl.client.cert.path': '{0}/../'.format(ts.Variables.SSLDir),
     'proxy.config.ssl.client.cert.filename': 'signed-foo.pem',
-    'proxy.config.ssl.client.private_key.path': '{0}'.format(ts.Variables.SSLDir),
+    'proxy.config.ssl.client.private_key.path': '{0}/../'.format(ts.Variables.SSLDir),
     'proxy.config.ssl.client.private_key.filename': 'signed-foo.key',
     'proxy.config.exec_thread.autoconfig.scale': 1.0,
     'proxy.config.url_remap.pristine_host_hdr' : 1,
@@ -92,9 +98,9 @@ ts.Disk.sni_yaml.AddLine(
 ts.Disk.sni_yaml.AddLine(
     '- fqdn: bar.com')
 ts.Disk.sni_yaml.AddLine(
-    '  client_cert: {0}/signed2-bar.pem'.format(ts.Variables.SSLDir))
+    '  client_cert: {0}/../signed2-bar.pem'.format(ts.Variables.SSLDir))
 ts.Disk.sni_yaml.AddLine(
-    '  client_key: {0}/signed-bar.key'.format(ts.Variables.SSLDir))
+    '  client_key: {0}/../signed-bar.key'.format(ts.Variables.SSLDir))
 
 
 # Should succeed
@@ -146,9 +152,9 @@ tr2.Disk.sni_yaml.AddLine(
 tr2.Disk.sni_yaml.AddLine(
     '- fqdn: bar.com')
 tr2.Disk.sni_yaml.AddLine(
-    '  client_cert: {0}/signed-bar.pem'.format(ts.Variables.SSLDir))
+    '  client_cert: {0}/../signed-bar.pem'.format(ts.Variables.SSLDir))
 tr2.Disk.sni_yaml.AddLine(
-    '  client_key: {0}/signed-bar.key'.format(ts.Variables.SSLDir))
+    '  client_key: {0}/../signed-bar.key'.format(ts.Variables.SSLDir))
 # recreate the records.config with the cert filename changed
 tr2.Disk.File(recordspath, id = "records_config", typename="ats:config:records"),
 tr2.Disk.records_config.update({
@@ -156,11 +162,13 @@ tr2.Disk.records_config.update({
     'proxy.config.ssl.server.private_key.path': '{0}'.format(ts.Variables.SSLDir),
     'proxy.config.ssl.client.verify.server':  0,
     'proxy.config.ssl.server.cipher_suite': 'ECDHE-RSA-AES128-GCM-SHA256:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-RSA-AES128-SHA256:ECDHE-RSA-AES256-SHA384:AES128-GCM-SHA256:AES256-GCM-SHA384:ECDHE-RSA-RC4-SHA:ECDHE-RSA-AES128-SHA:ECDHE-RSA-AES256-SHA:RC4-SHA:RC4-MD5:AES128-SHA:AES256-SHA:DES-CBC3-SHA!SRP:!DSS:!PSK:!aNULL:!eNULL:!SSLv2',
-    'proxy.config.ssl.client.cert.path': '{0}'.format(ts.Variables.SSLDir),
+    'proxy.config.ssl.client.cert.path': '{0}/../'.format(ts.Variables.SSLDir),
     'proxy.config.ssl.client.cert.filename': 'signed2-foo.pem',
-    'proxy.config.ssl.client.private_key.path': '{0}'.format(ts.Variables.SSLDir),
+    'proxy.config.ssl.client.private_key.path': '{0}/../'.format(ts.Variables.SSLDir),
     'proxy.config.ssl.client.private_key.filename': 'signed-foo.key',
     'proxy.config.url_remap.pristine_host_hdr' : 1,
+    'proxy.config.diags.debug.enabled': 1,
+    'proxy.config.diags.debug.tags': 'ssl_secret_load_test|ssl',
 })
 tr2.StillRunningAfter = ts
 tr2.StillRunningAfter = server
@@ -175,7 +183,7 @@ tr2.Processes.Default.ReturnCode = 0
 # At that point the new sni settings are ready to go
 def sni_reload_done(tsenv):
   def done_reload(process, hasRunFor, **kw):
-    cmd = "grep 'sni.yaml finished loading' {0} | wc -l  | sed -e 's/ //g'> {1}/test.out".format(ts.Disk.diags_log.Name, Test.RunDirectory)
+    cmd = "grep 'sni.yaml finished loading' {0} | wc -l > {1}/test.out".format(ts.Disk.diags_log.Name, Test.RunDirectory)
     retval = subprocess.run(cmd, shell=True, env=tsenv)
     if retval.returncode == 0:
       cmd ="if [ -f {0}/test.out -a \"`cat {0}/test.out`\" = \"3\" ] ; then true; else false; fi".format(Test.RunDirectory)
@@ -243,7 +251,7 @@ trupdate.StillRunningAfter = server2
 trupdate.Setup.CopyAs("ssl/signed2-bar.pem", ".", "{0}/signed-bar.pem".format(ts.Variables.SSLDir))
 # in the config/ssl directory for records.config
 trupdate.Setup.CopyAs("ssl/signed-foo.pem", ".", "{0}/signed2-foo.pem".format(ts.Variables.SSLDir))
-trupdate.Processes.Default.Command = 'traffic_ctl config set proxy.config.ssl.client.cert.path {0}/; touch {1}'.format(ts.Variables.SSLDir,snipath)
+trupdate.Processes.Default.Command = 'traffic_ctl config set proxy.config.ssl.client.cert.path {0}/../; touch {1}; touch {2}'.format(ts.Variables.SSLDir,snipath,recordspath)
 # Need to copy over the environment so traffic_ctl knows where to find the unix domain socket
 trupdate.Processes.Default.Env = ts.Env
 trupdate.Processes.Default.ReturnCode = 0

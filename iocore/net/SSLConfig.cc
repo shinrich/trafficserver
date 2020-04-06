@@ -34,6 +34,10 @@
 #include <cstring>
 #include <cmath>
 
+#include <openssl/pem.h>
+
+#include "InkAPIInternal.h" // Added to include the ssl_hook and lifestyle_hook definitions
+
 #include "tscore/ink_platform.h"
 #include "tscore/I_Layout.h"
 #include "records/I_RecHttp.h"
@@ -42,13 +46,15 @@
 
 #include "P_Net.h"
 #include "P_SSLClientUtils.h"
+#include "P_SSLSNI.h"
 #include "P_SSLCertLookup.h"
 #include "SSLDiags.h"
 #include "SSLSessionCache.h"
 #include "SSLSessionTicket.h"
 #include "YamlSNIConfig.h"
 
-int SSLConfig::configid                                     = 0;
+int SSLConfig::config_index                                 = 0;
+int SSLConfig::configids[]                                  = {0, 0};
 int SSLCertificateConfig::configid                          = 0;
 int SSLTicketKeyConfig::configid                            = 0;
 int SSLConfigParams::ssl_maxrecord                          = 0;
@@ -74,7 +80,7 @@ int SSLConfigParams::async_handshake_enabled = 0;
 char *SSLConfigParams::engine_conf_file      = nullptr;
 
 static std::unique_ptr<ConfigUpdateHandler<SSLCertificateConfig>> sslCertUpdate;
-static std::unique_ptr<ConfigUpdateHandler<SSLConfig>> sslConfigUpdate;
+std::unique_ptr<ConfigUpdateHandler<SSLClientCoordinator>> sslClientUpdate;
 static std::unique_ptr<ConfigUpdateHandler<SSLTicketKeyConfig>> sslTicketKey;
 
 SSLConfigParams::SSLConfigParams()
@@ -468,13 +474,44 @@ SSLConfigParams::getClientSSL_CTX() const
 }
 
 void
+SSLClientCoordinator::reconfigure()
+{
+  SSLConfig::reconfigure();
+  SNIConfig::reconfigure();
+}
+
+int
+SSLConfig::get_config_index()
+{
+  return config_index;
+}
+
+int
+SSLConfig::get_loading_config_index()
+{
+  return config_index == 0 ? 1 : 0;
+}
+
+void
+SSLConfig::commit_config_id()
+{
+  // Update the active config index
+  config_index = get_loading_config_index();
+
+  if (configids[get_loading_config_index()] != 0) {
+    // Start draining to free the old config
+    configProcessor.set(configids[get_loading_config_index()], nullptr);
+  }
+}
+
+void
 SSLConfig::startup()
 {
-  sslConfigUpdate.reset(new ConfigUpdateHandler<SSLConfig>());
-  sslConfigUpdate->attach("proxy.config.ssl.client.cert.path");
-  sslConfigUpdate->attach("proxy.config.ssl.client.cert.filename");
-  sslConfigUpdate->attach("proxy.config.ssl.client.private_key.path");
-  sslConfigUpdate->attach("proxy.config.ssl.client.private_key.filename");
+  sslClientUpdate.reset(new ConfigUpdateHandler<SSLClientCoordinator>());
+  sslClientUpdate->attach("proxy.config.ssl.client.cert.path");
+  sslClientUpdate->attach("proxy.config.ssl.client.cert.filename");
+  sslClientUpdate->attach("proxy.config.ssl.client.private_key.path");
+  sslClientUpdate->attach("proxy.config.ssl.client.private_key.filename");
   reconfigure();
 }
 
@@ -483,20 +520,36 @@ SSLConfig::reconfigure()
 {
   SSLConfigParams *params;
   params = new SSLConfigParams;
+  // start loading the next config
+  int loading_config_index        = get_loading_config_index();
+  configids[loading_config_index] = configProcessor.set(configids[loading_config_index], params);
   params->initialize(); // re-read configuration
-  configid = configProcessor.set(configid, params);
+  // Make the new config avaiable for use.
+  commit_config_id();
 }
 
 SSLConfigParams *
 SSLConfig::acquire()
 {
-  return static_cast<SSLConfigParams *>(configProcessor.get(configid));
+  return static_cast<SSLConfigParams *>(configProcessor.get(configids[get_config_index()]));
+}
+
+SSLConfigParams *
+SSLConfig::load_acquire()
+{
+  return static_cast<SSLConfigParams *>(configProcessor.get(configids[get_loading_config_index()]));
 }
 
 void
 SSLConfig::release(SSLConfigParams *params)
 {
-  configProcessor.release(configid, params);
+  configProcessor.release(configids[get_config_index()], params);
+}
+
+void
+SSLConfig::load_release(SSLConfigParams *params)
+{
+  configProcessor.release(configids[get_loading_config_index()], params);
 }
 
 bool
@@ -691,6 +744,17 @@ SSLTicketParams::cleanup()
   ticket_key_filename = static_cast<char *>(ats_free_null(ticket_key_filename));
 }
 
+void
+cleanup_bio(BIO *&biop)
+{
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wunused-value"
+  BIO_set_close(biop, BIO_NOCLOSE);
+#pragma GCC diagnostic pop
+  BIO_free(biop);
+  biop = nullptr;
+}
+
 shared_SSL_CTX
 SSLConfigParams::getCTX(const char *client_cert, const char *key_file, const char *ca_bundle_file, const char *ca_bundle_path) const
 {
@@ -707,29 +771,85 @@ SSLConfigParams::getCTX(const char *client_cert, const char *key_file, const cha
     }
   }
 
+  BIO *biop     = nullptr;
+  X509 *cert    = nullptr;
+  EVP_PKEY *key = nullptr;
   // Create context if doesn't exists
   if (!client_ctx) {
     client_ctx = shared_SSL_CTX(SSLInitClientContext(this), SSLReleaseContext);
 
+    // Set public and private keys
     if (client_cert) {
-      // Set public and private keys
-      if (!SSL_CTX_use_certificate_chain_file(client_ctx.get(), client_cert)) {
-        SSLError("failed to load client certificate from %s", client_cert);
+      const char *secret_data = nullptr;
+      int secret_data_len     = 0;
+      // Fetch the client_cert data
+      ats_scoped_str completeSecretPath(Layout::get()->relative_to(this->clientCertPathOnly, client_cert));
+      int version = -1;
+      secrets.getOrLoadSecret(completeSecretPath.get(), version, &secret_data, &secret_data_len);
+      if (!secret_data || secret_data_len <= 0) {
+        SSLError("failed to access cert %s", client_cert);
         goto fail;
       }
-      if (!key_file || key_file[0] == '\0') {
-        key_file = client_cert;
+
+      biop = BIO_new_mem_buf(secret_data, secret_data_len);
+
+      cert = PEM_read_bio_X509(biop, NULL, 0, NULL);
+      if (!cert) {
+        SSLError("failed to load cert %s", client_cert);
+        goto fail;
       }
-      if (!SSL_CTX_use_PrivateKey_file(client_ctx.get(), key_file, SSL_FILETYPE_PEM)) {
+      if (!SSL_CTX_use_certificate(client_ctx.get(), cert)) {
+        SSLError("failed to attach client certificate from %s", client_cert);
+        goto fail;
+      }
+      X509_free(cert);
+
+      // Continue to fetch certs to associate intermediate certificates
+      cert = PEM_read_bio_X509(biop, NULL, 0, NULL);
+      while (cert) {
+        if (!SSL_CTX_use_certificate(client_ctx.get(), cert)) {
+          SSLError("failed to attach client chain certificate from %s", client_cert);
+          goto fail;
+        }
+        X509_free(cert);
+        cert = PEM_read_bio_X509(biop, NULL, 0, NULL);
+      }
+
+      cleanup_bio(biop);
+
+      // If there is a separate key file, fetch the new content
+      // otherwise, continue on with the cert data and hope for the best
+      if (key_file && key_file[0] != '\0') {
+        ats_scoped_str completeSecretPath(Layout::get()->relative_to(this->clientKeyPathOnly, key_file));
+        secrets.getOrLoadSecret(completeSecretPath.get(), version, &secret_data, &secret_data_len);
+        if (!secret_data || secret_data_len <= 0) {
+          SSLError("failed to access key %s", key_file);
+          goto fail;
+        }
+        biop = BIO_new_mem_buf(secret_data, secret_data_len);
+      } else {
+        key_file = client_cert;
+        biop     = BIO_new_mem_buf(secret_data, secret_data_len);
+      }
+
+      key = PEM_read_bio_PrivateKey(biop, NULL, 0, NULL);
+      if (!key) {
         SSLError("failed to load client private key file from %s", key_file);
         goto fail;
       }
+      if (!SSL_CTX_use_PrivateKey(client_ctx.get(), key)) {
+        SSLError("failed to use client private key file from %s", key_file);
+        goto fail;
+      }
+      EVP_PKEY_free(key);
+      key = nullptr;
 
       if (!SSL_CTX_check_private_key(client_ctx.get())) {
         SSLError("client private key (%s) does not match the certificate public key (%s)", key_file, client_cert);
         goto fail;
       }
     }
+    cleanup_bio(biop);
 
     // Set CA information for verifying peer cert
     if (ca_bundle_file != nullptr || ca_bundle_path != nullptr) {
@@ -755,6 +875,15 @@ SSLConfigParams::getCTX(const char *client_cert, const char *key_file, const cha
   return client_ctx;
 
 fail:
+  if (biop) {
+    cleanup_bio(biop);
+  }
+  if (cert) {
+    X509_free(cert);
+  }
+  if (key) {
+    EVP_PKEY_free(key);
+  }
   return nullptr;
 }
 
