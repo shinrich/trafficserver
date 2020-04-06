@@ -419,7 +419,7 @@ Http1ClientSession::reenable(VIO *vio)
 void
 Http1ClientSession::release(ProxyTransaction *trans)
 {
-  ink_release_assert (read_state == HCS_ACTIVE_READER || read_state == HCS_INIT);
+  ink_release_assert(read_state == HCS_ACTIVE_READER || read_state == HCS_INIT);
 
   // Timeout events should be delivered to the session
   this->do_io_write(this, 0, nullptr);

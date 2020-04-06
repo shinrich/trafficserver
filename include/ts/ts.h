@@ -1247,6 +1247,12 @@ tsapi TSSslContext TSSslClientContextFindByName(const char *ca_paths, const char
 tsapi TSReturnCode TSSslClientCertUpdate(const char *cert_path, const char *key_path);
 tsapi TSReturnCode TSSslServerCertUpdate(const char *cert_path, const char *key_path);
 
+/* Update the transient secret table for SSL_CTX loading */
+tsapi TSReturnCode TSSslSecretSet(const char *secret_name, int secret_name_length, int version, const char *secret_data,
+                                  int secret_data_len);
+tsapi TSReturnCode TSSslSecretGet(const char *secret_name, int secret_name_length, int *version, const char **secret_data_return,
+                                  int *secret_data_len);
+
 /* Create a new SSL context based on the settings in records.config */
 tsapi TSSslContext TSSslServerContextCreate(TSSslX509 cert, const char *certname, const char *rsp_file);
 tsapi void TSSslContextDestroy(TSSslContext ctx);

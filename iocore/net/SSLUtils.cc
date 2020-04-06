@@ -888,7 +888,8 @@ SSLMultiCertConfigLoader::default_server_ssl_ctx()
 }
 
 static bool
-SSLPrivateKeyHandler(SSL_CTX *ctx, const SSLConfigParams *params, const std::string &completeServerCertPath, const char *keyPath)
+SSLPrivateKeyHandler(SSL_CTX *ctx, const SSLConfigParams *params, const std::string &completeServerCertPath, const char *keyPath,
+                     int version)
 {
 #ifndef OPENSSL_IS_BORINGSSL
   ENGINE *e = ENGINE_get_default_RSA();
@@ -901,26 +902,38 @@ SSLPrivateKeyHandler(SSL_CTX *ctx, const SSLConfigParams *params, const std::str
   ENGINE *e = nullptr;
   if (false) {
 #endif
-  } else if (!keyPath) {
-    // assume private key is contained in cert obtained from multicert file.
-    if (!SSL_CTX_use_PrivateKey_file(ctx, completeServerCertPath.c_str(), SSL_FILETYPE_PEM)) {
-      SSLError("failed to load server private key from %s", completeServerCertPath.c_str());
-      return false;
-    }
-  } else if (params->serverKeyPathOnly != nullptr) {
-    ats_scoped_str completeServerKeyPath(Layout::get()->relative_to(params->serverKeyPathOnly, keyPath));
-    if (!SSL_CTX_use_PrivateKey_file(ctx, completeServerKeyPath, SSL_FILETYPE_PEM)) {
-      SSLError("failed to load server private key from %s", (const char *)completeServerKeyPath);
-      return false;
-    }
-    if (SSLConfigParams::load_ssl_file_cb) {
-      SSLConfigParams::load_ssl_file_cb(completeServerKeyPath);
-    }
   } else {
-    SSLError("empty SSL private key path in %s", ts::filename::RECORDS);
-    return false;
+    const char *key_file = nullptr;
+    ats_scoped_str completeServerKeyPath;
+    if (!keyPath) {
+      // assume private key is contained in cert obtained from multicert file.
+      key_file = completeServerCertPath.c_str();
+    } else if (params->serverKeyPathOnly != nullptr) {
+      completeServerKeyPath = Layout::get()->relative_to(params->serverKeyPathOnly, keyPath);
+      key_file              = completeServerKeyPath.get();
+    } else {
+      SSLError("empty SSL private key path in %s", ts::filename::RECORDS);
+      return false;
+    }
+    const char *secret_data = nullptr;
+    int secret_data_len     = 0;
+    params->secrets.getOrLoadSecret(key_file, version, &secret_data, &secret_data_len);
+    if (!secret_data || secret_data_len <= 0) {
+      SSLError("failed to access key %s", key_file);
+      return false;
+    }
+    scoped_BIO bio(BIO_new_mem_buf(secret_data, secret_data_len));
+    EVP_PKEY *pkey = PEM_read_bio_PrivateKey(bio.get(), nullptr, nullptr, nullptr);
+    if (nullptr == pkey) {
+      SSLError("failed to load server private key from %s", key_file);
+      return false;
+    }
+    if (!SSL_CTX_use_PrivateKey(ctx, pkey)) {
+      SSLError("failed to attache server private key loaded from %s", key_file);
+      EVP_PKEY_free(pkey);
+      return false;
+    }
   }
-
   if (e == nullptr && !SSL_CTX_check_private_key(ctx)) {
     SSLError("server private key does not match the certificate public key");
     return false;
@@ -1379,16 +1392,18 @@ SSLMultiCertConfigLoader::_store_ssl_ctx(SSLCertLookup *lookup, const shared_SSL
     i++;
   }
 
-  shared_SSL_CTX ctx(this->init_server_ssl_ctx(data, sslMultCertSettings.get(), common_names), SSL_CTX_free);
+  if (!common_names.empty()) {
+    shared_SSL_CTX ctx(this->init_server_ssl_ctx(data, sslMultCertSettings.get(), common_names), SSL_CTX_free);
 
-  if (!ctx || !sslMultCertSettings || !this->_store_single_ssl_ctx(lookup, sslMultCertSettings, ctx, common_names)) {
-    retval = false;
-    std::string names;
-    for (auto name : data.cert_names_list) {
-      names.append(name);
-      names.append(" ");
+    if (!ctx || !sslMultCertSettings || !this->_store_single_ssl_ctx(lookup, sslMultCertSettings, ctx, common_names)) {
+      retval = false;
+      std::string names;
+      for (auto name : data.cert_names_list) {
+        names.append(name);
+        names.append(" ");
+      }
+      Warning("Failed to insert SSL_CTX for certificate %s entries for names already made", names.c_str());
     }
-    Warning("Failed to insert SSL_CTX for certificate %s entries for names already made", names.c_str());
   }
 
   for (auto iter = unique_names.begin(); retval && iter != unique_names.end(); ++iter) {
@@ -1937,7 +1952,15 @@ SSLMultiCertConfigLoader::load_certs_and_cross_reference_names(std::vector<X509 
   for (const char *certname = cert_tok.getNext(); certname; certname = cert_tok.getNext()) {
     data.cert_names_list.push_back(certname);
     std::string completeServerCertPath = Layout::relative_to(params->serverCertPathOnly, certname);
-    scoped_BIO bio(BIO_new_file(completeServerCertPath.c_str(), "r"));
+    const char *secret_data            = nullptr;
+    int secret_data_len                = 0;
+    int version                        = -1;
+    params->secrets.getOrLoadSecret(completeServerCertPath.c_str(), version, &secret_data, &secret_data_len);
+    if (!secret_data || secret_data_len <= 0) {
+      SSLError("failed to load certificate secret for %s", completeServerCertPath.c_str());
+      return false;
+    }
+    scoped_BIO bio(BIO_new_mem_buf(secret_data, secret_data_len));
     X509 *cert = nullptr;
     if (bio) {
       cert = PEM_read_bio_X509(bio.get(), nullptr, nullptr, nullptr);
@@ -1948,9 +1971,6 @@ SSLMultiCertConfigLoader::load_certs_and_cross_reference_names(std::vector<X509 
     }
 
     cert_list.push_back(cert);
-    if (SSLConfigParams::load_ssl_file_cb) {
-      SSLConfigParams::load_ssl_file_cb(completeServerCertPath.c_str());
-    }
 
     std::set<std::string> name_set;
     // Grub through the names in the certs
@@ -1997,23 +2017,26 @@ SSLMultiCertConfigLoader::load_certs_and_cross_reference_names(std::vector<X509 
       common_names = name_set;
     } else {
       // Check that all elements in common_names are in name_set
-      for (auto name : common_names) {
-        auto iter = name_set.find(name);
+      auto common_iter = common_names.begin();
+      while (common_iter != common_names.end()) {
+        auto iter = name_set.find(*common_iter);
         if (iter == name_set.end()) {
           // Common_name not in new set, move name to unique set
           auto iter = unique_names.find(cert_index - 1);
           if (iter == unique_names.end()) {
             std::set<std::string> new_set;
-            new_set.insert(name);
+            new_set.insert(*common_iter);
             unique_names.insert({cert_index - 1, new_set});
           } else {
-            iter->second.insert(name);
+            iter->second.insert(*common_iter);
           }
-          auto erase_iter = common_names.find(name);
+          auto erase_iter = common_iter;
+          ++common_iter;
           common_names.erase(erase_iter);
         } else {
           // New name already in common set, go ahead and remove it from further consideration
           name_set.erase(iter);
+          ++common_iter;
         }
       }
       // Anything still in name_set was not in common_names
@@ -2056,7 +2079,15 @@ SSLMultiCertConfigLoader::load_certs(SSL_CTX *ctx, SSLMultiCertConfigLoader::Cer
 
   for (size_t i = 0; i < data.cert_names_list.size(); i++) {
     std::string completeServerCertPath = Layout::relative_to(params->serverCertPathOnly, data.cert_names_list[i]);
-    scoped_BIO bio(BIO_new_file(completeServerCertPath.c_str(), "r"));
+    const char *secret_data            = nullptr;
+    int secret_data_len                = 0;
+    int version                        = -1;
+    params->secrets.getOrLoadSecret(completeServerCertPath.c_str(), version, &secret_data, &secret_data_len);
+    if (!secret_data || secret_data_len <= 0) {
+      SSLError("failed to load certificate secret for %s", completeServerCertPath.c_str());
+      return false;
+    }
+    scoped_BIO bio(BIO_new_mem_buf(secret_data, secret_data_len));
     X509 *cert = nullptr;
     if (bio) {
       cert = PEM_read_bio_X509(bio.get(), nullptr, nullptr, nullptr);
@@ -2075,12 +2106,8 @@ SSLMultiCertConfigLoader::load_certs(SSL_CTX *ctx, SSLMultiCertConfigLoader::Cer
     SSL_CTX_add_extra_chain_cert_bio(ctx, bio);
 
     const char *keyPath = data.key_list[i].c_str();
-    if (!SSLPrivateKeyHandler(ctx, params, completeServerCertPath, keyPath)) {
+    if (!SSLPrivateKeyHandler(ctx, params, completeServerCertPath, keyPath, version)) {
       return false;
-    }
-
-    if (SSLConfigParams::load_ssl_file_cb) {
-      SSLConfigParams::load_ssl_file_cb(completeServerCertPath.c_str());
     }
 
     // Must load all the intermediate certificates before starting the next chain
