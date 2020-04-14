@@ -34,6 +34,9 @@
 #include "IPAllow.h"
 #include "private/SSLProxySession.h"
 
+#include "P_UnixEThread.h"
+#include "tscore/History.h"
+
 // Emit a debug message conditional on whether this particular client session
 // has debugging enabled. This should only be called from within a client session
 // member function.
@@ -179,6 +182,10 @@ protected:
 
   int64_t _id           = 0;
   Event *schedule_event = nullptr;
+
+  struct {
+    History<HISTORY_DEFAULT_SIZE> history;
+  } _debug;
 
   // This function should be called in all overrides of new_connection() where
   // the new_vc may be an SSLNetVConnection object.

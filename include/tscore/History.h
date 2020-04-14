@@ -31,21 +31,23 @@
 #define HISTORY_DEFAULT_SIZE 65
 
 struct HistoryEntry {
+  int thread_id = -1;
   SourceLocation location;
-  unsigned short event = 0;
-  short reentrancy     = 0;
+  const char *event = 0;
+  short reentrancy  = 0;
 };
 
 template <unsigned Count> class History
 {
 public:
   void
-  push_back(const SourceLocation &location, int event, int reentrant = NO_REENTRANT)
+  push_back(const SourceLocation &location, const char *event, int reentrant = NO_REENTRANT)
   {
     int pos                 = history_pos++ % Count;
     history[pos].location   = location;
-    history[pos].event      = (unsigned short)event;
+    history[pos].event      = event;
     history[pos].reentrancy = (short)reentrant;
+    history[pos].thread_id  = this_ethread()->id;
   }
 
   void

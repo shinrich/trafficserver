@@ -41,7 +41,7 @@
 
 #define STATE_ENTER(state_name, event)                                                                                   \
   {                                                                                                                      \
-    SM_REMEMBER(master_sm, event, NO_REENTRANT);                                                                         \
+    SM_REMEMBER(master_sm, HttpDebugNames::get_event_name(event), NO_REENTRANT);                                         \
     Debug("http_cache", "[%" PRId64 "] [%s, %s]", master_sm->sm_id, #state_name, HttpDebugNames::get_event_name(event)); \
   }
 

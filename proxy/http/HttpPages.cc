@@ -220,7 +220,7 @@ HttpPagesHandler::dump_history(HttpSM *sm)
     resp_end_column();
 
     resp_begin_column();
-    resp_add("%u", static_cast<unsigned int>(sm->history[i].event));
+    resp_add("%s", sm->history[i].event);
     resp_end_column();
 
     resp_begin_column();

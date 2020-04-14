@@ -41,8 +41,8 @@ Test.PreparePlugin(os.path.join(Test.Variables.AtsTestToolsDir,
 # add response to the server dictionary
 server.addResponse("sessionfile.log", request_header, response_header)
 ts.Disk.records_config.update({
-    'proxy.config.diags.debug.enabled': 0,
-    'proxy.config.diags.debug.tags': 'ssntxnorder_verify.*',
+    'proxy.config.diags.debug.enabled': 1,
+    'proxy.config.diags.debug.tags': 'ssntxnorder_verify.*|SsnTrace',
     'proxy.config.http.cache.http': 0,  # disable cache to simply the test.
     'proxy.config.cache.enable_read_while_writer': 0
 })

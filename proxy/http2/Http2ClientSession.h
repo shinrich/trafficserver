@@ -132,7 +132,7 @@ public:
   int64_t write_buffer_size();
 
   // Record history from Http2ConnectionState
-  void remember(const SourceLocation &location, int event, int reentrant = NO_REENTRANT);
+  void remember(const SourceLocation &location, const char *event, int reentrant = NO_REENTRANT);
 
   // noncopyable
   Http2ClientSession(Http2ClientSession &) = delete;
@@ -169,7 +169,6 @@ private:
   IpEndpoint cached_client_addr;
   IpEndpoint cached_local_addr;
 
-  History<HISTORY_DEFAULT_SIZE> _history;
   Milestones<Http2SsnMilestone, static_cast<size_t>(Http2SsnMilestone::LAST_ENTRY)> _milestones;
 
   // For Upgrade: h2c

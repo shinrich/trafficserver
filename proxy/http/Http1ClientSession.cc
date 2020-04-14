@@ -40,10 +40,12 @@
 
 #define HttpSsnDebug(fmt, ...) SsnDebug(this, "http_cs", fmt, __VA_ARGS__)
 
-#define STATE_ENTER(state_name, event, vio)                                                               \
-  do {                                                                                                    \
-    /*ink_assert (magic == HTTP_SM_MAGIC_ALIVE);  REMEMBER (event, NULL, reentrancy_count); */            \
-    HttpSsnDebug("[%" PRId64 "] [%s, %s]", get_id(), #state_name, HttpDebugNames::get_event_name(event)); \
+#define REMEMBER(e) this->_debug.history.push_back(MakeSourceLocation(), (e), this->get_transact_count());
+
+#define STATE_ENTER(state_name, event, vio)                                                                       \
+  do {                                                                                                            \
+    REMEMBER(HttpDebugNames::get_event_name(event));                                                              \
+    HttpSsnDebug("[%" PRId64 "] [%s, %s]", get_id(), _TS_STR(state_name), HttpDebugNames::get_event_name(event)); \
   } while (0)
 
 enum {
@@ -73,6 +75,7 @@ Http1ClientSession::destroy()
   }
   if (!in_destroy) {
     in_destroy = true;
+    REMEMBER(nullptr);
 
     HttpSsnDebug("[%" PRId64 "] session destroy", get_id());
     ink_assert(read_buffer);
@@ -86,6 +89,7 @@ Http1ClientSession::destroy()
 void
 Http1ClientSession::free()
 {
+  REMEMBER(nullptr);
   magic = HTTP_CS_MAGIC_DEAD;
   if (read_buffer) {
     free_MIOBuffer(read_buffer);

@@ -981,7 +981,7 @@ Http2ConnectionState::main_event_handler(int event, void *edata)
   case HTTP2_SESSION_EVENT_INIT: {
     ink_assert(this->ua_session == nullptr);
     this->ua_session = static_cast<Http2ClientSession *>(edata);
-    REMEMBER(event, this->recursion);
+    REMEMBER(HttpDebugNames::get_event_name(event), this->recursion);
 
     // [RFC 7540] 3.5. HTTP/2 Connection Preface. Upon establishment of a TCP connection and
     // determination that HTTP/2 will be used by both peers, each endpoint MUST
@@ -1007,7 +1007,7 @@ Http2ConnectionState::main_event_handler(int event, void *edata)
   // Finalize HTTP/2 Connection
   case HTTP2_SESSION_EVENT_FINI: {
     SCOPED_MUTEX_LOCK(lock, this->mutex, this_ethread());
-    REMEMBER(event, this->recursion);
+    REMEMBER(HttpDebugNames::get_event_name(event), this->recursion);
 
     ink_assert(this->fini_received == false);
     this->fini_received = true;
@@ -1017,7 +1017,7 @@ Http2ConnectionState::main_event_handler(int event, void *edata)
   } break;
 
   case HTTP2_SESSION_EVENT_XMIT: {
-    REMEMBER(event, this->recursion);
+    REMEMBER(HttpDebugNames::get_event_name(event), this->recursion);
     SCOPED_MUTEX_LOCK(lock, this->mutex, this_ethread());
     send_data_frames_depends_on_priority();
     _scheduled = false;
@@ -1025,7 +1025,7 @@ Http2ConnectionState::main_event_handler(int event, void *edata)
 
   // Parse received HTTP/2 frames
   case HTTP2_SESSION_EVENT_RECV: {
-    REMEMBER(event, this->recursion);
+    REMEMBER(HttpDebugNames::get_event_name(event), this->recursion);
     const Http2Frame *frame       = static_cast<Http2Frame *>(edata);
     const Http2StreamId stream_id = frame->header().streamid;
     Http2Error error;
@@ -1091,7 +1091,7 @@ Http2ConnectionState::main_event_handler(int event, void *edata)
 
   // Initiate a gracefull shutdown
   case HTTP2_SESSION_EVENT_SHUTDOWN_INIT: {
-    REMEMBER(event, this->recursion);
+    REMEMBER(HttpDebugNames::get_event_name(event), this->recursion);
     ink_assert(shutdown_state == HTTP2_SHUTDOWN_NOT_INITIATED);
     shutdown_state = HTTP2_SHUTDOWN_INITIATED;
     // [RFC 7540] 6.8.  GOAWAY
@@ -1105,7 +1105,7 @@ Http2ConnectionState::main_event_handler(int event, void *edata)
 
   // Continue a gracefull shutdown
   case HTTP2_SESSION_EVENT_SHUTDOWN_CONT: {
-    REMEMBER(event, this->recursion);
+    REMEMBER(HttpDebugNames::get_event_name(event), this->recursion);
     ink_assert(shutdown_state == HTTP2_SHUTDOWN_INITIATED);
     shutdown_cont_event = nullptr;
     shutdown_state      = HTTP2_SHUTDOWN_IN_PROGRESS;
@@ -1144,7 +1144,7 @@ Http2ConnectionState::main_event_handler(int event, void *edata)
 int
 Http2ConnectionState::state_closed(int event, void *edata)
 {
-  REMEMBER(event, this->recursion);
+  REMEMBER(HttpDebugNames::get_event_name(event), this->recursion);
 
   if (edata == zombie_event) {
     // Zombie session is still around.  Assert!
@@ -1332,7 +1332,7 @@ Http2ConnectionState::delete_stream(Http2Stream *stream)
   }
 
   Http2StreamDebug(ua_session, stream->get_id(), "Delete stream");
-  REMEMBER(NO_EVENT, this->recursion);
+  REMEMBER(nullptr, this->recursion);
 
   if (Http2::stream_priority_enabled) {
     Http2DependencyTree::Node *node = stream->priority_node;
@@ -1374,7 +1374,7 @@ Http2ConnectionState::delete_stream(Http2Stream *stream)
 void
 Http2ConnectionState::release_stream()
 {
-  REMEMBER(NO_EVENT, this->recursion)
+  REMEMBER("release", this->recursion)
   if (this->recursion > 0) {
     return;
   }

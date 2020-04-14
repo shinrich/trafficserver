@@ -26,6 +26,8 @@
 #include "ProxySession.h"
 #include "P_SSLNetVConnection.h"
 
+#define REMEMBER(e) this->_debug.history.push_back(MakeSourceLocation(), e, this->get_transact_count());
+
 ProxySession::ProxySession() : VConnection(nullptr)
 {
   ink_zero(this->user_args);
@@ -90,6 +92,7 @@ ProxySession::state_api_callout(int event, void *data)
   if (e == schedule_event) {
     schedule_event = nullptr;
   }
+  REMEMBER(HttpDebugNames::get_event_name(event));
 
   switch (event) {
   case EVENT_NONE:
@@ -109,6 +112,7 @@ ProxySession::state_api_callout(int event, void *data)
         SET_HANDLER(&ProxySession::state_api_callout);
         if (!schedule_event) { // Don't bother if there is already one
           schedule_event = mutex->thread_holding->schedule_in(this, HRTIME_MSECONDS(10));
+          REMEMBER("failed to get lock");
         }
         return -1;
       }
@@ -155,7 +159,7 @@ ProxySession::handle_api_return(int event)
 {
   TSHttpHookID hookid = hook_state.id();
 
-  SET_HANDLER(&ProxySession::state_api_callout);
+  REMEMBER(HttpDebugNames::get_event_name(event));
 
   cur_hook = nullptr;
 

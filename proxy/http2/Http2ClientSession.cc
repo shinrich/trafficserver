@@ -30,18 +30,19 @@
     this->remember(MakeSourceLocation(), e, r); \
   }
 
-#define STATE_ENTER(state_name, event)                                                                                        \
-  do {                                                                                                                        \
-    REMEMBER(event, this->recursion)                                                                                          \
-    SsnDebug(this, "http2_cs", "[%" PRId64 "] [%s, %s]", this->get_id(), #state_name, HttpDebugNames::get_event_name(event)); \
+#define STATE_ENTER(state_name, event)                                                        \
+  do {                                                                                        \
+    REMEMBER(HttpDebugNames::get_event_name(event), this->recursion)                          \
+    SsnDebug(this, "http2_cs", "[%" PRId64 "] [%s, %s]", this->get_id(), _TS_STR(state_name), \
+             HttpDebugNames::get_event_name(event));                                          \
   } while (0)
 
 #define Http2SsnDebug(fmt, ...) SsnDebug(this, "http2_cs", "[%" PRId64 "] " fmt, this->get_id(), ##__VA_ARGS__)
 
-#define HTTP2_SET_SESSION_HANDLER(handler) \
-  do {                                     \
-    REMEMBER(NO_EVENT, this->recursion);   \
-    this->session_handler = (handler);     \
+#define HTTP2_SET_SESSION_HANDLER(handler)                     \
+  do {                                                         \
+    REMEMBER("Set handler" _TS_STR(handler), this->recursion); \
+    this->session_handler = (handler);                         \
   } while (0)
 
 ClassAllocator<Http2ClientSession> http2ClientSessionAllocator("http2ClientSessionAllocator");
@@ -71,7 +72,7 @@ Http2ClientSession::destroy()
 {
   if (!in_destroy) {
     in_destroy = true;
-    REMEMBER(NO_EVENT, this->recursion)
+    REMEMBER(nullptr, this->recursion)
     Http2SsnDebug("session destroy");
     // Let everyone know we are going down
     do_api_callout(TS_HTTP_SSN_CLOSE_HOOK);
@@ -106,7 +107,9 @@ Http2ClientSession::free()
     return;
   }
 
-  REMEMBER(NO_EVENT, this->recursion)
+  ink_assert(!write_vio || write_vio->ntodo() <= 0);
+
+  REMEMBER(nullptr, this->recursion)
   Http2SsnDebug("session free");
 
   this->_milestones.mark(Http2SsnMilestone::CLOSE);
@@ -300,7 +303,7 @@ Http2ClientSession::do_io_shutdown(ShutdownHowTo_t howto)
 void
 Http2ClientSession::do_io_close(int alerrno)
 {
-  REMEMBER(NO_EVENT, this->recursion)
+  REMEMBER(nullptr, this->recursion)
   Http2SsnDebug("session closed");
 
   ink_assert(this->mutex->thread_holding == this_ethread());
@@ -380,7 +383,7 @@ Http2ClientSession::main_event_handler(int event, void *edata)
   case VC_EVENT_INACTIVITY_TIMEOUT:
   case VC_EVENT_ERROR:
   case VC_EVENT_EOS:
-    REMEMBER(event, this->recursion)
+    REMEMBER(HttpDebugNames::get_event_name(event), this->recursion)
     this->set_dying_event(event);
     this->do_io_close();
     if (client_vc != nullptr) {
@@ -456,7 +459,7 @@ Http2ClientSession::state_read_connection_preface(int event, void *edata)
 
     if (memcmp(HTTP2_CONNECTION_PREFACE, buf, nbytes) != 0) {
       Http2SsnDebug("invalid connection preface");
-      REMEMBER(event, this->recursion)
+      REMEMBER(HttpDebugNames::get_event_name(event), this->recursion)
       this->do_io_close();
       return 0;
     }
@@ -477,7 +480,7 @@ Http2ClientSession::state_read_connection_preface(int event, void *edata)
 
     // If we have unconsumed data, start tranferring frames now.
     if (this->_reader->is_read_avail_more_than(0)) {
-      REMEMBER(event, this->recursion)
+      REMEMBER(HttpDebugNames::get_event_name(event), this->recursion)
       return this->handleEvent(VC_EVENT_READ_READY, vio);
     }
   }
@@ -516,7 +519,7 @@ Http2ClientSession::do_start_frame_read(Http2ErrorCode &ret_error)
   this->cur_frame_from_early_data = false;
   if (!http2_parse_frame_header(make_iovec(buf), this->current_hdr)) {
     Http2SsnDebug("frame header parse failure");
-    REMEMBER(NO_EVENT, this->recursion)
+    REMEMBER(nullptr, this->recursion)
     this->do_io_close();
     return -1;
   }
@@ -631,7 +634,7 @@ Http2ClientSession::state_process_frame_read(int event, VIO *vio, bool inside_fr
       if (err > Http2ErrorCode::HTTP2_ERROR_NO_ERROR) {
         SCOPED_MUTEX_LOCK(lock, this->connection_state.mutex, this_ethread());
         if (!this->connection_state.is_state_closed()) {
-          REMEMBER(NO_EVENT, this->recursion)
+          REMEMBER("h2 error, goaway", this->recursion)
           this->connection_state.send_goaway_frame(this->connection_state.get_latest_stream_id_in(), err);
           this->set_half_close_local_flag(true);
           this->do_io_close();
@@ -676,9 +679,9 @@ Http2ClientSession::decrement_current_active_client_connections_stat()
 }
 
 void
-Http2ClientSession::remember(const SourceLocation &location, int event, int reentrant)
+Http2ClientSession::remember(const SourceLocation &location, const char *event, int reentrant)
 {
-  this->_history.push_back(location, event, reentrant);
+  this->_debug.history.push_back(location, event, reentrant);
 }
 
 bool

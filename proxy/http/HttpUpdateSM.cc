@@ -150,7 +150,6 @@ HttpUpdateSM::handle_api_return()
         //  copy is done - bail out
         ink_assert(transform_info.entry->in_tunnel == false);
         terminate_sm = true;
-        SMTrace("terminate_sm = true;");
       }
     }
     break;
@@ -176,7 +175,7 @@ HttpUpdateSM::handle_api_return()
 
     perform_cache_write_action();
     terminate_sm = true;
-    SMTrace("terminate_sm = true;");
+
     return;
   }
 
@@ -198,7 +197,7 @@ HttpUpdateSM::set_next_state()
     }
 
     terminate_sm = true;
-    SMTrace("terminate_sm = true;");
+
     ink_assert(tunnel.is_tunnel_active() == false);
     return;
   }

@@ -260,16 +260,16 @@ HttpVCTable::cleanup_all()
 #ifdef STATE_ENTER
 #undef STATE_ENTER
 #endif
-#define STATE_ENTER(state_name, event)                                                                    \
-  {                                                                                                       \
-    /*ink_assert (magic == HTTP_SM_MAGIC_ALIVE); */ REMEMBER(event, reentrancy_count);                    \
-    SMDebug("http", "[%" PRId64 "] [%s, %s]", sm_id, #state_name, HttpDebugNames::get_event_name(event)); \
+#define STATE_ENTER(state_name, event)                                                                                 \
+  {                                                                                                                    \
+    /*ink_assert (magic == HTTP_SM_MAGIC_ALIVE); */ REMEMBER(HttpDebugNames::get_event_name(event), reentrancy_count); \
+    SMDebug("http", "[%" PRId64 "] [%s, %s]", sm_id, #state_name, HttpDebugNames::get_event_name(event));              \
   }
 
-#define HTTP_SM_SET_DEFAULT_HANDLER(_h)   \
-  {                                       \
-    REMEMBER(NO_EVENT, reentrancy_count); \
-    default_handler = _h;                 \
+#define HTTP_SM_SET_DEFAULT_HANDLER(_h)             \
+  {                                                 \
+    REMEMBER("Set Handler " #_h, reentrancy_count); \
+    default_handler = _h;                           \
   }
 
 /*
@@ -413,6 +413,7 @@ HttpSM::do_api_callout()
 int
 HttpSM::state_add_to_list(int event, void * /* data ATS_UNUSED */)
 {
+  REMEMBER(HttpDebugNames::get_event_name(event), this->reentrancy_count);
   // The list if for stat pages and general debugging
   //   The config variable exists mostly to allow us to
   //   measure an performance drop during benchmark runs
@@ -448,6 +449,7 @@ HttpSM::state_add_to_list(int event, void * /* data ATS_UNUSED */)
 int
 HttpSM::state_remove_from_list(int event, void * /* data ATS_UNUSED */)
 {
+  REMEMBER(HttpDebugNames::get_event_name(event), this->reentrancy_count);
   // The config parameters are guaranteed not change
   //   across the life of a transaction so it safe to
   //   check the config here and use it determine
@@ -704,7 +706,7 @@ HttpSM::state_read_client_request_header(int event, void *data)
     ua_entry = nullptr;
     set_ua_abort(HttpTransact::ABORTED, event);
     terminate_sm = true;
-    SMTrace("terminate_sm = true;");
+
     return 0;
   }
 
@@ -965,7 +967,7 @@ HttpSM::state_watch_for_client_abort(int event, void *data)
       ua_entry = nullptr;
       tunnel.kill_tunnel();
       terminate_sm = true;
-      SMTrace("terminate_sm = true;"); // Just die already, the requester is gone
+      // Just die already, the requester is gone
       set_ua_abort(HttpTransact::ABORTED, event);
     }
     break;
@@ -999,7 +1001,7 @@ HttpSM::state_watch_for_client_abort(int event, void *data)
     set_ua_abort(HttpTransact::ABORTED, event);
 
     terminate_sm = true;
-    SMTrace("terminate_sm = true;");
+
     break;
   }
   case VC_EVENT_READ_COMPLETE:
@@ -1369,7 +1371,7 @@ HttpSM::state_common_wait_for_transform_read(HttpTransformInfo *t_info, HttpSMHa
          origin and (2) there's no user agent connection to which to send the error response.
       */
       terminate_sm = true;
-      SMTrace("terminate_sm = true;");
+
     } else {
       tunnel.kill_tunnel();
       call_transact_and_set_next_state(HttpTransact::HandleApiErrorJump);
@@ -1511,13 +1513,12 @@ plugins required to work with sni_routing.
         HTTP_SM_SET_DEFAULT_HANDLER(&HttpSM::state_api_callout);
         ink_assert(pending_action == nullptr);
         pending_action = mutex->thread_holding->schedule_in(this, HRTIME_MSECONDS(10));
+        REMEMBER("failed to get lock", reentrancy_count);
         return -1;
       }
-
+      REMEMBER(HttpDebugNames::get_api_hook_name(cur_hook_id), 0);
       SMDebug("http", "[%" PRId64 "] calling plugin on hook %s at hook %p", sm_id, HttpDebugNames::get_api_hook_name(cur_hook_id),
               cur_hook);
-      SMTrace("hook=%s", HttpDebugNames::get_api_hook_name(cur_hook_id));
-
       APIHook const *hook = cur_hook;
       // Need to delay the next hook update until after this hook is called to handle dynamic
       // callback manipulation. cur_hook isn't needed to track state (in hook_state).
@@ -1589,9 +1590,8 @@ plugins required to work with sni_routing.
 
   default:
     Debug("SsnTrace", "%s sm_id#%li can't handle %s", __FUNCTION__, sm_id, HttpDebugNames::get_event_name(event));
-    ink_assert(false);
+    // ink_assert(false);
     terminate_sm = true;
-    SMTrace("terminate_sm = true;");
     return 0;
   }
 
@@ -2726,7 +2726,7 @@ HttpSM::tunnel_handler_post_or_put(HttpTunnelProducer *p)
     // UA quit - shutdown the SM
     ink_assert(p->read_success == false);
     terminate_sm = true;
-    SMTrace("terminate_sm = true;");
+
     break;
   case HTTP_SM_POST_SUCCESS:
     // The post succeeded
@@ -2897,7 +2897,6 @@ HttpSM::tunnel_handler_100_continue(int event, void *data)
     }
   } else {
     terminate_sm = true;
-    SMTrace("terminate_sm = true;");
   }
 
   return 0;
@@ -2919,7 +2918,7 @@ HttpSM::tunnel_handler_push(int event, void *data)
     // Client failed to send the body, it's gone.  Kill the
     // state machine
     terminate_sm = true;
-    SMTrace("terminate_sm = true;");
+
     return 0;
   }
 
@@ -2950,7 +2949,6 @@ HttpSM::tunnel_handler(int event, void *data)
   ink_assert(event == HTTP_TUNNEL_EVENT_DONE);
   // The tunnel calls this when it is done
   terminate_sm = true;
-  SMTrace("terminate_sm = true;");
 
   if (unlikely(t_state.is_websocket)) {
     HTTP_DECREMENT_DYN_STAT(http_websocket_current_active_client_connections_stat);
@@ -4649,7 +4647,6 @@ HttpSM::do_cache_lookup_and_read()
     ink_assert(!pending_action);
     pending_action = cache_action_handle;
   }
-  REMEMBER((long)pending_action, reentrancy_count);
 
   return;
 }
@@ -6748,7 +6745,7 @@ HttpSM::setup_push_transfer_to_cache()
       // Client failed to send the body, it's gone.  Kill the
       // state machine
       terminate_sm = true;
-      SMTrace("terminate_sm = true;");
+
       return nullptr;
     }
   }
@@ -6906,7 +6903,8 @@ HttpSM::kill_this()
       pending_action->cancel();
       pending_action = nullptr;
     } else if (pending_action) {
-      ink_assert(pending_action == nullptr);
+      SMDebug("http_sm", "can't kill with pending action");
+      return;
     }
 
     cache_sm.end_both();
@@ -7198,9 +7196,9 @@ HttpSM::dump_state_on_assert()
   // Loop through the history and dump it
   for (unsigned int i = 0; i < history.size(); i++) {
     char buf[256];
-    int r = history[i].reentrancy;
-    int e = history[i].event;
-    Error("%d   %d   %s", e, r, history[i].location.str(buf, sizeof(buf)));
+    int r         = history[i].reentrancy;
+    const char *e = history[i].event;
+    Error("%s   %d   %s", e, r, history[i].location.str(buf, sizeof(buf)));
   }
 
   // Dump the via string
@@ -7423,7 +7421,7 @@ HttpSM::set_next_state()
         ua_txn->cancel_inactivity_timeout();
       } else if (!ua_txn) {
         terminate_sm = true;
-        SMTrace("terminate_sm = true;");
+
         return; // Give up if there is no session
       }
     }
@@ -7469,7 +7467,7 @@ HttpSM::set_next_state()
         ua_txn->cancel_inactivity_timeout();
       } else if (!ua_txn) {
         terminate_sm = true;
-        SMTrace("terminate_sm = true;");
+
         return; // Give up if there is no session
       }
     }
