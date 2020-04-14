@@ -32,3 +32,7 @@
 # another 1 Gig  volume,
 #  volume=1 scheme=http size=10%
 #  volume=2 scheme=http size=1024
+volume=1 scheme=http size=25%
+volume=2 scheme=http size=25%
+volume=3 scheme=http size=25%
+volume=4 scheme=http size=25%
