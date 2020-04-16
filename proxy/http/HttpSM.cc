@@ -607,7 +607,7 @@ HttpSM::attach_client_session(ProxyTransaction *client_vc, IOBufferReader *buffe
   // This is another external entry point and it is possible for the state machine to get terminated
   // while down the call chain from @c state_add_to_list. So we need to use the reentrancy_count to
   // prevent cleanup there and do it here as we return to the external caller.
-  if (terminate_sm == true && reentrancy_count == 1) {
+  if (_check_termination()) {
     kill_this();
   } else {
     --reentrancy_count;
@@ -1415,7 +1415,7 @@ HttpSM::state_api_callback(int event, void *data)
   //  is also reentrant.  As such, we don't want to decrement
   //  the reentrancy count until after we run kill_this()
   //
-  if (terminate_sm == true && reentrancy_count == 1) {
+  if (_check_termination()) {
     kill_this();
   } else {
     reentrancy_count--;
@@ -1458,10 +1458,11 @@ HttpSM::state_api_callout(int event, void *data)
   // This is a reschedule via the tunnel.  Just fall through
   //
   case EVENT_INTERVAL:
-    if (data != pending_action) {
+    if (data == pending_action) {
       pending_action->cancel();
+      pending_action = nullptr;
     }
-    pending_action = nullptr;
+
   // FALLTHROUGH
   case EVENT_NONE:
     if (cur_hook_id == TS_HTTP_TXN_START_HOOK && t_state.client_info.port_attribute == HttpProxyPort::TRANSPORT_BLIND_TUNNEL) {
@@ -1588,8 +1589,12 @@ plugins required to work with sni_routing.
     }
     break;
 
+  case VC_EVENT_EOS:
+    terminate_sm = true;
+    return 0;
+
   default:
-    Debug("SsnTrace", "%s sm_id#%li can't handle %s", __FUNCTION__, sm_id, HttpDebugNames::get_event_name(event));
+    Debug("http_cs", "%s sm_id#%li can't handle %s", __FUNCTION__, sm_id, HttpDebugNames::get_event_name(event));
     // ink_assert(false);
     terminate_sm = true;
     return 0;
@@ -2646,7 +2651,6 @@ HttpSM::main_handler(int event, void *data)
 
   HttpSMHandler jump_point = nullptr;
   ink_assert(reentrancy_count >= 0);
-  ink_assert(terminate_sm == false);
   reentrancy_count++;
 
   // Don't use the state enter macro since it uses history
@@ -2683,7 +2687,7 @@ HttpSM::main_handler(int event, void *data)
   // is also reentrant.  As such, we don't want to decrement
   // the reentrancy count until after we run kill_this()
   //
-  if (terminate_sm == true && reentrancy_count == 1) {
+  if (_check_termination()) {
     kill_this();
   } else {
     reentrancy_count--;
@@ -6872,6 +6876,12 @@ HttpSM::plugin_agents_cleanup()
   }
 }
 
+bool
+HttpSM::_check_termination()
+{
+  return terminate_sm && reentrancy_count == 1 && pending_action == nullptr;
+}
+
 //////////////////////////////////////////////////////////////////////////
 //
 //  HttpSM::kill_this()
@@ -6886,27 +6896,11 @@ void
 HttpSM::kill_this()
 {
   SMTrace("");
-  ink_release_assert(reentrancy_count == 1);
+  ink_assert(_check_termination());
   this->postbuf_clear();
   enable_redirection = false;
 
   if (kill_this_async_done == false) {
-    ////////////////////////////////
-    // cancel uncompleted actions //
-    ////////////////////////////////
-    // The action should be cancelled only if
-    // the state machine is in HTTP_API_NO_CALLOUT
-    // state. This is because we are depending on the
-    // callout to complete for the state machine to
-    // get killed.
-    if (callout_state == HTTP_API_NO_CALLOUT && pending_action) {
-      pending_action->cancel();
-      pending_action = nullptr;
-    } else if (pending_action) {
-      SMDebug("http_sm", "can't kill with pending action");
-      return;
-    }
-
     cache_sm.end_both();
     transform_cache_sm.end_both();
     vc_table.cleanup_all();

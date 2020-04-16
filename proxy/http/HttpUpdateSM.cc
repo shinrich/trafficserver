@@ -175,7 +175,6 @@ HttpUpdateSM::handle_api_return()
 
     perform_cache_write_action();
     terminate_sm = true;
-
     return;
   }
 
@@ -197,7 +196,6 @@ HttpUpdateSM::set_next_state()
     }
 
     terminate_sm = true;
-
     ink_assert(tunnel.is_tunnel_active() == false);
     return;
   }

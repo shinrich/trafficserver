@@ -584,6 +584,7 @@ protected:
   bool kill_this_async_done = false;
   bool parse_range_done     = false;
   virtual int kill_this_async_hook(int event, void *data);
+  bool _check_termination();
   void kill_this();
   void update_stats();
   void transform_cleanup(TSHttpHookID hook, HttpTransformInfo *info);

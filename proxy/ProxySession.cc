@@ -75,10 +75,7 @@ static const TSEvent eventmap[TS_HTTP_LAST_HOOK + 1] = {
 void
 ProxySession::free()
 {
-  if (schedule_event) {
-    schedule_event->cancel();
-    schedule_event = nullptr;
-  }
+  ink_assert(schedule_event == nullptr);
   this->api_hooks.clear();
   this->mutex.clear();
   this->acl.clear();
@@ -109,9 +106,11 @@ ProxySession::state_api_callout(int event, void *data)
 
       // Have a mutex but didn't get the lock, reschedule
       if (!lock.is_locked()) {
-        SET_HANDLER(&ProxySession::state_api_callout);
+        Debug("http_cs", "%s lock failed", HttpDebugNames::get_event_name(event));
         if (!schedule_event) { // Don't bother if there is already one
+          SET_HANDLER(&ProxySession::state_api_callout);
           schedule_event = mutex->thread_holding->schedule_in(this, HRTIME_MSECONDS(10));
+          Debug("http_cs", "%s defer", HttpDebugNames::get_event_name(event));
           REMEMBER("failed to get lock");
         }
         return -1;

@@ -80,7 +80,14 @@ Http1ClientSession::destroy()
     HttpSsnDebug("[%" PRId64 "] session destroy", get_id());
     ink_assert(read_buffer);
     ink_release_assert(transact_count == released_transactions);
+
+    EThread *ethis         = this_ethread();
+    Ptr<ProxyMutex> lmutex = this->mutex;
+    MUTEX_TAKE_LOCK(lmutex, ethis);
     do_api_callout(TS_HTTP_SSN_CLOSE_HOOK);
+    MUTEX_UNTAKE_LOCK(lmutex, ethis);
+    lmutex.clear();
+
   } else {
     Warning("http1: Attempt to double ssn close");
   }
@@ -89,6 +96,7 @@ Http1ClientSession::destroy()
 void
 Http1ClientSession::free()
 {
+  ink_assert(in_destroy);
   REMEMBER(nullptr);
   magic = HTTP_CS_MAGIC_DEAD;
   if (read_buffer) {
@@ -411,7 +419,7 @@ Http1ClientSession::reenable(VIO *vio)
 void
 Http1ClientSession::release(ProxyTransaction *txn)
 {
-  // REMEMBER("read_state=%i", int(read_state));
+  HttpSsnDebug("release() read_state=%i", int(read_state));
   ink_assert(_txn == txn);
   if (read_state == HCS_ACTIVE_READER && _txn && _txn->get_sm()) {
     auto const *txn_conf = _txn->get_sm()->t_state.txn_conf; // todo: keep ka_timeouts as member var?
@@ -538,10 +546,9 @@ Http1ClientSession::start()
     ka_vio = this->do_io_read(this, INT64_MAX, read_buffer);
     ink_assert(slave_ka_vio != ka_vio);
 
-    if (client_vc) {
-      client_vc->cancel_active_timeout();
-      client_vc->add_to_keep_alive_queue();
-    }
+    ink_assert(client_vc);
+    client_vc->cancel_active_timeout();
+    client_vc->add_to_keep_alive_queue();
   }
 }
 
