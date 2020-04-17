@@ -42,8 +42,10 @@ Test.PreparePlugin(os.path.join(Test.Variables.AtsTestToolsDir,
 server.addResponse("sessionfile.log", request_header, response_header)
 ts.Disk.records_config.update({
     'proxy.config.diags.debug.enabled': 1,
-    'proxy.config.diags.debug.tags': 'ssntxnorder_verify.*|http_cs',
+    'proxy.config.diags.debug.tags': 'ssntxnorder_verify.*',
     'proxy.config.http.cache.http': 0,  # disable cache to simply the test.
+    # tested with allow_half_open on and off
+    #'proxy.config.http.allow_half_open' : 1,
     'proxy.config.cache.enable_read_while_writer': 0
 })
 

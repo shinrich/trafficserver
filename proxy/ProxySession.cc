@@ -106,11 +106,11 @@ ProxySession::state_api_callout(int event, void *data)
 
       // Have a mutex but didn't get the lock, reschedule
       if (!lock.is_locked()) {
-        Debug("http_cs", "%s lock failed", HttpDebugNames::get_event_name(event));
+        Debug("http_cs", "%s lock failed ssn=%" PRId64, HttpDebugNames::get_event_name(event), this->get_id());
         if (!schedule_event) { // Don't bother if there is already one
           SET_HANDLER(&ProxySession::state_api_callout);
           schedule_event = mutex->thread_holding->schedule_in(this, HRTIME_MSECONDS(10));
-          Debug("http_cs", "%s defer", HttpDebugNames::get_event_name(event));
+          // Debug("http_cs", "%s defer", HttpDebugNames::get_event_name(event));
           REMEMBER("failed to get lock");
         }
         return -1;
@@ -164,6 +164,7 @@ ProxySession::handle_api_return(int event)
 
   switch (hookid) {
   case TS_HTTP_SSN_START_HOOK:
+    Debug("http_cs", "SSN_START handle_api_return ssn=%" PRId64, this->get_id());
     if (event == TS_EVENT_HTTP_ERROR) {
       this->do_io_close();
     } else {
@@ -171,6 +172,7 @@ ProxySession::handle_api_return(int event)
     }
     break;
   case TS_HTTP_SSN_CLOSE_HOOK: {
+    Debug("http_cs", "SSN_CLOSE handle_api_return ssn=%" PRId64, this->get_id());
     this->free(); // You can now clean things up
     break;
   }

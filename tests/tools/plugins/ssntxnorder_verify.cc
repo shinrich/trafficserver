@@ -29,6 +29,7 @@
 #include <ts/ts.h>    // for debug
 #include <inttypes.h> // for PRIu64
 #include <string.h>
+#include <unistd.h>
 
 // debug messages viewable by setting 'proxy.config.diags.debug.tags'
 // in 'records.config'
@@ -140,7 +141,7 @@ handle_order(TSCont contp, TSEvent event, void *edata)
   case TS_EVENT_HTTP_SSN_CLOSE: // End of session
   {
     ssnp = reinterpret_cast<TSHttpSsn>(edata);
-    TSDebug(DEBUG_TAG_CLOSE, "event TS_EVENT_HTTP_SSN_CLOSE [ SSNID = %p ]", ssnp);
+    TSDebug(DEBUG_TAG_CLOSE, "event TS_EVENT_HTTP_SSN_CLOSE [ SSNID = %p ] ssn=%" PRId64, ssnp, TSHttpSsnIdGet(ssnp));
     TSStatIntIncrement(stat_ssn_close, 1);
     if (started_ssns.erase(ssnp) == 0) {
       // No record existsted for this session
@@ -161,8 +162,9 @@ handle_order(TSCont contp, TSEvent event, void *edata)
 
   case TS_EVENT_HTTP_SSN_START: // Beginning of session
   {
+    // sleep(1);
     ssnp = reinterpret_cast<TSHttpSsn>(edata);
-    TSDebug(DEBUG_TAG_HOOK, "event TS_EVENT_HTTP_SSN_START [ SSNID = %p ]", ssnp);
+    TSDebug(DEBUG_TAG_HOOK, "event TS_EVENT_HTTP_SSN_START [ SSNID = %p ] ssn=%" PRId64, ssnp, TSHttpSsnIdGet(ssnp));
     TSStatIntIncrement(stat_ssn_start, 1);
 
     if (!started_ssns.insert(ssnp).second) {
@@ -180,7 +182,9 @@ handle_order(TSCont contp, TSEvent event, void *edata)
   case TS_EVENT_HTTP_TXN_CLOSE: // End of transaction
   {
     txnp = reinterpret_cast<TSHttpTxn>(edata);
-    TSDebug(DEBUG_TAG_HOOK, "event TS_EVENT_HTTP_TXN_CLOSE [ TXNID = %" PRIu64 " ]", TSHttpTxnIdGet(txnp));
+    ssnp = TSHttpTxnSsnGet(txnp);
+    TSDebug(DEBUG_TAG_HOOK, "event TS_EVENT_HTTP_TXN_CLOSE [ TXNID = %" PRIu64 " ] ssn=%" PRId64, TSHttpTxnIdGet(txnp),
+            TSHttpSsnIdGet(ssnp));
     TSStatIntIncrement(stat_txn_close, 1);
 
     std::set<started_txn>::iterator closed_txn = closed_txns.find(started_txn(TSHttpTxnIdGet(txnp)));
@@ -232,7 +236,8 @@ handle_order(TSCont contp, TSEvent event, void *edata)
   {
     txnp = reinterpret_cast<TSHttpTxn>(edata);
     ssnp = TSHttpTxnSsnGet(txnp);
-    TSDebug(DEBUG_TAG_HOOK, "event TS_EVENT_HTTP_TXN_START [ TXNID = %" PRIu64 " ]", TSHttpTxnIdGet(txnp));
+    TSDebug(DEBUG_TAG_HOOK, "event TS_EVENT_HTTP_TXN_START [ TXNID = %" PRIu64 " ] ssn=%" PRId64, TSHttpTxnIdGet(txnp),
+            TSHttpSsnIdGet(ssnp));
     TSStatIntIncrement(stat_txn_start, 1);
 
     started_txn new_txn = started_txn(TSHttpTxnIdGet(txnp), txnp, ssnp);

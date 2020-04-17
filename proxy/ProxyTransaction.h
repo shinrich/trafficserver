@@ -53,6 +53,7 @@ public:
   virtual int get_transaction_priority_dependence() const;
   virtual bool allow_half_open() const = 0;
   virtual void increment_txn_stat()    = 0;
+  virtual void release(IOBufferReader *r);
 
   virtual NetVConnection *get_netvc() const;
   virtual bool is_first_transaction() const;

@@ -54,6 +54,7 @@ public:
   void increment_txn_stat() override;
 
   void set_reader(IOBufferReader *reader);
+  void release(IOBufferReader *r);
 
   ////////////////////
   // Variables

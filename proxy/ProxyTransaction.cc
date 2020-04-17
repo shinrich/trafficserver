@@ -204,3 +204,17 @@ ProxyTransaction::get_transaction_priority_dependence() const
 {
   return 0;
 }
+
+void
+ProxyTransaction::release(IOBufferReader *r)
+{
+  HttpTxnDebug("[%" PRId64 "] session released by sm [%" PRId64 "]", _proxy_ssn ? _proxy_ssn->get_id() : 0, _sm ? _sm->sm_id : 0);
+
+  // Seems like we only increment this stat now
+  // this->decrement_client_transactions_stat();
+
+  // Pass along the release to the session
+  if (_proxy_ssn) {
+    _proxy_ssn->release(this);
+  }
+}

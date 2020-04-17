@@ -961,7 +961,7 @@ HttpSM::state_watch_for_client_abort(int event, void *data)
       ua_entry->eos = true;
     } else {
       ua_txn->do_io_close();
-      ua_txn           = nullptr;
+      // ua_txn           = nullptr;
       ua_buffer_reader = nullptr;
       vc_table.cleanup_entry(ua_entry);
       ua_entry = nullptr;
@@ -3381,6 +3381,7 @@ HttpSM::tunnel_handler_ua(int event, HttpTunnelConsumer *c)
   } else {
     ink_assert(ua_buffer_reader != nullptr);
     SMTrace("did not close!");
+    ua_txn->release(ua_buffer_reader);
     ua_buffer_reader = nullptr;
   }
 

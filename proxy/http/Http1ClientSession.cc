@@ -66,6 +66,19 @@ ClassAllocator<Http1ClientSession> http1ClientSessionAllocator("http1ClientSessi
 
 Http1ClientSession::Http1ClientSession() {}
 
+// Defer considering deleting the session until the
+// last transaction has completely shutdown.  May
+// still be using state for logging, calling hooks, etc.
+void
+Http1ClientSession::release_transaction()
+{
+  _txn = nullptr;
+  released_transactions++;
+  if (transact_count == released_transactions) {
+    destroy();
+  }
+}
+
 void
 Http1ClientSession::destroy()
 {
@@ -80,13 +93,7 @@ Http1ClientSession::destroy()
     HttpSsnDebug("[%" PRId64 "] session destroy", get_id());
     ink_assert(read_buffer);
     ink_release_assert(transact_count == released_transactions);
-
-    EThread *ethis         = this_ethread();
-    Ptr<ProxyMutex> lmutex = this->mutex;
-    MUTEX_TAKE_LOCK(lmutex, ethis);
     do_api_callout(TS_HTTP_SSN_CLOSE_HOOK);
-    MUTEX_UNTAKE_LOCK(lmutex, ethis);
-    lmutex.clear();
 
   } else {
     Warning("http1: Attempt to double ssn close");
@@ -255,6 +262,7 @@ Http1ClientSession::do_io_close(int alerrno)
   if (half_close && _txn && _txn->get_sm()) {
     read_state = HCS_HALF_CLOSED;
     SET_HANDLER(&Http1ClientSession::state_wait_for_close);
+    Warning("[%" PRId64 "] session half close", get_id());
     HttpSsnDebug("[%" PRId64 "] session half close", get_id());
 
     if (client_vc) {
@@ -285,6 +293,9 @@ Http1ClientSession::do_io_close(int alerrno)
     HTTP_SUM_DYN_STAT(http_transactions_per_client_con, transact_count);
     HTTP_DECREMENT_DYN_STAT(http_current_client_connections_stat);
     conn_decrease = false;
+  }
+  if (transact_count == released_transactions) {
+    this->destroy();
   }
 }
 
@@ -390,7 +401,11 @@ Http1ClientSession::state_keep_alive(int event, void *data)
 
   case VC_EVENT_EOS:
     this->do_io_close();
-    this->destroy();
+    // this->destroy();
+    if (client_vc != nullptr) {
+      client_vc->do_io_close();
+      client_vc = nullptr;
+    }
     break;
 
   case VC_EVENT_READ_COMPLETE:
@@ -427,15 +442,15 @@ Http1ClientSession::release(ProxyTransaction *txn)
     set_inactivity_timeout(HRTIME_SECONDS(txn_conf->keep_alive_no_activity_timeout_in));
   }
 
-  _txn = nullptr;
+  //_txn = nullptr;
 
-  released_transactions++;
-  ink_assert(transact_count == released_transactions); // H1 can only do serial transactions
+  // released_transactions++;
+  // ink_release_assert(transact_count == released_transactions); // H1 can only do serial transactions
 
   this->clear_session_active();
   this->ssn_last_txn_time = Thread::get_hrtime();
 
-  ink_assert(read_state != HCS_HALF_CLOSED);
+  ink_release_assert(read_state != HCS_HALF_CLOSED);
   if (read_state == HCS_CLOSED) {
     this->destroy();
   } else {
