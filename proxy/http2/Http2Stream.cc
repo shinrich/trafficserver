@@ -756,6 +756,8 @@ Http2Stream::~Http2Stream()
     // In many cases, this has been called earlier, so this call is a no-op
     h2_proxy_ssn->connection_state.delete_stream(this);
 
+    h2_proxy_ssn->connection_state.decrement_stream_count();
+
     // Update session's stream counts, so it accurately goes into keep-alive state
     h2_proxy_ssn->connection_state.release_stream();
     _proxy_ssn = nullptr;
@@ -992,4 +994,11 @@ Http2Stream::get_transaction_priority_dependence() const
   } else {
     return priority_node->parent ? priority_node->parent->id : 0;
   }
+}
+
+void
+Http2Stream::release(IOBufferReader *r)
+{
+  super::release(r);
+  this->do_io_close();
 }

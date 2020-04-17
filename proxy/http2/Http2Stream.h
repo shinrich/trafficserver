@@ -123,6 +123,7 @@ public:
   bool has_trailing_header() const;
   void set_request_headers(HTTPHdr &h2_headers);
   MIOBuffer *read_vio_writer() const;
+  void release(IOBufferReader *r);
 
   //////////////////
   // Variables

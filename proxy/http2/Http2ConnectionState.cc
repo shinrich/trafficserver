@@ -1383,7 +1383,8 @@ Http2ConnectionState::release_stream()
   if (this->ua_session) {
     ink_assert(this->mutex == ua_session->mutex);
 
-    if (--total_client_streams_count == 0) {
+    // if (--total_client_streams_count == 0) {
+    if (total_client_streams_count == 0) {
       if (fini_received) {
         // We were shutting down, go ahead and terminate the session
         // this is a member of Http2ConnectionState and will be freed
