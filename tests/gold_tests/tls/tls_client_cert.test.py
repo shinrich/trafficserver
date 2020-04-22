@@ -30,6 +30,7 @@ cafile2 = "{0}/signer2.pem".format(Test.RunDirectory)
 server = Test.MakeOriginServer("server", ssl=True, options = { "--clientCA": cafile, "--clientverify": ""}, clientcert="{0}/signed-foo.pem".format(Test.RunDirectory), clientkey="{0}/signed-foo.key".format(Test.RunDirectory))
 server2 = Test.MakeOriginServer("server2", ssl=True, options = { "--clientCA": cafile2, "--clientverify": ""}, clientcert="{0}/signed2-bar.pem".format(Test.RunDirectory), clientkey="{0}/signed-bar.key".format(Test.RunDirectory))
 server3 = Test.MakeOriginServer("server3")
+server4 = Test.MakeOriginServer("server4")
 server.Setup.Copy("ssl/signer.pem")
 server.Setup.Copy("ssl/signer2.pem")
 server.Setup.Copy("ssl/signed-foo.pem")
@@ -96,6 +97,18 @@ ts.Disk.sni_yaml.AddLine(
 ts.Disk.sni_yaml.AddLine(
     '  client_key: {0}/signed-bar.key'.format(ts.Variables.SSLDir))
 
+ts.Disk.logging_yaml.AddLines(
+'''
+logging:
+  formats:
+    - name: testformat
+      format: '%<pssc> %<cquc> %<pscert> %<cscert>'
+  logs:
+    - mode: ascii
+      format: testformat
+      filename: squid
+'''.split("\n")
+)
 
 # Should succeed
 tr = Test.AddTestRun("Connect with first client cert to first server")
@@ -293,3 +306,21 @@ tr4fail.StillRunningAfter = server2
 tr4fail.Processes.Default.Command = 'curl  -H host:example.com http://127.0.0.1:{0}/case2'.format(ts.Variables.port)
 tr4fail.Processes.Default.ReturnCode = 0
 tr4fail.Processes.Default.Streams.stdout = Testers.ContainsExpression("Could Not Connect", "Check response")
+
+# Parking this as a ready tester on a meaningless process
+# Stall the test runs until the squid.log file has appeared
+def access_log_ready(tsenv):
+  def done_access_log(process, hasRunFor, **kw):
+    cmd = "test -f {0}".format(ts.Disk.squid_log)
+    retval = subprocess.run(cmd, shell=True, env=tsenv)
+    return retval.returncode == 0
+
+  return done_access_log
+
+tr = Test.AddTestRun("Wait for the access log to write out")
+tr.Processes.Default.StartBefore(server4, ready=access_log_ready(ts.Env))
+tr.StillRunningAfter = ts
+tr.Processes.Default.Command = 'ls'
+tr.Processes.Default.ReturnCode = 0
+
+ts.Disk.squid_log.Content = "gold/proxycert-accesslog.gold"
