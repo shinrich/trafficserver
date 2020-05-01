@@ -113,7 +113,6 @@ Http1ClientSession::free()
     conn_decrease = false;
   }
 
-
   // Free the transaction resources
   this->trans.super_type::destroy();
 
