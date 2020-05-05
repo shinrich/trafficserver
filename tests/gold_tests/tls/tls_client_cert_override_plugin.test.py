@@ -43,10 +43,10 @@ server2.Setup.Copy("ssl/signed2-bar.pem")
 server2.Setup.Copy("ssl/signed-bar.key")
 
 request_header = {"headers": "GET / HTTP/1.1\r\nHost: example.com\r\n\r\n", "timestamp": "1469733493.993", "body": ""}
-response_header = {"headers": "HTTP/1.1 200 OK\r\nConnection: close\r\n\r\n", "timestamp": "1469733493.993", "body": ""}
+response_header = {"headers": "HTTP/1.1 200 OK\r\nConnection: close\r\nCache-Control: no-cache\r\n\r\n", "timestamp": "1469733493.993", "body": ""}
 server.addResponse("sessionlog.json", request_header, response_header)
 request_header = {"headers": "GET / HTTP/1.1\r\nHost: bar.com\r\n\r\n", "timestamp": "1469733493.993", "body": ""}
-response_header = {"headers": "HTTP/1.1 200 OK\r\nConnection: close\r\n\r\n", "timestamp": "1469733493.993", "body": ""}
+response_header = {"headers": "HTTP/1.1 200 OK\r\nCache-Control: no-cache\r\nConnection: close\r\n\r\n", "timestamp": "1469733493.993", "body": ""}
 server.addResponse("sessionlog.json", request_header, response_header)
 
 ts.addSSLfile("ssl/server.pem")
@@ -65,17 +65,21 @@ snipath = ts.Disk.sni_yaml.AbsPath
 
 Test.PreparePlugin(os.path.join(Test.Variables.AtsTestToolsDir, 'plugins', 'ssl_secret_load_test.cc'), ts)
 
+shortdir = ts.Variables.SSLDir[0:ts.Variables.SSLDir.rfind("/")]
+
 ts.Disk.records_config.update({
     'proxy.config.ssl.server.cert.path': '{0}'.format(ts.Variables.SSLDir),
     'proxy.config.ssl.server.private_key.path': '{0}'.format(ts.Variables.SSLDir),
     'proxy.config.ssl.client.verify.server':  0,
     'proxy.config.ssl.server.cipher_suite': 'ECDHE-RSA-AES128-GCM-SHA256:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-RSA-AES128-SHA256:ECDHE-RSA-AES256-SHA384:AES128-GCM-SHA256:AES256-GCM-SHA384:ECDHE-RSA-RC4-SHA:ECDHE-RSA-AES128-SHA:ECDHE-RSA-AES256-SHA:RC4-SHA:RC4-MD5:AES128-SHA:AES256-SHA:DES-CBC3-SHA!SRP:!DSS:!PSK:!aNULL:!eNULL:!SSLv2',
-    'proxy.config.ssl.client.cert.path': '{0}/../'.format(ts.Variables.SSLDir),
+    'proxy.config.ssl.client.cert.path': '{0}'.format(shortdir),
     'proxy.config.ssl.client.cert.filename': 'signed-foo.pem',
-    'proxy.config.ssl.client.private_key.path': '{0}/../'.format(ts.Variables.SSLDir),
+    'proxy.config.ssl.client.private_key.path': '{0}'.format(shortdir),
     'proxy.config.ssl.client.private_key.filename': 'signed-foo.key',
     'proxy.config.exec_thread.autoconfig.scale': 1.0,
     'proxy.config.url_remap.pristine_host_hdr' : 1,
+    'proxy.config.diags.debug.enabled': 1,
+    'proxy.config.diags.debug.tags': 'ssl_secret_load|http|ssl',
 })
 
 ts.Disk.ssl_multicert_config.AddLine(
@@ -139,11 +143,9 @@ trupdate = Test.AddTestRun("Update client cert file in place")
 trupdate.StillRunningAfter = ts
 trupdate.StillRunningAfter = server
 trupdate.StillRunningAfter = server2
-# Make a meaningless config change on the path so the records.config reload logic will trigger
-trupdate.Setup.CopyAs("ssl/signed2-bar.pem", ".", "{0}/signed-bar.pem".format(ts.Variables.SSLDir))
 # in the config/ssl directory for records.config
 trupdate.Setup.CopyAs("ssl/signed-foo.pem", ".", "{0}/signed2-foo.pem".format(ts.Variables.SSLDir))
-trupdate.Processes.Default.Command = 'traffic_ctl config set proxy.config.ssl.client.cert.path {0}/; touch {1}'.format(ts.Variables.SSLDir,snipath)
+trupdate.Processes.Default.Command = 'traffic_ctl config set proxy.config.ssl.client.cert.path {0}/; touch {1}'.format(shortdir, snipath)
 # Need to copy over the environment so traffic_ctl knows where to find the unix domain socket
 trupdate.Processes.Default.Env = ts.Env
 trupdate.Processes.Default.ReturnCode = 0
@@ -181,4 +183,36 @@ tr3bar.Processes.Default.Command = 'curl  -H host:foo.com http://127.0.0.1:{0}/b
 tr3bar.Processes.Default.ReturnCode = 0
 tr3bar.Processes.Default.Streams.stdout = Testers.ExcludesExpression("Could Not Connect", "Check response")
 
+# Test the hot-reload feature.  Update cert file and wait about.  Should update without reload
+trupdate = Test.AddTestRun("Update signed-foo cert file in place")
+trupdate.StillRunningAfter = ts
+trupdate.StillRunningAfter = server
+trupdate.Setup.CopyAs("ssl/signed2-foo.pem", ".", "{0}/signed-foo.pem".format(ts.Variables.SSLDir))
+# For some reason the Setup.CopyAs does not change the modification time, so we touch
+trupdate.Processes.Default.Command = 'touch {0}/signed-foo.pem {0}/signed-foo.key'.format(ts.Variables.SSLDir)
+# Need to copy over the environment so traffic_ctl knows where to find the unix domain socket
+trupdate.Processes.Default.Env = ts.Env
+trupdate.Processes.Default.ReturnCode = 0
+
+# The plugin will pull every 3 seconds.  So wait 4 seconds and test again. 
+# case1 should fail
+# badcase1 should succeed
+tr = Test.AddTestRun("Retest case1")
+tr.DelayStart = 4
+tr.ReturnCode = 0
+tr.StillRunningAfter = server
+tr.StillRunningAfter = server2
+tr.StillRunningAfter = ts
+tr.Processes.Default.Command = "curl -H host:example.com  http://127.0.0.1:{0}/case1".format(ts.Variables.port)
+tr.Processes.Default.ReturnCode = 0
+tr.Processes.Default.Streams.stdout = Testers.ContainsExpression("Could Not Connect", "Check response")
+
+tr = Test.AddTestRun("Retest badcase1")
+tr.ReturnCode = 0
+tr.StillRunningAfter = server
+tr.StillRunningAfter = server2
+tr.StillRunningAfter = ts
+tr.Processes.Default.Command = "curl -H host:example.com  http://127.0.0.1:{0}/badcase1".format(ts.Variables.port)
+tr.Processes.Default.ReturnCode = 0
+tr.Processes.Default.Streams.stdout = Testers.ExcludesExpression("Could Not Connect", "Check response")
 

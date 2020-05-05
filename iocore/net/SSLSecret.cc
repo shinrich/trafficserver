@@ -24,33 +24,36 @@
 #include "tscore/ts_file.h"
 
 bool
-SSLSecret::loadSecret(const char *name, SSLSecretData &data_item)
+SSLSecret::loadSecret(const std::string &name1, const std::string &name2, std::string &data_item1, std::string &data_item2)
 {
   // Call the load secret hooks
   //
   class APIHook *curHook = lifecycle_hooks->get(TS_LIFECYCLE_SSL_SECRET_HOOK);
   TSSecretID secret_name;
-  secret_name.name    = name;
-  secret_name.version = data_item.version;
+  secret_name.cert_name     = name1.data();
+  secret_name.cert_name_len = name1.size();
+  secret_name.key_name      = name2.data();
+  secret_name.key_name_len  = name2.size();
   while (curHook) {
-    curHook->invoke(TS_EVENT_SSL_SECRET, const_cast<void *>(static_cast<const void *>(&secret_name)));
+    curHook->invoke(TS_EVENT_SSL_SECRET, &secret_name);
     curHook = curHook->next();
   }
 
-  const SSLSecretData *data = this->getSecret(name);
-  if (nullptr == data || data->data.length() == 0) {
-    // If none of them load it, assume it is a file
-    return loadFile(name, data_item.data);
+  const std::string *data1 = this->getSecretItem(name1);
+  const std::string *data2 = this->getSecretItem(name2);
+  if ((nullptr == data1 || data1->length() == 0) || (!name2.empty() && (nullptr == data2 || data2->length() == 0))) {
+    // If none of them loaded it, assume it is a file
+    return loadFile(name1, data_item1) && (name2.empty() || loadFile(name2, data_item2));
   }
   return true;
 }
 
 bool
-SSLSecret::loadFile(const char *name, std::string &data_item)
+SSLSecret::loadFile(const std::string &name, std::string &data_item)
 {
   struct stat statdata;
   // Load the secret and add it to the map
-  if (stat(name, &statdata) < 0) {
+  if (stat(name.c_str(), &statdata) < 0) {
     return false;
   }
   std::error_code error;
@@ -60,30 +63,29 @@ SSLSecret::loadFile(const char *name, std::string &data_item)
     return false;
   }
   if (SSLConfigParams::load_ssl_file_cb) {
-    SSLConfigParams::load_ssl_file_cb(name);
+    SSLConfigParams::load_ssl_file_cb(name.c_str());
   }
   return true;
 }
 
 bool
-SSLSecret::setSecret(std::string name, int version, const char *data, int data_len)
+SSLSecret::setSecret(const std::string &name, const char *data, int data_len)
 {
   auto iter = secret_map.find(name);
   if (iter == secret_map.end()) {
-    secret_map[name] = SSLSecretData();
+    secret_map[name] = "";
     iter             = secret_map.find(name);
   }
   if (iter == secret_map.end()) {
     return false;
   }
-  iter->second.data.assign(data, data_len);
-  iter->second.version = version;
-  Debug("ssl_secret", "Set secret=%10.s... to %s version %d", name.c_str(), iter->second.data.data(), iter->second.version);
+  iter->second.assign(data, data_len);
+  Debug("ssl_secret", "Set secret=%10.s... to %*.s", name.c_str(), static_cast<int>(iter->second.size()), iter->second.data());
   return true;
 }
 
-const SSLSecret::SSLSecretData *
-SSLSecret::getSecret(std::string name) const
+const std::string *
+SSLSecret::getSecretItem(const std::string &name) const
 {
   auto iter = secret_map.find(name);
   if (iter == secret_map.end()) {
@@ -93,44 +95,43 @@ SSLSecret::getSecret(std::string name) const
 }
 
 bool
-SSLSecret::getSecret(std::string name, int &version, const char **data, int *data_len) const
+SSLSecret::getSecret(const std::string &name, std::string_view &data) const
 {
-  const SSLSecretData *data_item = this->getSecret(name);
+  const std::string *data_item = this->getSecretItem(name);
   if (data_item) {
-    Debug("ssl_secret", "Get secret=%10.s...  %s(%" PRId64 ") version %d", name.c_str(), data_item->data.data(),
-          data_item->data.length(), data_item->version);
-    if (data) {
-      *data = data_item->data.data();
-    }
-    if (data_len) {
-      *data_len = data_item->data.size();
-    }
-    version = data_item->version;
-    return true;
+    Debug("ssl_secret", "Get secret=%10.s...  %s(%zd)", name.c_str(), data_item->data(), data_item->length());
+    data = *data_item;
+  } else {
+    data = std::string_view{};
   }
-  return false;
+  return data_item != nullptr;
 }
 
 bool
-SSLSecret::getOrLoadSecret(const char *name, int &version, const char **data, int *data_len)
+SSLSecret::getOrLoadSecret(const std::string &name1, const std::string &name2, std::string_view &data1, std::string_view &data2)
 {
-  if (this->getSecret(name, version, data, data_len)) {
-    return true;
-  }
-  secret_map[name] = SSLSecretData();
-  auto iter        = secret_map.find(name);
-  if (iter == secret_map.end()) {
-    return false;
-  }
-  iter->second.version = version;
-  if (this->loadSecret(name, iter->second)) {
-    if (data) {
-      *data = iter->second.data.data();
+  bool found_secret1 = this->getSecret(name1, data1);
+  bool found_secret2 = name2.empty() || this->getSecret(name2, data2);
+
+  // If we can't find either secret, load the both again
+  if (!found_secret1 || !found_secret2) {
+    // Make sure each name has an entry
+    if (!found_secret1) {
+      secret_map[name1] = "";
     }
-    if (data_len) {
-      *data_len = iter->second.data.length();
+    if (!found_secret2) {
+      secret_map[name2] = "";
     }
-    version = iter->second.version;
+    auto iter1 = secret_map.find(name1);
+    auto iter2 = name2.empty() ? iter1 : secret_map.find(name2);
+    if (this->loadSecret(name1, name2, iter1->second, iter2->second)) {
+      data1 = iter1->second;
+      if (!name2.empty()) {
+        data2 = iter2->second;
+      }
+      return true;
+    }
+  } else {
     return true;
   }
   return false;

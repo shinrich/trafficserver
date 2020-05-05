@@ -35,6 +35,7 @@ server.addResponse("sessionlog.json", request_header, response_header)
 
 # add ssl materials like key, certificates for the server
 ts.addSSLfile("ssl/signed-foo.pem")
+ts.addSSLfile("ssl/signed2-foo.pem")
 ts.addSSLfile("ssl/signed-foo.key")
 ts.addSSLfile("ssl/signed-foo-ec.pem")
 ts.addSSLfile("ssl/signed-foo-ec.key")
@@ -78,7 +79,8 @@ dns.addRecords(records={"bar.com.": ["127.0.0.1"]})
 # Should receive a EC cert
 tr = Test.AddTestRun("Default for foo should return EC cert")
 tr.Setup.Copy("ssl/signer.pem")
-tr.Processes.Default.Command = "echo foo | openssl s_client -servername foo.com -connect 127.0.0.1:{0}".format(ts.Variables.ssl_port)
+tr.Setup.Copy("ssl/signer2.pem")
+tr.Processes.Default.Command = "echo foo | openssl s_client  -CAfile signer.pem -servername foo.com -connect 127.0.0.1:{0}".format(ts.Variables.ssl_port)
 tr.ReturnCode = 0
 tr.Processes.Default.StartBefore(server)
 tr.Processes.Default.StartBefore(dns)
@@ -86,48 +88,96 @@ tr.Processes.Default.StartBefore(Test.Processes.ts, ready=When.PortOpen(ts.Varia
 tr.StillRunningAfter = server
 tr.StillRunningAfter = ts
 tr.Processes.Default.Streams.All += Testers.ContainsExpression("Peer signature type: ECDSA", "Should select EC cert")
+tr.Processes.Default.Streams.All += Testers.ExcludesExpression("unable to verify the first certificate", "Correct signer")
 
 # Should receive a RSA cert
 tr = Test.AddTestRun("Only offer RSA ciphers, should receive RSA cert")
-tr.Processes.Default.Command = "echo foo | openssl s_client -servername foo.com -sigalgs 'RSA-PSS+SHA256' -connect 127.0.0.1:{0}".format(ts.Variables.ssl_port)
+tr.Processes.Default.Command = "echo foo | openssl s_client  -CAfile signer.pem -servername foo.com -sigalgs 'RSA-PSS+SHA256' -connect 127.0.0.1:{0}".format(ts.Variables.ssl_port)
 tr.ReturnCode = 0
 tr.StillRunningAfter = server
 tr.StillRunningAfter = ts
 tr.Processes.Default.Streams.All += Testers.ContainsExpression("Peer signature type: RSA-PSS", "Should select RSA cert")
+tr.Processes.Default.Streams.All += Testers.ExcludesExpression("unable to verify the first certificate", "Correct signer")
 
 # Should receive a EC cert
 tr = Test.AddTestRun("Default for one.com should return EC cert")
-tr.Processes.Default.Command = "echo foo | openssl s_client -servername one.com -connect 127.0.0.1:{0}".format(ts.Variables.ssl_port)
+tr.Processes.Default.Command = "echo foo | openssl s_client  -CAfile signer.pem -servername one.com -connect 127.0.0.1:{0}".format(ts.Variables.ssl_port)
 tr.ReturnCode = 0
 tr.StillRunningAfter = server
 tr.StillRunningAfter = ts
 tr.Processes.Default.Streams.All += Testers.ContainsExpression("Peer signature type: ECDSA", "Should select EC cert")
 tr.Processes.Default.Streams.All += Testers.ContainsExpression("CN = group.com", "Should select a group SAN");
+tr.Processes.Default.Streams.All += Testers.ExcludesExpression("unable to verify the first certificate", "Correct signer")
 
 # Should receive a RSA cert
 tr = Test.AddTestRun("Only offer RSA ciphers, should receive RSA cert")
-tr.Processes.Default.Command = "echo foo | openssl s_client -servername one.com -sigalgs 'RSA-PSS+SHA256' -connect 127.0.0.1:{0}".format(ts.Variables.ssl_port)
+tr.Processes.Default.Command = "echo foo | openssl s_client  -CAfile signer.pem -servername one.com -sigalgs 'RSA-PSS+SHA256' -connect 127.0.0.1:{0}".format(ts.Variables.ssl_port)
 tr.ReturnCode = 0
 tr.StillRunningAfter = server
 tr.StillRunningAfter = ts
 tr.Processes.Default.Streams.All += Testers.ContainsExpression("Peer signature type: RSA-PSS", "Should select RSA cert")
 tr.Processes.Default.Streams.All += Testers.ContainsExpression("CN = group.com", "Should select a group SAN");
+tr.Processes.Default.Streams.All += Testers.ExcludesExpression("unable to verify the first certificate", "Correct signer")
 
 # Should receive a RSA cert
 tr = Test.AddTestRun("rsa.com only in rsa cert")
-tr.Processes.Default.Command = "echo foo | openssl s_client -servername rsa.com -connect 127.0.0.1:{0}".format(ts.Variables.ssl_port)
+tr.Processes.Default.Command = "echo foo | openssl s_client  -CAfile signer.pem -servername rsa.com -connect 127.0.0.1:{0}".format(ts.Variables.ssl_port)
 tr.ReturnCode = 0
 tr.StillRunningAfter = server
 tr.StillRunningAfter = ts
 tr.Processes.Default.Streams.All += Testers.ContainsExpression("Peer signature type: RSA-PSS", "Should select RSA cert")
 tr.Processes.Default.Streams.All += Testers.ContainsExpression("CN = group.com", "Should select a group SAN");
+tr.Processes.Default.Streams.All += Testers.ExcludesExpression("unable to verify the first certificate", "Correct signer")
 
 # Should receive a EC cert
 tr = Test.AddTestRun("ec.com only in ec cert")
-tr.Processes.Default.Command = "echo foo | openssl s_client -servername ec.com -connect 127.0.0.1:{0}".format(ts.Variables.ssl_port)
+tr.Processes.Default.Command = "echo foo | openssl s_client  -CAfile signer.pem -servername ec.com -connect 127.0.0.1:{0}".format(ts.Variables.ssl_port)
 tr.ReturnCode = 0
 tr.StillRunningAfter = server
 tr.StillRunningAfter = ts
 tr.Processes.Default.Streams.All += Testers.ContainsExpression("Peer signature type: ECDSA", "Should select EC cert")
 tr.Processes.Default.Streams.All += Testers.ContainsExpression("CN = group.com", "Should select a group SAN");
+tr.Processes.Default.Streams.All += Testers.ExcludesExpression("unable to verify the first certificate", "Correct signer")
+
+# Copy in a new version of the foo.com cert.  Replace it with the version signed by signer 2.  Wait at least a second to sure the file update time differs
+trupdate = Test.AddTestRun("Update server bar cert file in place")
+trupdate.StillRunningAfter = ts
+trupdate.StillRunningAfter = server
+trupdate.Setup.CopyAs("ssl/signed2-foo.pem", ".", "{0}/signed-foo.pem".format(ts.Variables.SSLDir))
+# For some reason the Setup.CopyAs does not change the modification time, so we touch
+trupdate.Processes.Default.Command = 'touch {0}/signed-foo.pem'.format(ts.Variables.SSLDir)
+# Need to copy over the environment so traffic_ctl knows where to find the unix domain socket
+trupdate.Processes.Default.Env = ts.Env
+trupdate.Processes.Default.ReturnCode = 0
+
+# The plugin will pull every 3 seconds.  So wait 4 seconds and test again.  Request with CA=signer2.pem should work.  Request with CA=signer.pem should fail
+# Should receive a RSA cert
+tr = Test.AddTestRun("Only offer RSA ciphers, should receive RSA cert")
+tr.Processes.Default.Command = "echo foo | openssl s_client -CAfile signer.pem  -servername foo.com -sigalgs 'RSA-PSS+SHA256' -connect 127.0.0.1:{0}".format(ts.Variables.ssl_port)
+tr.DelayStart = 4
+tr.ReturnCode = 0
+tr.StillRunningAfter = server
+tr.StillRunningAfter = ts
+tr.Processes.Default.Streams.All += Testers.ContainsExpression("Peer signature type: RSA-PSS", "Should select RSA cert")
+tr.Processes.Default.Streams.All += Testers.ContainsExpression("CN = foo.com", "Should select foo.com")
+tr.Processes.Default.Streams.All += Testers.ContainsExpression("unable to verify the first certificate", "Different signer")
+
+tr = Test.AddTestRun("Only offer RSA ciphers, should receive RSA cert with correct CA")
+tr.Processes.Default.Command = "echo foo | openssl s_client -CAfile signer2.pem  -servername foo.com -sigalgs 'RSA-PSS+SHA256' -connect 127.0.0.1:{0}".format(ts.Variables.ssl_port)
+tr.ReturnCode = 0
+tr.StillRunningAfter = server
+tr.StillRunningAfter = ts
+tr.Processes.Default.Streams.All += Testers.ContainsExpression("Peer signature type: RSA-PSS", "Should select RSA cert")
+tr.Processes.Default.Streams.All += Testers.ContainsExpression("CN = foo.com", "Should select foo.com")
+tr.Processes.Default.Streams.All += Testers.ExcludesExpression("unable to verify the first certificate", "Correct signer")
+
+# The EC case should be unchanged
+tr = Test.AddTestRun("Offer any cipher")
+tr.Processes.Default.Command = "echo foo | openssl s_client -CAfile signer.pem  -servername foo.com  -connect 127.0.0.1:{0}".format(ts.Variables.ssl_port)
+tr.ReturnCode = 0
+tr.StillRunningAfter = server
+tr.StillRunningAfter = ts
+tr.Processes.Default.Streams.All += Testers.ContainsExpression("Peer signature type: ECDSA", "Should select EC cert")
+tr.Processes.Default.Streams.All += Testers.ContainsExpression("CN = foo.com", "Should select foo.com")
+tr.Processes.Default.Streams.All += Testers.ExcludesExpression("unable to verify the first certificate", "Correct signer")
 
