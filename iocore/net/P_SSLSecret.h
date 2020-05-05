@@ -23,21 +23,14 @@ class SSLSecret
 {
 public:
   SSLSecret() {}
-  bool loadFile(const char *name, std::string &data_item);
-  bool getSecret(std::string name, int &version, const char **data, int *data_len) const;
-  bool setSecret(std::string name, int version, const char *data, int data_len);
-  bool getOrLoadSecret(const char *name, int &version, const char **data, int *data_len);
+  bool getSecret(const std::string &name, std::string_view &data) const;
+  bool setSecret(const std::string &name, const char *data, int data_len);
+  bool getOrLoadSecret(const std::string &name, const std::string &name2, std::string_view &data, std::string_view &data2);
 
 private:
-  class SSLSecretData
-  {
-  public:
-    SSLSecretData() {}
-    std::string data;
-    int version = -1;
-  };
-  const SSLSecretData *getSecret(std::string name) const;
-  bool loadSecret(const char *name, SSLSecretData &data_item);
+  const std::string *getSecretItem(const std::string &name) const;
+  bool loadSecret(const std::string &name, const std::string &name2, std::string &data_item, std::string &data_item2);
+  bool loadFile(const std::string &name, std::string &data_item);
 
-  std::unordered_map<std::string, SSLSecretData> secret_map;
+  std::unordered_map<std::string, std::string> secret_map;
 };

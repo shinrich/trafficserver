@@ -943,8 +943,10 @@ typedef struct TSSslSessionID_s {
 } TSSslSessionID;
 
 typedef struct TSSecretID_s {
-  const char *name;
-  int version;
+  const char *cert_name;
+  size_t cert_name_len;
+  const char *key_name;
+  size_t key_name_len;
 } TSSecretID;
 
 /* --------------------------------------------------------------------------

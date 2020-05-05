@@ -143,8 +143,13 @@ struct SSLConfigParams : public ConfigInfo {
   mutable SSLSecret secrets;
 
   shared_SSL_CTX getClientSSL_CTX() const;
+  shared_SSL_CTX getCTX(const std::string &client_cert, const std::string &key_file, const char *ca_bundle_file,
+                        const char *ca_bundle_path) const;
   shared_SSL_CTX getCTX(const char *client_cert, const char *key_file, const char *ca_bundle_file,
                         const char *ca_bundle_path) const;
+  void updateCTX(const std::string &secret_string_name) const;
+
+  void clearCTX(const std::string &client_cert) const;
 
   void cleanupCTXTable();
 
