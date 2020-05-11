@@ -101,6 +101,7 @@ public:
 
   // Virtual Accessors
   NetVConnection *get_netvc() const;
+  void set_netvc(NetVConnection *arg);
   virtual int get_transact_count() const          = 0;
   virtual const char *get_protocol_string() const = 0;
 
@@ -281,4 +282,10 @@ inline NetVConnection *
 ProxySession::get_netvc() const
 {
   return _vc;
+}
+
+inline void
+ProxySession::set_netvc(NetVConnection *arg)
+{
+  _vc = arg;
 }
