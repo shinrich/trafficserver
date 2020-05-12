@@ -187,4 +187,3 @@ Http1ServerSession::get_server_ip() const
   ink_release_assert(_vc != nullptr);
   return _vc->get_remote_endpoint();
 }
-

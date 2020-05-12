@@ -475,8 +475,7 @@ Http1ClientSession::attach_server_session(ProxySession *ssession, bool transacti
     ssession->do_io_write(this, 0, nullptr);
 
     if (transaction_done) {
-      ssession->set_inactivity_timeout(
-        HRTIME_SECONDS(trans.get_sm()->t_state.txn_conf->keep_alive_no_activity_timeout_out));
+      ssession->set_inactivity_timeout(HRTIME_SECONDS(trans.get_sm()->t_state.txn_conf->keep_alive_no_activity_timeout_out));
       ssession->cancel_active_timeout();
     } else {
       // we are serving from the cache - this could take a while.

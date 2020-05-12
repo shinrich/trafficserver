@@ -56,10 +56,9 @@ public:
   void do_io_shutdown(ShutdownHowTo_t howto) override;
   void reenable(VIO *vio) override;
 
-
   /// Virtual Accessors
   //
-  virtual int get_transaction_id() const                     = 0;
+  virtual int get_transaction_id() const = 0;
   virtual int get_transaction_priority_weight() const;
   virtual int get_transaction_priority_dependence() const;
   virtual bool allow_half_open() const              = 0;

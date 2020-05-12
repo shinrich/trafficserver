@@ -89,7 +89,6 @@ Http1Transaction::decrement_client_transactions_stat()
   HTTP_DECREMENT_DYN_STAT(http_current_client_transactions_stat);
 }
 
-
 //
 int
 Http1Transaction::get_transaction_id() const

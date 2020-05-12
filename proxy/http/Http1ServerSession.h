@@ -146,7 +146,7 @@ public:
   MIOBuffer *read_buffer = nullptr;
 
 private:
-  int magic                 = HTTP_SS_MAGIC_DEAD;
+  int magic = HTTP_SS_MAGIC_DEAD;
 
   IOBufferReader *buf_reader = nullptr;
 };

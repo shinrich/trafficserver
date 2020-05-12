@@ -243,7 +243,6 @@ ProxySession::cancel_active_timeout()
   }
 }
 
-
 int
 ProxySession::populate_protocol(std::string_view *result, int size) const
 {
