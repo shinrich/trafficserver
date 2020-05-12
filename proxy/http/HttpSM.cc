@@ -1796,11 +1796,11 @@ HttpSM::state_http_server_open(int event, void *data)
     ink_release_assert(pending_action == nullptr || pending_action->continuation == vc->get_action()->continuation);
     pending_action = nullptr;
 
-    session->new_connection(vc);
+    session->new_connection(vc, nullptr, nullptr);
 
     ATS_PROBE1(new_origin_server_connection, t_state.current.server->name);
 
-    session->state = HSS_ACTIVE;
+    session->set_active();
     ats_ip_copy(&t_state.server_info.src_addr, netvc->get_local_addr());
 
     // If origin_max_connections or origin_min_keep_alive_connections is set then we are metering
@@ -3123,7 +3123,6 @@ HttpSM::tunnel_handler_server(int event, HttpTunnelProducer *p)
     }
   } else {
     server_session->attach_hostname(t_state.current.server->name);
-    server_session->server_trans_stat--;
     HTTP_DECREMENT_DYN_STAT(http_current_server_transactions_stat);
 
     // If the option to attach the server session to the client session is set
@@ -3137,7 +3136,7 @@ HttpSM::tunnel_handler_server(int event, HttpTunnelProducer *p)
     } else {
       // Release the session back into the shared session pool
       server_session->get_netvc()->set_inactivity_timeout(HRTIME_SECONDS(t_state.txn_conf->keep_alive_no_activity_timeout_out));
-      server_session->release();
+      server_session->release(nullptr);
     }
   }
 
@@ -4972,7 +4971,7 @@ HttpSM::do_http_server_open(bool raw)
   // session when we already have an attached server session.
   else if ((TS_SERVER_SESSION_SHARING_MATCH_NONE == t_state.txn_conf->server_session_sharing_match || is_private()) &&
            (ua_txn != nullptr)) {
-    Http1ServerSession *existing_ss = ua_txn->get_server_session();
+    Http1ServerSession *existing_ss = dynamic_cast<Http1ServerSession *>(ua_txn->get_server_session());
 
     if (existing_ss) {
       // [amc] Not sure if this is the best option, but we don't get here unless session sharing is disabled
@@ -4981,7 +4980,7 @@ HttpSM::do_http_server_open(bool raw)
       // shouldn't we just automatically keep the association?
       if (ats_ip_addr_port_eq(&existing_ss->get_server_ip().sa, &t_state.current.server->dst_addr.sa)) {
         ua_txn->attach_server_session(nullptr);
-        existing_ss->state = HSS_ACTIVE;
+        existing_ss->set_active();
         this->attach_server_session(existing_ss);
         hsm_release_assert(server_session != nullptr);
         handle_http_server_open();
@@ -4990,7 +4989,7 @@ HttpSM::do_http_server_open(bool raw)
         // As this is in the non-sharing configuration, we want to close
         // the existing connection and call connect_re to get a new one
         existing_ss->get_netvc()->set_inactivity_timeout(HRTIME_SECONDS(t_state.txn_conf->keep_alive_no_activity_timeout_out));
-        existing_ss->release();
+        existing_ss->release(nullptr);
         ua_txn->attach_server_session(nullptr);
       }
     }
@@ -4999,10 +4998,10 @@ HttpSM::do_http_server_open(bool raw)
   // to get a new one.
   // ua_txn is null when t_state.req_flavor == REQ_FLAVOR_SCHEDULED_UPDATE
   else if (ua_txn != nullptr) {
-    Http1ServerSession *existing_ss = ua_txn->get_server_session();
+    Http1ServerSession *existing_ss = dynamic_cast<Http1ServerSession *>(ua_txn->get_server_session());
     if (existing_ss) {
       existing_ss->get_netvc()->set_inactivity_timeout(HRTIME_SECONDS(t_state.txn_conf->keep_alive_no_activity_timeout_out));
-      existing_ss->release();
+      existing_ss->release(nullptr);
       ua_txn->attach_server_session(nullptr);
     }
   }
@@ -5413,12 +5412,11 @@ HttpSM::release_server_session(bool serve_from_cache)
         t_state.www_auth_content != HttpTransact::CACHE_AUTH_NONE)) &&
       plugin_tunnel_type == HTTP_NO_PLUGIN_TUNNEL) {
     HTTP_DECREMENT_DYN_STAT(http_current_server_transactions_stat);
-    server_session->server_trans_stat--;
     server_session->attach_hostname(t_state.current.server->name);
     if (t_state.www_auth_content == HttpTransact::CACHE_AUTH_NONE || serve_from_cache == false) {
       // Must explicitly set the keep_alive_no_activity time before doing the release
       server_session->get_netvc()->set_inactivity_timeout(HRTIME_SECONDS(t_state.txn_conf->keep_alive_no_activity_timeout_out));
-      server_session->release();
+      server_session->release(nullptr);
     } else {
       // an authenticated server connection - attach to the local client
       // we are serving from cache for the current transaction
@@ -5980,12 +5978,12 @@ HttpSM::write_header_into_buffer(HTTPHdr *h, MIOBuffer *b)
 }
 
 void
-HttpSM::attach_server_session(Http1ServerSession *s)
+HttpSM::attach_server_session(SessionPoolInterface *s)
 {
   hsm_release_assert(server_session == nullptr);
   hsm_release_assert(server_entry == nullptr);
-  hsm_release_assert(s->state == HSS_ACTIVE);
-  server_session        = s;
+  hsm_release_assert(s->is_active());
+  server_session        = dynamic_cast<Http1ServerSession *>(s);
   server_transact_count = server_session->transact_count++;
 
   // update the dst_addr when using an existing session
@@ -6010,7 +6008,6 @@ HttpSM::attach_server_session(Http1ServerSession *s)
   server_session->mutex = this->mutex;
 
   HTTP_INCREMENT_DYN_STAT(http_current_server_transactions_stat);
-  ++s->server_trans_stat;
 
   // Record the VC in our table
   server_entry             = vc_table.new_entry();
@@ -8029,7 +8026,7 @@ HttpSM::is_private()
   if (server_session) {
     res = server_session->private_session;
   } else if (ua_txn) {
-    Http1ServerSession *ss = ua_txn->get_server_session();
+    Http1ServerSession *ss = dynamic_cast<Http1ServerSession *>(ua_txn->get_server_session());
     if (ss) {
       res = ss->private_session;
     } else if (will_be_private_ss) {
@@ -8184,4 +8181,10 @@ PostDataBuffers::clear()
 PostDataBuffers::~PostDataBuffers()
 {
   this->clear();
+}
+
+SessionPoolInterface *
+HttpSM::get_server_session() const
+{
+  return server_session;
 }

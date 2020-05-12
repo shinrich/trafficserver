@@ -40,6 +40,7 @@
 #define SsnDebug(ssn, tag, ...) SpecificDebug((ssn)->debug(), tag, __VA_ARGS__)
 
 class ProxyTransaction;
+class SessionPoolInterface;
 
 enum class ProxyErrorClass {
   NONE,
@@ -88,18 +89,19 @@ public:
   // Virtual Methods
   virtual void new_connection(NetVConnection *new_vc, MIOBuffer *iobuf, IOBufferReader *reader) = 0;
   virtual void start()                                                                          = 0;
-  virtual void attach_server_session(ProxySession *ssession, bool transaction_done = true);
+  virtual void attach_server_session(SessionPoolInterface *ssession, bool transaction_done = true);
 
   virtual void release(ProxyTransaction *trans) = 0;
 
   virtual void destroy() = 0;
   virtual void free();
 
-  virtual void increment_current_active_client_connections_stat() = 0;
-  virtual void decrement_current_active_client_connections_stat() = 0;
+  virtual void increment_current_active_connections_stat() = 0;
+  virtual void decrement_current_active_connections_stat() = 0;
 
   // Virtual Accessors
   NetVConnection *get_netvc() const;
+  void set_netvc(NetVConnection *newvc);
   virtual int get_transact_count() const          = 0;
   virtual const char *get_protocol_string() const = 0;
 
@@ -110,10 +112,10 @@ public:
   virtual void set_half_close_flag(bool flag);
   virtual bool get_half_close_flag() const;
 
-  virtual ProxySession *get_server_session() const;
+  virtual SessionPoolInterface *get_server_session() const;
 
   // Replicate NetVConnection API
-  virtual sockaddr const *get_client_addr();
+  virtual sockaddr const *get_remote_addr() const;
   virtual sockaddr const *get_local_addr();
 
   virtual void set_active_timeout(ink_hrtime timeout_in);
@@ -201,6 +203,68 @@ private:
   static inline int64_t next_cs_id = 0;
 };
 
+class SessionPoolInterface : public ProxySession
+{
+  using self_type = SessionPoolInterface;
+
+public:
+  enum HSS_State {
+    HSS_INIT,
+    HSS_ACTIVE,
+    HSS_KA_CLIENT_SLAVE,
+    HSS_KA_SHARED,
+  };
+
+  /// Hash map descriptor class for IP map.
+  struct IPLinkage {
+    self_type *_next = nullptr;
+    self_type *_prev = nullptr;
+
+    static self_type *&next_ptr(self_type *);
+    static self_type *&prev_ptr(self_type *);
+    static uint32_t hash_of(sockaddr const *key);
+    static sockaddr const *key_of(self_type const *ssn);
+    static bool equal(sockaddr const *lhs, sockaddr const *rhs);
+    // Add a couple overloads for internal convenience.
+    static bool equal(sockaddr const *lhs, SessionPoolInterface const *rhs);
+    static bool equal(SessionPoolInterface const *lhs, sockaddr const *rhs);
+  } _ip_link;
+
+  /// Hash map descriptor class for FQDN map.
+  struct FQDNLinkage {
+    self_type *_next = nullptr;
+    self_type *_prev = nullptr;
+
+    static self_type *&next_ptr(self_type *);
+    static self_type *&prev_ptr(self_type *);
+    static uint64_t hash_of(CryptoHash const &key);
+    static CryptoHash const &key_of(self_type *ssn);
+    static bool equal(CryptoHash const &lhs, CryptoHash const &rhs);
+  } _fqdn_link;
+
+  CryptoHash hostname_hash;
+  HSS_State state = HSS_INIT;
+
+  // Copy of the owning SM's server session sharing settings
+  TSServerSessionSharingMatchMask sharing_match = TS_SERVER_SESSION_SHARING_MATCH_MASK_NONE;
+  TSServerSessionSharingPoolType sharing_pool   = TS_SERVER_SESSION_SHARING_POOL_GLOBAL;
+
+  // Keep track of connection limiting and a pointer to the
+  // singleton that keeps track of the connection counts.
+  OutboundConnTrack::Group *conn_track_group = nullptr;
+
+  void
+  set_active()
+  {
+    state = HSS_ACTIVE;
+  }
+  bool
+  is_active()
+  {
+    return state == HSS_ACTIVE;
+  }
+};
+
 ///////////////////
 // INLINE
 
@@ -281,4 +345,85 @@ inline NetVConnection *
 ProxySession::get_netvc() const
 {
   return _vc;
+}
+
+inline void
+ProxySession::set_netvc(NetVConnection *newvc)
+{
+  _vc = newvc;
+}
+
+//
+// LINKAGE
+
+inline SessionPoolInterface *&
+SessionPoolInterface::IPLinkage::next_ptr(self_type *ssn)
+{
+  return ssn->_ip_link._next;
+}
+
+inline SessionPoolInterface *&
+SessionPoolInterface::IPLinkage::prev_ptr(self_type *ssn)
+{
+  return ssn->_ip_link._prev;
+}
+
+inline uint32_t
+SessionPoolInterface::IPLinkage::hash_of(sockaddr const *key)
+{
+  return ats_ip_hash(key);
+}
+
+inline sockaddr const *
+SessionPoolInterface::IPLinkage::key_of(self_type const *ssn)
+{
+  return ssn->get_remote_addr();
+}
+
+inline bool
+SessionPoolInterface::IPLinkage::equal(sockaddr const *lhs, sockaddr const *rhs)
+{
+  return ats_ip_addr_port_eq(lhs, rhs);
+}
+
+inline bool
+SessionPoolInterface::IPLinkage::equal(sockaddr const *lhs, SessionPoolInterface const *rhs)
+{
+  return ats_ip_addr_port_eq(lhs, key_of(rhs));
+}
+
+inline bool
+SessionPoolInterface::IPLinkage::equal(SessionPoolInterface const *lhs, sockaddr const *rhs)
+{
+  return ats_ip_addr_port_eq(key_of(lhs), rhs);
+}
+
+inline SessionPoolInterface *&
+SessionPoolInterface::FQDNLinkage::next_ptr(self_type *ssn)
+{
+  return ssn->_fqdn_link._next;
+}
+
+inline SessionPoolInterface *&
+SessionPoolInterface::FQDNLinkage::prev_ptr(self_type *ssn)
+{
+  return ssn->_fqdn_link._prev;
+}
+
+inline uint64_t
+SessionPoolInterface::FQDNLinkage::hash_of(CryptoHash const &key)
+{
+  return key.fold();
+}
+
+inline CryptoHash const &
+SessionPoolInterface::FQDNLinkage::key_of(self_type *ssn)
+{
+  return ssn->hostname_hash;
+}
+
+inline bool
+SessionPoolInterface::FQDNLinkage::equal(CryptoHash const &lhs, CryptoHash const &rhs)
+{
+  return lhs == rhs;
 }

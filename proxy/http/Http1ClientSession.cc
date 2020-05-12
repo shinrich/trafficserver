@@ -217,7 +217,7 @@ Http1ClientSession::do_io_close(int alerrno)
   // If we have an attached server session, release
   //   it back to our shared pool
   if (bound_ss) {
-    bound_ss->release();
+    bound_ss->release(nullptr);
     bound_ss     = nullptr;
     slave_ka_vio = nullptr;
   }
@@ -336,7 +336,7 @@ Http1ClientSession::state_slave_keep_alive(int event, void *data)
   case VC_EVENT_ACTIVE_TIMEOUT:
   case VC_EVENT_INACTIVITY_TIMEOUT:
     // Timeout - place the session on the shared pool
-    bound_ss->release();
+    bound_ss->release(nullptr);
     bound_ss     = nullptr;
     slave_ka_vio = nullptr;
     break;
@@ -451,14 +451,14 @@ Http1ClientSession::new_transaction()
 }
 
 void
-Http1ClientSession::attach_server_session(ProxySession *ssession, bool transaction_done)
+Http1ClientSession::attach_server_session(SessionPoolInterface *ssession, bool transaction_done)
 {
   if (ssession) {
     ink_assert(bound_ss == nullptr);
-    ssession->state = HSS_KA_CLIENT_SLAVE;
+    ssession->state = SessionPoolInterface::HSS_KA_CLIENT_SLAVE;
     bound_ss        = ssession;
     HttpSsnDebug("[%" PRId64 "] attaching server session [%" PRId64 "] as slave", con_id, ssession->connection_id());
-    ink_assert(ssession->get_reader()->read_avail() == 0);
+    // ink_assert(ssession->get_reader()->read_avail() == 0);
     ink_assert(ssession->get_netvc() != this->get_netvc());
 
     // handling potential keep-alive here
@@ -468,7 +468,7 @@ Http1ClientSession::attach_server_session(ProxySession *ssession, bool transacti
     //  have it call the client session back.  This IO also prevent
     //  the server net conneciton from calling back a dead sm
     SET_HANDLER(&Http1ClientSession::state_keep_alive);
-    slave_ka_vio = ssession->do_io_read(this, INT64_MAX, ssession->read_buffer);
+    slave_ka_vio = ssession->do_io_read(this, 0, nullptr);
     ink_assert(slave_ka_vio != ka_vio);
 
     // Transfer control of the write side as well
@@ -490,13 +490,12 @@ Http1ClientSession::attach_server_session(ProxySession *ssession, bool transacti
 }
 
 void
-Http1ClientSession::increment_current_active_client_connections_stat()
+Http1ClientSession::increment_current_active_connections_stat()
 {
   HTTP_INCREMENT_DYN_STAT(http_current_active_client_connections_stat);
 }
-
 void
-Http1ClientSession::decrement_current_active_client_connections_stat()
+Http1ClientSession::decrement_current_active_connections_stat()
 {
   HTTP_DECREMENT_DYN_STAT(http_current_active_client_connections_stat);
 }
@@ -545,7 +544,7 @@ Http1ClientSession::is_outbound_transparent() const
   return f_outbound_transparent;
 }
 
-ProxySession *
+SessionPoolInterface *
 Http1ClientSession::get_server_session() const
 {
   return bound_ss;

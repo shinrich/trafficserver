@@ -67,7 +67,7 @@ ProxyTransaction::release(IOBufferReader *r)
 }
 
 void
-ProxyTransaction::attach_server_session(ProxySession *ssession, bool transaction_done)
+ProxyTransaction::attach_server_session(SessionPoolInterface *ssession, bool transaction_done)
 {
   _proxy_ssn->attach_server_session(ssession, transaction_done);
 }
@@ -234,4 +234,10 @@ void
 ProxyTransaction::do_io_shutdown(ShutdownHowTo_t howto)
 {
   _proxy_ssn->do_io_shutdown(howto);
+}
+
+void
+ProxyTransaction::reenable(VIO *vio)
+{
+  _proxy_ssn->reenable(vio);
 }

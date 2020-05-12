@@ -36,7 +36,6 @@
 #include "HttpSessionManager.h"
 #include "HttpSM.h"
 
-static int64_t next_ss_id = static_cast<int64_t>(0);
 ClassAllocator<Http1ServerSession> httpServerSessionAllocator("httpServerSessionAllocator");
 
 void
@@ -44,7 +43,6 @@ Http1ServerSession::destroy()
 {
   ink_release_assert(_vc == nullptr);
   ink_assert(read_buffer);
-  ink_assert(server_trans_stat == 0);
   magic = HTTP_SS_MAGIC_DEAD;
   if (read_buffer) {
     free_MIOBuffer(read_buffer);
@@ -60,7 +58,7 @@ Http1ServerSession::destroy()
 }
 
 void
-Http1ServerSession::new_connection(NetVConnection *new_vc)
+Http1ServerSession::new_connection(NetVConnection *new_vc, MIOBuffer *iobuf, IOBufferReader *reader)
 {
   ink_assert(new_vc != nullptr);
   _vc = new_vc;
@@ -68,16 +66,20 @@ Http1ServerSession::new_connection(NetVConnection *new_vc)
   // Used to do e.g. mutex = new_vc->thread->mutex; when per-thread pools enabled
   mutex = new_vc->mutex;
 
-  // Unique client session identifier.
-  con_id = ink_atomic_increment((&next_ss_id), 1);
+  // Unique session identifier.
+  con_id = ProxySession::next_connection_id();
 
   magic = HTTP_SS_MAGIC_ALIVE;
   HTTP_SUM_GLOBAL_DYN_STAT(http_current_server_connections_stat, 1); // Update the true global stat
   HTTP_INCREMENT_DYN_STAT(http_total_server_connections_stat);
 
-  read_buffer = new_MIOBuffer(HTTP_SERVER_RESP_HDR_BUFFER_INDEX);
-
-  buf_reader = read_buffer->alloc_reader();
+  if (iobuf == nullptr) {
+    read_buffer = new_MIOBuffer(HTTP_SERVER_RESP_HDR_BUFFER_INDEX);
+    buf_reader  = read_buffer->alloc_reader();
+  } else {
+    read_buffer = iobuf;
+    buf_reader  = reader;
+  }
   Debug("http_ss", "[%" PRId64 "] session born, netvc %p", con_id, new_vc);
   state = HSS_INIT;
 
@@ -104,7 +106,6 @@ Http1ServerSession::do_io_close(int alerrno)
 
   if (state == HSS_ACTIVE) {
     HTTP_DECREMENT_DYN_STAT(http_current_server_transactions_stat);
-    this->server_trans_stat--;
   }
 
   if (debug_p) {
@@ -147,7 +148,7 @@ Http1ServerSession::do_io_close(int alerrno)
 //   Releases the session for K-A reuse
 //
 void
-Http1ServerSession::release()
+Http1ServerSession::release(ProxyTransaction *trans)
 {
   Debug("http_ss", "Releasing session, private_session=%d, sharing_match=%d", private_session, sharing_match);
   // Set our state to KA for stat issues
@@ -186,4 +187,29 @@ Http1ServerSession::get_server_ip() const
 {
   ink_release_assert(_vc != nullptr);
   return _vc->get_remote_endpoint();
+}
+
+int
+Http1ServerSession::get_transact_count() const
+{
+  return transact_count;
+}
+
+const char *
+Http1ServerSession::get_protocol_string() const
+{
+  return "http";
+}
+void
+Http1ServerSession::increment_current_active_connections_stat()
+{
+}
+void
+Http1ServerSession::decrement_current_active_connections_stat()
+{
+}
+
+void
+Http1ServerSession::start()
+{
 }

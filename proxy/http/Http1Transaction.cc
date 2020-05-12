@@ -60,12 +60,6 @@ Http1Transaction::transaction_done()
   }
 }
 
-void
-Http1Transaction::reenable(VIO *vio)
-{
-  _proxy_ssn->reenable(vio);
-}
-
 bool
 Http1Transaction::allow_half_open() const
 {
