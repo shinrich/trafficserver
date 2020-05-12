@@ -201,11 +201,11 @@ ProxySession::connection_id() const
 }
 
 void
-ProxySession::attach_server_session(Http1ServerSession *ssession, bool transaction_done)
+ProxySession::attach_server_session(ProxySession *ssession, bool transaction_done)
 {
 }
 
-Http1ServerSession *
+ProxySession *
 ProxySession::get_server_session() const
 {
   return nullptr;
@@ -234,6 +234,15 @@ ProxySession::cancel_inactivity_timeout()
     _vc->cancel_inactivity_timeout();
   }
 }
+
+void
+ProxySession::cancel_active_timeout()
+{
+  if (_vc) {
+    _vc->cancel_active_timeout();
+  }
+}
+
 
 int
 ProxySession::populate_protocol(std::string_view *result, int size) const

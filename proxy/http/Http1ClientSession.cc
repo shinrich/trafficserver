@@ -35,7 +35,6 @@
 #include "Http1Transaction.h"
 #include "HttpSM.h"
 #include "HttpDebugNames.h"
-#include "Http1ServerSession.h"
 #include "Plugin.h"
 
 #define HttpSsnDebug(fmt, ...) SsnDebug(this, "http_cs", fmt, __VA_ARGS__)
@@ -45,11 +44,6 @@
     /*ink_assert (magic == HTTP_SM_MAGIC_ALIVE);  REMEMBER (event, NULL, reentrancy_count); */          \
     HttpSsnDebug("[%" PRId64 "] [%s, %s]", con_id, #state_name, HttpDebugNames::get_event_name(event)); \
   } while (0)
-
-enum {
-  HTTP_CS_MAGIC_ALIVE = 0x0123F00D,
-  HTTP_CS_MAGIC_DEAD  = 0xDEADF00D,
-};
 
 #ifdef USE_HTTP_DEBUG_LISTS
 
@@ -457,13 +451,13 @@ Http1ClientSession::new_transaction()
 }
 
 void
-Http1ClientSession::attach_server_session(Http1ServerSession *ssession, bool transaction_done)
+Http1ClientSession::attach_server_session(ProxySession *ssession, bool transaction_done)
 {
   if (ssession) {
     ink_assert(bound_ss == nullptr);
     ssession->state = HSS_KA_CLIENT_SLAVE;
     bound_ss        = ssession;
-    HttpSsnDebug("[%" PRId64 "] attaching server session [%" PRId64 "] as slave", con_id, ssession->con_id);
+    HttpSsnDebug("[%" PRId64 "] attaching server session [%" PRId64 "] as slave", con_id, ssession->connection_id());
     ink_assert(ssession->get_reader()->read_avail() == 0);
     ink_assert(ssession->get_netvc() != this->get_netvc());
 
@@ -481,13 +475,13 @@ Http1ClientSession::attach_server_session(Http1ServerSession *ssession, bool tra
     ssession->do_io_write(this, 0, nullptr);
 
     if (transaction_done) {
-      ssession->get_netvc()->set_inactivity_timeout(
+      ssession->set_inactivity_timeout(
         HRTIME_SECONDS(trans.get_sm()->t_state.txn_conf->keep_alive_no_activity_timeout_out));
-      ssession->get_netvc()->cancel_active_timeout();
+      ssession->cancel_active_timeout();
     } else {
       // we are serving from the cache - this could take a while.
-      ssession->get_netvc()->cancel_inactivity_timeout();
-      ssession->get_netvc()->cancel_active_timeout();
+      ssession->cancel_inactivity_timeout();
+      ssession->cancel_active_timeout();
     }
   } else {
     ink_assert(bound_ss != nullptr);
@@ -552,7 +546,7 @@ Http1ClientSession::is_outbound_transparent() const
   return f_outbound_transparent;
 }
 
-Http1ServerSession *
+ProxySession *
 Http1ClientSession::get_server_session() const
 {
   return bound_ss;

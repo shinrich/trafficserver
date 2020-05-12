@@ -42,7 +42,7 @@ ClassAllocator<Http1ServerSession> httpServerSessionAllocator("httpServerSession
 void
 Http1ServerSession::destroy()
 {
-  ink_release_assert(server_vc == nullptr);
+  ink_release_assert(_vc == nullptr);
   ink_assert(read_buffer);
   ink_assert(server_trans_stat == 0);
   magic = HTTP_SS_MAGIC_DEAD;
@@ -63,7 +63,7 @@ void
 Http1ServerSession::new_connection(NetVConnection *new_vc)
 {
   ink_assert(new_vc != nullptr);
-  server_vc = new_vc;
+  _vc = new_vc;
 
   // Used to do e.g. mutex = new_vc->thread->mutex; when per-thread pools enabled
   mutex = new_vc->mutex;
@@ -96,24 +96,6 @@ Http1ServerSession::enable_outbound_connection_tracking(OutboundConnTrack::Group
   }
 }
 
-VIO *
-Http1ServerSession::do_io_read(Continuation *c, int64_t nbytes, MIOBuffer *buf)
-{
-  return server_vc ? server_vc->do_io_read(c, nbytes, buf) : nullptr;
-}
-
-VIO *
-Http1ServerSession::do_io_write(Continuation *c, int64_t nbytes, IOBufferReader *buf, bool owner)
-{
-  return server_vc ? server_vc->do_io_write(c, nbytes, buf, owner) : nullptr;
-}
-
-void
-Http1ServerSession::do_io_shutdown(ShutdownHowTo_t howto)
-{
-  server_vc->do_io_shutdown(howto);
-}
-
 void
 Http1ServerSession::do_io_close(int alerrno)
 {
@@ -126,7 +108,7 @@ Http1ServerSession::do_io_close(int alerrno)
   }
 
   if (debug_p) {
-    w.print("[{}] session close: nevtc {:x}", con_id, server_vc);
+    w.print("[{}] session close: nevtc {:x}", con_id, _vc);
   }
 
   HTTP_SUM_GLOBAL_DYN_STAT(http_current_server_connections_stat, -1); // Make sure to work on the global stat
@@ -149,21 +131,15 @@ Http1ServerSession::do_io_close(int alerrno)
     Debug("http_ss", "%.*s", static_cast<int>(w.size()), w.data());
   }
 
-  if (server_vc) {
-    server_vc->do_io_close(alerrno);
+  if (_vc) {
+    _vc->do_io_close(alerrno);
   }
-  server_vc = nullptr;
+  _vc = nullptr;
 
   if (to_parent_proxy) {
     HTTP_DECREMENT_DYN_STAT(http_current_parent_proxy_connections_stat);
   }
   destroy();
-}
-
-void
-Http1ServerSession::reenable(VIO *vio)
-{
-  server_vc->reenable(vio);
 }
 
 // void Http1ServerSession::release()
@@ -177,7 +153,7 @@ Http1ServerSession::release()
   // Set our state to KA for stat issues
   state = HSS_KA_SHARED;
 
-  server_vc->control_flags.set_flags(0);
+  _vc->control_flags.set_flags(0);
 
   // Private sessions are never released back to the shared pool
   if (private_session || sharing_match == 0) {
@@ -186,8 +162,8 @@ Http1ServerSession::release()
   }
 
   // Make sure the vios for the current SM are cleared
-  server_vc->do_io_read(nullptr, 0, nullptr);
-  server_vc->do_io_write(nullptr, 0, nullptr);
+  _vc->do_io_read(nullptr, 0, nullptr);
+  _vc->do_io_write(nullptr, 0, nullptr);
 
   HSMresult_t r = httpSessionManager.release_session(this);
 
@@ -204,36 +180,11 @@ Http1ServerSession::release()
   }
 }
 
-NetVConnection *
-Http1ServerSession::get_netvc() const
-{
-  return server_vc;
-};
-
-void
-Http1ServerSession::set_netvc(NetVConnection *new_vc)
-{
-  server_vc = new_vc;
-}
-
 // Keys for matching hostnames
 IpEndpoint const &
 Http1ServerSession::get_server_ip() const
 {
-  ink_release_assert(server_vc != nullptr);
-  return server_vc->get_remote_endpoint();
+  ink_release_assert(_vc != nullptr);
+  return _vc->get_remote_endpoint();
 }
 
-int
-Http1ServerSession::populate_protocol(std::string_view *result, int size) const
-{
-  auto vc = this->get_netvc();
-  return vc ? vc->populate_protocol(result, size) : 0;
-}
-
-const char *
-Http1ServerSession::protocol_contains(std::string_view tag_prefix) const
-{
-  auto vc = this->get_netvc();
-  return vc ? vc->protocol_contains(tag_prefix) : nullptr;
-}

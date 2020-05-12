@@ -36,6 +36,7 @@
 
 #include "HttpConnectionCount.h"
 #include "HttpProxyAPIEnums.h"
+#include "ProxySession.h"
 
 class HttpSM;
 class MIOBuffer;
@@ -53,10 +54,10 @@ enum {
   HTTP_SS_MAGIC_DEAD  = 0xDEADFEED,
 };
 
-class Http1ServerSession : public VConnection
+class Http1ServerSession : public ProxySession
 {
   using self_type  = Http1ServerSession;
-  using super_type = VConnection;
+  using super_type = ProxySession;
 
 public:
   Http1ServerSession() : super_type(nullptr) {}
@@ -70,22 +71,12 @@ public:
   void destroy();
 
   // VConnection Methods
-  VIO *do_io_read(Continuation *c, int64_t nbytes = INT64_MAX, MIOBuffer *buf = nullptr) override;
-  VIO *do_io_write(Continuation *c = nullptr, int64_t nbytes = INT64_MAX, IOBufferReader *buf = nullptr,
-                   bool owner = false) override;
   void do_io_close(int lerrno = -1) override;
-  void do_io_shutdown(ShutdownHowTo_t howto) override;
-
-  void reenable(VIO *vio) override;
 
   void enable_outbound_connection_tracking(OutboundConnTrack::Group *group);
   IOBufferReader *get_reader();
   void attach_hostname(const char *hostname);
-  NetVConnection *get_netvc() const;
-  void set_netvc(NetVConnection *new_vc);
   IpEndpoint const &get_server_ip() const;
-  int populate_protocol(std::string_view *result, int size) const;
-  const char *protocol_contains(std::string_view tag_prefix) const;
 
   ////////////////////
   // Variables
@@ -155,7 +146,6 @@ public:
   MIOBuffer *read_buffer = nullptr;
 
 private:
-  NetVConnection *server_vc = nullptr;
   int magic                 = HTTP_SS_MAGIC_DEAD;
 
   IOBufferReader *buf_reader = nullptr;

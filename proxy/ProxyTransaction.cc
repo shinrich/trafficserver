@@ -22,7 +22,6 @@
  */
 
 #include "http/HttpSM.h"
-#include "http/Http1ServerSession.h"
 #include "Plugin.h"
 
 #define HttpTxnDebug(fmt, ...) SsnDebug(this, "http_txn", fmt, __VA_ARGS__)
@@ -68,7 +67,7 @@ ProxyTransaction::release(IOBufferReader *r)
 }
 
 void
-ProxyTransaction::attach_server_session(Http1ServerSession *ssession, bool transaction_done)
+ProxyTransaction::attach_server_session(ProxySession *ssession, bool transaction_done)
 {
   _proxy_ssn->attach_server_session(ssession, transaction_done);
 }
@@ -210,4 +209,29 @@ int
 ProxyTransaction::get_transaction_priority_dependence() const
 {
   return 0;
+}
+
+// Implement VConnection interface.
+VIO *
+ProxyTransaction::do_io_read(Continuation *c, int64_t nbytes, MIOBuffer *buf)
+{
+  return _proxy_ssn->do_io_read(c, nbytes, buf);
+}
+VIO *
+ProxyTransaction::do_io_write(Continuation *c, int64_t nbytes, IOBufferReader *buf, bool owner)
+{
+  return _proxy_ssn->do_io_write(c, nbytes, buf, owner);
+}
+
+void
+ProxyTransaction::do_io_close(int lerrno)
+{
+  _proxy_ssn->do_io_close(lerrno);
+  // this->destroy(); Parent owns this data structure.  No need for separate destroy.
+}
+
+void
+ProxyTransaction::do_io_shutdown(ShutdownHowTo_t howto)
+{
+  _proxy_ssn->do_io_shutdown(howto);
 }

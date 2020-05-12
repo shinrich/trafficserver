@@ -89,49 +89,7 @@ Http1Transaction::decrement_client_transactions_stat()
   HTTP_DECREMENT_DYN_STAT(http_current_client_transactions_stat);
 }
 
-// Implement VConnection interface.
-VIO *
-Http1Transaction::do_io_read(Continuation *c, int64_t nbytes, MIOBuffer *buf)
-{
-  return _proxy_ssn->do_io_read(c, nbytes, buf);
-}
-VIO *
-Http1Transaction::do_io_write(Continuation *c, int64_t nbytes, IOBufferReader *buf, bool owner)
-{
-  return _proxy_ssn->do_io_write(c, nbytes, buf, owner);
-}
 
-void
-Http1Transaction::do_io_close(int lerrno)
-{
-  _proxy_ssn->do_io_close(lerrno);
-  // this->destroy(); Parent owns this data structure.  No need for separate destroy.
-}
-
-void
-Http1Transaction::do_io_shutdown(ShutdownHowTo_t howto)
-{
-  _proxy_ssn->do_io_shutdown(howto);
-}
-
-void
-Http1Transaction::set_active_timeout(ink_hrtime timeout_in)
-{
-  if (_proxy_ssn)
-    _proxy_ssn->set_active_timeout(timeout_in);
-}
-void
-Http1Transaction::set_inactivity_timeout(ink_hrtime timeout_in)
-{
-  if (_proxy_ssn)
-    _proxy_ssn->set_inactivity_timeout(timeout_in);
-}
-void
-Http1Transaction::cancel_inactivity_timeout()
-{
-  if (_proxy_ssn)
-    _proxy_ssn->cancel_inactivity_timeout();
-}
 //
 int
 Http1Transaction::get_transaction_id() const

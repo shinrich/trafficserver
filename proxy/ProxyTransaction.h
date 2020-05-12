@@ -27,7 +27,6 @@
 #include <string_view>
 
 class HttpSM;
-class Http1ServerSession;
 
 // Abstract Class for any transaction with-in the HttpSM
 class ProxyTransaction : public VConnection
@@ -38,17 +37,28 @@ public:
   /// Virtual Methods
   //
   virtual void new_transaction(bool from_early_data = false);
-  virtual void attach_server_session(Http1ServerSession *ssession, bool transaction_done = true);
+  virtual void attach_server_session(ProxySession *ssession, bool transaction_done = true);
   Action *adjust_thread(Continuation *cont, int event, void *data);
   virtual void release(IOBufferReader *r);
   virtual void transaction_done() = 0;
   virtual void destroy();
 
+  void set_active_timeout(ink_hrtime timeout_in);
+  void set_inactivity_timeout(ink_hrtime timeout_in);
+  void cancel_inactivity_timeout();
+  void cancel_active_timeout();
+
+  // Implement VConnection interface.
+  VIO *do_io_read(Continuation *c, int64_t nbytes = INT64_MAX, MIOBuffer *buf = nullptr) override;
+  VIO *do_io_write(Continuation *c = nullptr, int64_t nbytes = INT64_MAX, IOBufferReader *buf = nullptr,
+                   bool owner = false) override;
+  void do_io_close(int lerrno = -1) override;
+  void do_io_shutdown(ShutdownHowTo_t howto) override;
+  void reenable(VIO *vio) override;
+
+
   /// Virtual Accessors
   //
-  virtual void set_active_timeout(ink_hrtime timeout_in)     = 0;
-  virtual void set_inactivity_timeout(ink_hrtime timeout_in) = 0;
-  virtual void cancel_inactivity_timeout()                   = 0;
   virtual int get_transaction_id() const                     = 0;
   virtual int get_transaction_priority_weight() const;
   virtual int get_transaction_priority_dependence() const;
@@ -98,7 +108,7 @@ public:
   const IpAllow::ACL &get_acl() const;
 
   ProxySession *get_proxy_ssn();
-  Http1ServerSession *get_server_session() const;
+  ProxySession *get_server_session() const;
   HttpSM *get_sm() const;
 
   // This function must return a non-negative number that is different for two in-progress transactions with the same proxy_ssn
@@ -186,7 +196,7 @@ ProxyTransaction::set_proxy_ssn(ProxySession *new_proxy_ssn)
   _proxy_ssn = new_proxy_ssn;
 }
 
-inline Http1ServerSession *
+inline ProxySession *
 ProxyTransaction::get_server_session() const
 {
   return _proxy_ssn ? _proxy_ssn->get_server_session() : nullptr;
@@ -220,4 +230,36 @@ inline bool
 ProxyTransaction::support_sni() const
 {
   return _proxy_ssn ? _proxy_ssn->support_sni() : false;
+}
+
+inline void
+ProxyTransaction::set_active_timeout(ink_hrtime timeout_in)
+{
+  if (_proxy_ssn) {
+    _proxy_ssn->set_active_timeout(timeout_in);
+  }
+}
+
+inline void
+ProxyTransaction::set_inactivity_timeout(ink_hrtime timeout_in)
+{
+  if (_proxy_ssn) {
+    _proxy_ssn->set_inactivity_timeout(timeout_in);
+  }
+}
+
+inline void
+ProxyTransaction::cancel_inactivity_timeout()
+{
+  if (_proxy_ssn) {
+    _proxy_ssn->cancel_inactivity_timeout();
+  }
+}
+
+inline void
+ProxyTransaction::cancel_active_timeout()
+{
+  if (_proxy_ssn) {
+    _proxy_ssn->cancel_active_timeout();
+  }
 }
