@@ -150,14 +150,14 @@ Http1ServerSession::do_io_close(int alerrno)
 void
 Http1ServerSession::release(ProxyTransaction *trans)
 {
-  Debug("http_ss", "Releasing session, private_session=%d, sharing_match=%d", private_session, sharing_match);
+  Debug("http_ss", "Releasing session, private_session=%d, sharing_match=%d", this->is_private(), sharing_match);
   // Set our state to KA for stat issues
   state = HSS_KA_SHARED;
 
   _vc->control_flags.set_flags(0);
 
   // Private sessions are never released back to the shared pool
-  if (private_session || sharing_match == 0) {
+  if (this->is_private() || sharing_match == 0) {
     this->do_io_close();
     return;
   }

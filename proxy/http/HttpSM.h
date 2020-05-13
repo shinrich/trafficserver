@@ -623,9 +623,9 @@ public:
     return _client_transaction_priority_dependence;
   }
 
-  void set_server_netvc_inactivity_timeout(NetVConnection *netvc);
-  void set_server_netvc_active_timeout(NetVConnection *netvc);
-  void set_server_netvc_connect_timeout(NetVConnection *netvc);
+  ink_hrtime get_server_inactivity_timeout();
+  ink_hrtime get_server_active_timeout();
+  ink_hrtime get_server_connect_timeout();
   void rewind_state_machine();
 
 private:

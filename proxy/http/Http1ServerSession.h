@@ -36,7 +36,7 @@
 
 #include "HttpConnectionCount.h"
 #include "HttpProxyAPIEnums.h"
-#include "ProxySession.h"
+#include "SessionPoolInterface.h"
 
 class HttpSM;
 class MIOBuffer;
@@ -89,10 +89,6 @@ public:
   // close parent proxy to update the
   // proxy.process.http.current_parent_proxy_connections
   bool to_parent_proxy = false;
-
-  // Sessions become if authentication headers
-  //  are sent over them
-  bool private_session = false;
 
   // The ServerSession owns the following buffer which use
   //   for parsing the headers.  The server session needs to
