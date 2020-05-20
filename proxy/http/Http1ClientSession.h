@@ -99,6 +99,7 @@ private:
   int state_keep_alive(int event, void *data);
   int state_slave_keep_alive(int event, void *data);
   int state_wait_for_close(int event, void *data);
+  int state_wait_for_sm_shutdown(int event, void *data);
 
   enum C_Read_State {
     HCS_INIT,
