@@ -162,13 +162,13 @@ Http3Session::populate_protocol(std::string_view *result, int size) const
 }
 
 void
-Http3Session::increment_current_active_client_connections_stat()
+Http3Session::increment_current_active_connections_stat()
 {
   // TODO Implement stats
 }
 
 void
-Http3Session::decrement_current_active_client_connections_stat()
+Http3Session::decrement_current_active_connections_stat()
 {
   // TODO Implement stats
 }
@@ -213,13 +213,13 @@ Http09Session::populate_protocol(std::string_view *result, int size) const
 }
 
 void
-Http09Session::increment_current_active_client_connections_stat()
+Http09Session::increment_current_active_connections_stat()
 {
   // TODO Implement stats
 }
 
 void
-Http09Session::decrement_current_active_client_connections_stat()
+Http09Session::decrement_current_active_connections_stat()
 {
   // TODO Implement stats
 }
