@@ -6148,8 +6148,8 @@ HttpSM::attach_server_session(PoolableSession *s)
   // Set the inactivity timeout to the connect timeout so that we
   //   we fail this server if it doesn't start sending the response
   //   header
-  server_session->set_inactivity_timeout(get_server_connect_timeout());
-  server_session->set_active_timeout(get_server_active_timeout());
+  server_txn->set_active_timeout(get_server_active_timeout());
+  server_txn->set_inactivity_timeout(get_server_inactivity_timeout());
 
   // Do we need Transfer_Encoding?
   if (HttpTransact::has_request_body(&t_state, ua_txn)) {
@@ -6160,11 +6160,6 @@ HttpSM::attach_server_session(PoolableSession *s)
       t_state.hdr_info.server_request.value_append(MIME_FIELD_TRANSFER_ENCODING, MIME_LEN_TRANSFER_ENCODING, HTTP_VALUE_CHUNKED,
                                                    HTTP_LEN_CHUNKED, true);
     }
-  }
-
-  if (plugin_tunnel_type != HTTP_NO_PLUGIN_TUNNEL || will_be_private_ss) {
-    SMDebug("http_ss", "Setting server session to private");
-    server_session->set_private();
   }
 }
 
