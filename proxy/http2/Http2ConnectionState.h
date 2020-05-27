@@ -33,7 +33,7 @@
 #include "Http2DependencyTree.h"
 #include "Http2FrequencyCounter.h"
 
-class Http2ClientSession;
+class Http2CommonSession;
 
 enum class Http2SendDataFrameResult {
   NO_ERROR = 0,
@@ -122,23 +122,23 @@ public:
 
   ProxyError rx_error_code;
   ProxyError tx_error_code;
-  Http2ClientSession *ua_session   = nullptr;
+  Http2CommonSession *session      = nullptr;
   HpackHandle *local_hpack_handle  = nullptr;
   HpackHandle *remote_hpack_handle = nullptr;
   DependencyTree *dependency_tree  = nullptr;
   ActivityCop<Http2Stream> _cop;
 
   // Settings.
-  Http2ConnectionSettings server_settings;
-  Http2ConnectionSettings client_settings;
+  Http2ConnectionSettings local_settings;
+  Http2ConnectionSettings peer_settings;
 
   void
   init()
   {
     this->_server_rwnd = Http2::initial_window_size;
 
-    local_hpack_handle  = new HpackHandle(HTTP2_HEADER_TABLE_SIZE);
-    remote_hpack_handle = new HpackHandle(HTTP2_HEADER_TABLE_SIZE);
+    local_hpack_handle  = new HpackHandle(Http2::header_table_size);
+    remote_hpack_handle = new HpackHandle(Http2::header_table_size);
     if (Http2::stream_priority_enabled) {
       dependency_tree = new DependencyTree(Http2::max_concurrent_streams_in);
     }
@@ -169,8 +169,8 @@ public:
     delete remote_hpack_handle;
     remote_hpack_handle = nullptr;
     delete dependency_tree;
-    dependency_tree  = nullptr;
-    this->ua_session = nullptr;
+    dependency_tree = nullptr;
+    this->session   = nullptr;
 
     if (fini_event) {
       fini_event->cancel();
@@ -187,14 +187,18 @@ public:
   int state_closed(int, void *);
 
   // Stream control interfaces
-  Http2Stream *create_stream(Http2StreamId new_id, Http2Error &error);
+  Http2Stream *create_stream(Http2StreamId new_id, Http2Error &error, bool initiating_connection = false);
   Http2Stream *find_stream(Http2StreamId id) const;
   void restart_streams();
+  void start_streams();
   bool delete_stream(Http2Stream *stream);
   void release_stream();
   void cleanup_streams();
   void restart_receiving(Http2Stream *stream);
   void update_initial_rwnd(Http2WindowSize new_size);
+
+  bool is_local_concurrent_stream_max() const;
+  bool is_peer_concurrent_stream_max() const;
 
   Http2StreamId
   get_latest_stream_id_in() const
@@ -283,7 +287,7 @@ public:
   bool
   is_state_closed() const
   {
-    return ua_session == nullptr || fini_received;
+    return session == nullptr || fini_received;
   }
 
   bool
@@ -352,6 +356,9 @@ public:
   Http2ErrorCode increment_server_rwnd(size_t amount);
   Http2ErrorCode decrement_server_rwnd(size_t amount);
 
+  bool no_streams() const;
+  bool single_stream() const;
+
 private:
   unsigned _adjust_concurrent_stream();
 
@@ -408,3 +415,14 @@ private:
   Event *fini_event                 = nullptr;
   Event *zombie_event               = nullptr;
 };
+
+inline bool
+Http2ConnectionState::single_stream() const
+{
+  return stream_list.head != nullptr && stream_list.head == stream_list.tail;
+}
+inline bool
+Http2ConnectionState::no_streams() const
+{
+  return stream_list.empty();
+}

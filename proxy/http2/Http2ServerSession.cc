@@ -1,6 +1,6 @@
 /** @file
 
-  Http2ClientSession.
+  Http2ServerSession.
 
   @section license License
 
@@ -21,12 +21,13 @@
   limitations under the License.
  */
 
-#include "Http2ClientSession.h"
+#include "Http2ServerSession.h"
 #include "HttpDebugNames.h"
 #include "tscore/ink_base64.h"
 #include "Http2CommonSessionInternal.h"
+#include "HttpSessionManager.h"
 
-ClassAllocator<Http2ClientSession, true> http2ClientSessionAllocator("http2ClientSessionAllocator");
+ClassAllocator<Http2ServerSession> http2ServerSessionAllocator("http2ServerSessionAllocator");
 
 static int
 send_connection_event(Continuation *cont, int event, void *edata)
@@ -35,12 +36,15 @@ send_connection_event(Continuation *cont, int event, void *edata)
   return cont->handleEvent(event, edata);
 }
 
-Http2ClientSession::Http2ClientSession() : super() {}
+Http2ServerSession::Http2ServerSession() = default;
 
 void
-Http2ClientSession::destroy()
+Http2ServerSession::destroy()
 {
   if (!in_destroy) {
+    write_vio = nullptr;
+    this->remove_session();
+    this->release_outbound_comnection_tracking();
     in_destroy = true;
     REMEMBER(NO_EVENT, this->recursion)
     Http2SsnDebug("session destroy");
@@ -48,46 +52,60 @@ Http2ClientSession::destroy()
       _vc->do_io_close();
       _vc = nullptr;
     }
-    // Let everyone know we are going down
-    do_api_callout(TS_HTTP_SSN_CLOSE_HOOK);
+    free();
+  } else if (kill_me && !this->connection_state.is_recursing() && this->recursion == 0) {
+    free();
   }
 }
 
 void
-Http2ClientSession::free()
+Http2ServerSession::free()
 {
+  ink_release_assert(in_destroy);
+  test_session();
   if (Http2CommonSession::free(this)) {
-    HTTP2_DECREMENT_THREAD_DYN_STAT(HTTP2_STAT_CURRENT_CLIENT_SESSION_COUNT, this->mutex->thread_holding);
+    HTTP2_DECREMENT_THREAD_DYN_STAT(HTTP2_STAT_CURRENT_SERVER_SESSION_COUNT, this->mutex->thread_holding);
+    ink_release_assert(_ip_link._next == nullptr && _ip_link._prev == nullptr && _fqdn_link._next == nullptr &&
+                       _fqdn_link._prev == nullptr);
     super::free();
-    THREAD_FREE(this, http2ClientSessionAllocator, this_ethread());
+    THREAD_FREE(this, http2ServerSessionAllocator, this_ethread());
   }
 }
 
 void
-Http2ClientSession::start()
+Http2ServerSession::start()
 {
   SCOPED_MUTEX_LOCK(lock, this->mutex, this_ethread());
 
-  SET_HANDLER(&Http2ClientSession::main_event_handler);
-  HTTP2_SET_SESSION_HANDLER(&Http2ClientSession::state_read_connection_preface);
+  SET_HANDLER(&Http2ServerSession::main_event_handler);
+  HTTP2_SET_SESSION_HANDLER(&Http2ServerSession::state_start_frame_read);
 
   VIO *read_vio = this->do_io_read(this, INT64_MAX, this->read_buffer);
-  write_vio     = this->do_io_write(this, INT64_MAX, this->_write_buffer_reader);
+  write_vio     = this->do_io_write(this, INT64_MAX, this->sm_writer);
 
   this->connection_state.init();
+
+  // 3.5 HTTP/2 Connection Preface. Upon establishment of a TCP connection and
+  // determination that HTTP/2 will be used by both peers, each endpoint MUST
+  // send a connection preface as a final confirmation ...
+  // This is the preface string sent by the client
+  this->write_buffer->write(HTTP2_CONNECTION_PREFACE, HTTP2_CONNECTION_PREFACE_LEN);
+  total_write_len += HTTP2_CONNECTION_PREFACE_LEN;
+  // write_vio->nbytes = total_write_len;
+  write_reenable();
+  Http2SsnDebug("Sent Connection Preface");
+
   send_connection_event(&this->connection_state, HTTP2_SESSION_EVENT_INIT, static_cast<Http2CommonSession *>(this));
 
-  if (this->_read_buffer_reader->is_read_avail_more_than(0)) {
-    this->handleEvent(VC_EVENT_READ_READY, read_vio);
-  }
+  this->handleEvent(VC_EVENT_READ_READY, read_vio);
 }
 
 void
-Http2ClientSession::new_connection(NetVConnection *new_vc, MIOBuffer *iobuf, IOBufferReader *reader)
+Http2ServerSession::new_connection(NetVConnection *new_vc, MIOBuffer *iobuf, IOBufferReader *reader)
 {
   ink_assert(new_vc->mutex->thread_holding == this_ethread());
-  HTTP2_INCREMENT_THREAD_DYN_STAT(HTTP2_STAT_CURRENT_CLIENT_SESSION_COUNT, new_vc->mutex->thread_holding);
-  HTTP2_INCREMENT_THREAD_DYN_STAT(HTTP2_STAT_TOTAL_CLIENT_CONNECTION_COUNT, new_vc->mutex->thread_holding);
+  HTTP2_INCREMENT_THREAD_DYN_STAT(HTTP2_STAT_CURRENT_SERVER_SESSION_COUNT, new_vc->mutex->thread_holding);
+  HTTP2_INCREMENT_THREAD_DYN_STAT(HTTP2_STAT_TOTAL_SERVER_CONNECTION_COUNT, new_vc->mutex->thread_holding);
   this->_milestones.mark(Http2SsnMilestone::OPEN);
 
   // Unique client session identifier.
@@ -112,12 +130,13 @@ Http2ClientSession::new_connection(NetVConnection *new_vc, MIOBuffer *iobuf, IOB
 
   this->read_buffer             = iobuf ? iobuf : new_MIOBuffer(HTTP2_HEADER_BUFFER_SIZE_INDEX);
   this->read_buffer->water_mark = connection_state.local_settings.get(HTTP2_SETTINGS_MAX_FRAME_SIZE);
-  this->_reader_buffer_reader   = reader ? reader : this->read_buffer->alloc_reader();
+  this->_reader                 = reader ? reader : this->read_buffer->alloc_reader();
 
+  // Set write buffer size to max size of TLS record (16KB)
   // This block size is the buffer size that we pass to SSLWriteBuffer
   auto buffer_block_size_index = iobuffer_size_to_index(Http2::write_buffer_block_size, MAX_BUFFER_SIZE_INDEX);
   this->write_buffer           = new_MIOBuffer(buffer_block_size_index);
-  this->_write_buffer_reader   = this->write_buffer->alloc_reader();
+  this->sm_writer              = this->write_buffer->alloc_reader();
   this->_write_size_threshold  = index_to_buffer_size(buffer_block_size_index) * Http2::write_size_threshold;
 
   this->_handle_if_ssl(new_vc);
@@ -125,15 +144,16 @@ Http2ClientSession::new_connection(NetVConnection *new_vc, MIOBuffer *iobuf, IOB
   do_api_callout(TS_HTTP_SSN_START_HOOK);
 }
 
-// XXX Currently, we don't have a half-closed state, but we will need to
 // implement that. After we send a GOAWAY, there
 // are scenarios where we would like to complete the outstanding streams.
 
 void
-Http2ClientSession::do_io_close(int alerrno)
+Http2ServerSession::do_io_close(int alerrno)
 {
   REMEMBER(NO_EVENT, this->recursion)
   Http2SsnDebug("session closed");
+
+  this->remove_session();
 
   ink_assert(this->mutex->thread_holding == this_ethread());
   send_connection_event(&this->connection_state, HTTP2_SESSION_EVENT_FINI, this);
@@ -143,14 +163,11 @@ Http2ClientSession::do_io_close(int alerrno)
     this->connection_state.release_stream();
   }
 
-  this->clear_session_active();
-
-  // Clean up the write VIO in case of inactivity timeout
-  this->do_io_write(this, 0, nullptr);
+  // Destroy will be called from connection_state.release_stream() once the number of active streams goes to 0
 }
 
 int
-Http2ClientSession::main_event_handler(int event, void *edata)
+Http2ServerSession::main_event_handler(int event, void *edata)
 {
   ink_assert(this->mutex->thread_holding == this_ethread());
   int retval;
@@ -161,6 +178,8 @@ Http2ClientSession::main_event_handler(int event, void *edata)
   if (e == schedule_event) {
     schedule_event = nullptr;
   }
+
+  Http2SsnDebug("main_event_handler=%d edata=%p", event, edata);
 
   switch (event) {
   case VC_EVENT_READ_COMPLETE:
@@ -184,7 +203,6 @@ Http2ClientSession::main_event_handler(int event, void *edata)
   case VC_EVENT_INACTIVITY_TIMEOUT:
   case VC_EVENT_ERROR:
   case VC_EVENT_EOS:
-    Http2SsnDebug("Closing event %d", event);
     this->set_dying_event(event);
     this->do_io_close();
     retval = 0;
@@ -196,6 +214,7 @@ Http2ClientSession::main_event_handler(int event, void *edata)
     if ((Thread::get_hrtime() >= this->_write_buffer_last_flush + HRTIME_MSECONDS(this->_write_time_threshold))) {
       this->flush();
     }
+
     retval = 0;
     break;
 
@@ -215,17 +234,17 @@ Http2ClientSession::main_event_handler(int event, void *edata)
     if (this->is_draining()) { // For a case we already checked Connection header and it didn't exist
       Http2SsnDebug("Preparing for graceful shutdown because of draining state");
       this->connection_state.set_shutdown_state(HTTP2_SHUTDOWN_NOT_INITIATED);
-    } else if (this->connection_state.get_stream_error_rate() >
+    } /*else if (this->connection_state.get_stream_error_rate() >
                Http2::stream_error_rate_threshold) { // For a case many stream errors happened
       ip_port_text_buffer ipb;
       const char *client_ip = ats_ip_ntop(get_remote_addr(), ipb, sizeof(ipb));
-      Warning("HTTP/2 session error client_ip=%s session_id=%" PRId64
+      Warning("HTTP/2 session error origin_ip=%s session_id=%" PRId64
               " closing a connection, because its stream error rate (%f) exceeded the threshold (%f)",
               client_ip, connection_id(), this->connection_state.get_stream_error_rate(), Http2::stream_error_rate_threshold);
       Http2SsnDebug("Preparing for graceful shutdown because of a high stream error rate");
       cause_of_death = Http2SessionCod::HIGH_ERROR_RATE;
       this->connection_state.set_shutdown_state(HTTP2_SHUTDOWN_NOT_INITIATED, Http2ErrorCode::HTTP2_ERROR_ENHANCE_YOUR_CALM);
-    }
+    } */
   }
 
   if (this->connection_state.get_shutdown_state() == HTTP2_SHUTDOWN_NOT_INITIATED) {
@@ -240,48 +259,48 @@ Http2ClientSession::main_event_handler(int event, void *edata)
 }
 
 void
-Http2ClientSession::increment_current_active_connections_stat()
+Http2ServerSession::increment_current_active_connections_stat()
 {
-  HTTP2_INCREMENT_THREAD_DYN_STAT(HTTP2_STAT_CURRENT_ACTIVE_CLIENT_CONNECTION_COUNT, this_ethread());
+  HTTP2_INCREMENT_THREAD_DYN_STAT(HTTP2_STAT_CURRENT_ACTIVE_SERVER_CONNECTION_COUNT, this_ethread());
 }
 
 void
-Http2ClientSession::decrement_current_active_connections_stat()
+Http2ServerSession::decrement_current_active_connections_stat()
 {
-  HTTP2_DECREMENT_THREAD_DYN_STAT(HTTP2_STAT_CURRENT_ACTIVE_CLIENT_CONNECTION_COUNT, this_ethread());
+  HTTP2_DECREMENT_THREAD_DYN_STAT(HTTP2_STAT_CURRENT_ACTIVE_SERVER_CONNECTION_COUNT, this_ethread());
 }
 
 sockaddr const *
-Http2ClientSession::get_remote_addr() const
+Http2ServerSession::get_remote_addr() const
 {
   return _vc ? _vc->get_remote_addr() : &cached_client_addr.sa;
 }
 
 sockaddr const *
-Http2ClientSession::get_local_addr()
+Http2ServerSession::get_local_addr()
 {
   return _vc ? _vc->get_local_addr() : &cached_local_addr.sa;
 }
 
 int
-Http2ClientSession::get_transact_count() const
+Http2ServerSession::get_transact_count() const
 {
   return connection_state.get_stream_requests();
 }
 
 const char *
-Http2ClientSession::get_protocol_string() const
+Http2ServerSession::get_protocol_string() const
 {
   return "http/2";
 }
 
 void
-Http2ClientSession::release(ProxyTransaction *trans)
+Http2ServerSession::release(ProxyTransaction *trans)
 {
 }
 
 int
-Http2ClientSession::populate_protocol(std::string_view *result, int size) const
+Http2ServerSession::populate_protocol(std::string_view *result, int size) const
 {
   int retval = 0;
   if (size > retval) {
@@ -294,7 +313,7 @@ Http2ClientSession::populate_protocol(std::string_view *result, int size) const
 }
 
 const char *
-Http2ClientSession::protocol_contains(std::string_view prefix) const
+Http2ServerSession::protocol_contains(std::string_view prefix) const
 {
   const char *retval = nullptr;
 
@@ -307,16 +326,104 @@ Http2ClientSession::protocol_contains(std::string_view prefix) const
 }
 
 ProxySession *
-Http2ClientSession::get_proxy_session()
+Http2ServerSession::get_proxy_session()
 {
   return this;
 }
 
+ProxyTransaction *
+Http2ServerSession::new_transaction()
+{
+  // In == client side
+  Http2StreamId latest_id = connection_state.get_latest_stream_id_in();
+  Http2StreamId stream_id = (latest_id == 0) ? 3 : latest_id + 2;
+  this->set_session_active();
+
+  // Create a new stream/transaction
+  Http2Error error(Http2ErrorClass::HTTP2_ERROR_CLASS_NONE);
+  Http2Stream *stream = connection_state.create_stream(stream_id, error, true);
+
+  if (connection_state.is_peer_concurrent_stream_max()) {
+    Warning("Remove SSN %" PRId64, con_id);
+    remove_session();
+  }
+
+  return stream;
+}
+
 void
-Http2ClientSession::set_no_activity_timeout()
+Http2ServerSession::add_session()
+{
+  if (this->in_session_table) {
+    return;
+  }
+  Http2SsnDebug("Add session to pool");
+  EThread *ethread        = this_ethread();
+  ServerSessionPool *pool = ethread->server_session_pool;
+  MUTEX_TRY_LOCK(lock, pool->mutex, ethread);
+  if (lock.is_locked()) {
+    pool->addSession(this);
+    this->in_session_table = true;
+  }
+}
+
+void
+Http2ServerSession::remove_session()
+{
+  if (!this->in_session_table) {
+    return;
+  }
+  Http2SsnDebug("Remove session from pool");
+  EThread *ethread        = this_ethread();
+  ServerSessionPool *pool = ethread->server_session_pool;
+  MUTEX_TRY_LOCK(lock, pool->mutex, ethread);
+  if (lock.is_locked()) {
+    pool->removeSession(this);
+    in_session_table = false;
+  } else {
+    ink_release_assert(!"How did we not get the pool lock?");
+  }
+}
+
+void
+Http2ServerSession::test_session()
+{
+  EThread *ethread        = this_ethread();
+  ServerSessionPool *pool = ethread->server_session_pool;
+  MUTEX_TRY_LOCK(lock, pool->mutex, ethread);
+  if (lock.is_locked()) {
+    pool->testSession(this);
+  } else {
+    ink_release_assert(!"How did we not get the pool lock?");
+  }
+}
+
+bool
+Http2ServerSession::is_multiplexing() const
+{
+  return true;
+}
+
+bool
+Http2ServerSession::is_outbound() const
+{
+  return true;
+}
+
+void
+Http2ServerSession::set_netvc(NetVConnection *netvc)
+{
+  super::set_netvc(netvc);
+  if (netvc == nullptr) {
+    write_vio = nullptr;
+  }
+}
+
+void
+Http2ServerSession::set_no_activity_timeout()
 {
   // Only set if not previously set
   if (this->_vc->get_inactivity_timeout() == 0) {
-    this->set_inactivity_timeout(HRTIME_SECONDS(Http2::no_activity_timeout_in));
+    this->set_inactivity_timeout(HRTIME_SECONDS(Http2::no_activity_timeout_out));
   }
 }

@@ -72,6 +72,8 @@ public:
   ~Http3Session();
 
   // ProxySession interface
+  const char *get_protocol_string() const override;
+  int populate_protocol(std::string_view *result, int size) const override;
   void increment_current_active_connections_stat() override;
   void decrement_current_active_connections_stat() override;
 
@@ -95,6 +97,8 @@ public:
   ~Http09Session();
 
   // ProxySession interface
+  const char *get_protocol_string() const override;
+  int populate_protocol(std::string_view *result, int size) const override;
   void increment_current_active_connections_stat() override;
   void decrement_current_active_connections_stat() override;
 

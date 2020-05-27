@@ -48,6 +48,9 @@
 #define HTTP_API_CONTINUE (INK_API_EVENT_EVENTS_START + 0)
 #define HTTP_API_ERROR (INK_API_EVENT_EVENTS_START + 1)
 
+#define CONNECT_EVENT_TXN (HTTP_NET_CONNECTION_EVENT_EVENTS_START) + 0
+#define CONNECT_EVENT_DIRECT (HTTP_NET_CONNECTION_EVENT_EVENTS_START) + 1
+
 // The default size for http header buffers when we don't
 //   need to include extra space for the document
 static size_t const HTTP_HEADER_BUFFER_SIZE_INDEX = CLIENT_CONNECTION_FIRST_READ_BUFFER_SIZE_INDEX;
@@ -59,7 +62,7 @@ static size_t const HTTP_HEADER_BUFFER_SIZE_INDEX = CLIENT_CONNECTION_FIRST_READ
 //   the larger buffer size
 static size_t const HTTP_SERVER_RESP_HDR_BUFFER_INDEX = BUFFER_SIZE_INDEX_8K;
 
-class Http1ServerSession;
+class PoolableSession;
 class AuthHttpAdapter;
 
 class HttpSM;
@@ -214,22 +217,19 @@ public:
 
   void init(bool from_early_data = false);
 
-  void attach_client_session(ProxyTransaction *client_vc_arg, IOBufferReader *buffer_reader);
+  void attach_client_session(ProxyTransaction *client_vc_arg);
 
-  // Called by httpSessionManager so that we can reset
-  //  the session timeouts and initiate a read while
+  // Called after the network connection has been completed
+  //  to set the session timeouts and initiate a read while
   //  holding the lock for the server session
-  void attach_server_session(PoolableSession *s);
+  void attach_server_session();
 
-  // Used to read attributes of
-  // the current active server session
-  PoolableSession *get_server_session() const;
+  ProxyTransaction *get_server_txn() const;
 
-  ProxyTransaction *
-  get_ua_txn()
-  {
-    return ua_txn;
-  }
+  ProxyTransaction *get_ua_txn();
+
+  void set_server_txn(ProxyTransaction *txn);
+  void create_server_txn(PoolableSession *new_session = nullptr);
 
   // Called by transact.  Updates are fire and forget
   //  so there are no callbacks and are safe to do
@@ -256,6 +256,8 @@ public:
   // A NULL 'r' argument indicates the hostdb lookup failed
   void process_hostdb_info(HostDBInfo *r);
   void process_srv_info(HostDBInfo *r);
+  bool origin_multiplexed() const;
+  bool add_to_existing_request();
 
   // Called by transact.  Synchronous.
   VConnection *do_transform_open();
@@ -289,7 +291,6 @@ public:
   void txn_hook_add(TSHttpHookID id, INKContInternal *cont);
   APIHook *txn_hook_get(TSHttpHookID id);
 
-  bool is_private();
   bool is_redirect_required();
 
   /// Get the protocol stack for the inbound (client, user agent) connection.
@@ -351,8 +352,6 @@ protected:
 
   HttpVCTable vc_table;
 
-  HttpVCTableEntry *ua_entry = nullptr;
-
 public:
   ProxyTransaction *ua_txn         = nullptr;
   BackgroundFill_t background_fill = BACKGROUND_FILL_NONE;
@@ -361,21 +360,20 @@ public:
 
   History<HISTORY_DEFAULT_SIZE> history;
 
-protected:
-  IOBufferReader *ua_buffer_reader     = nullptr;
-  IOBufferReader *ua_raw_buffer_reader = nullptr;
+  HttpVCTableEntry *ua_entry     = nullptr;
+  HttpVCTableEntry *server_entry = nullptr;
+  ProxyTransaction *server_txn   = nullptr;
 
-  HttpVCTableEntry *server_entry     = nullptr;
-  Http1ServerSession *server_session = nullptr;
+protected:
+  IOBufferReader *ua_raw_buffer_reader = nullptr;
 
   /* Because we don't want to take a session from a shared pool if we know that it will be private,
    * but we cannot set it to private until we have an attached server session.
    * So we use this variable to indicate that
    * we should create a new connection and then once we attach the session we'll mark it as private.
    */
-  bool will_be_private_ss              = false;
-  int shared_session_retries           = 0;
-  IOBufferReader *server_buffer_reader = nullptr;
+  bool will_be_private_ss    = false;
+  int shared_session_retries = 0;
 
   HttpTransformInfo transform_info;
   HttpTransformInfo post_transform_info;
@@ -397,6 +395,7 @@ protected:
   int tunnel_handler(int event, void *data);
   int tunnel_handler_push(int event, void *data);
   int tunnel_handler_post(int event, void *data);
+  int tunnel_handler_trailer(int event, void *data);
 
   // YTS Team, yamsat Plugin
   int tunnel_handler_for_partial_post(int event, void *data);
@@ -407,6 +406,7 @@ protected:
   int tunnel_handler_cache_fill(int event, void *data);
   int state_read_client_request_header(int event, void *data);
   int state_watch_for_client_abort(int event, void *data);
+  int state_watch_for_server_abort(int event, void *data);
   int state_read_push_response_header(int event, void *data);
   int state_hostdb_lookup(int event, void *data);
   int state_hostdb_reverse_lookup(int event, void *data);
@@ -445,6 +445,8 @@ protected:
   int tunnel_handler_cache_read(int event, HttpTunnelProducer *p);
   int tunnel_handler_post_ua(int event, HttpTunnelProducer *c);
   int tunnel_handler_post_server(int event, HttpTunnelConsumer *c);
+  int tunnel_handler_trailer_ua(int event, HttpTunnelConsumer *c);
+  int tunnel_handler_trailer_server(int event, HttpTunnelProducer *c);
   int tunnel_handler_ssl_producer(int event, HttpTunnelProducer *p);
   int tunnel_handler_ssl_consumer(int event, HttpTunnelConsumer *p);
   int tunnel_handler_transform_write(int event, HttpTunnelConsumer *c);
@@ -454,7 +456,7 @@ protected:
   void do_hostdb_lookup();
   void do_hostdb_reverse_lookup();
   void do_cache_lookup_and_read();
-  void do_http_server_open(bool raw = false);
+  void do_http_server_open(bool raw = false, bool only_direct = false);
   void send_origin_throttled_response();
   void do_setup_post_tunnel(HttpVC_t to_vc_type);
   void do_cache_prepare_write();
@@ -546,6 +548,7 @@ public:
   bool is_using_post_buffer           = false;
   std::optional<bool> mptcp_state; // Don't initialize, that marks it as "not defined".
   const char *client_protocol     = "-";
+  const char *server_protocol     = "-";
   const char *client_sec_protocol = "-";
   const char *client_cipher_suite = "-";
   const char *client_curve        = "-";
@@ -599,6 +602,7 @@ public:
 
 public:
   bool set_server_session_private(bool private_session);
+  bool is_private() const;
   bool
   is_dying() const
   {
@@ -635,10 +639,16 @@ public:
   void rewind_state_machine();
 
 private:
+  void cancel_pending_server_connection();
+
+  int _cont_lock_miss_count = 0;
   PostDataBuffers _postbuf;
   int _client_connection_id = -1, _client_transaction_id = -1;
   int _client_transaction_priority_weight = -1, _client_transaction_priority_dependence = -1;
-  bool _from_early_data = false;
+  bool _from_early_data         = false;
+  NetVConnection *_netvc        = nullptr;
+  IOBufferReader *_netvc_reader = nullptr;
+  MIOBuffer *_netvc_read_buffer = nullptr;
 };
 
 // Function to get the cache_sm object - YTS Team, yamsat
@@ -749,4 +759,16 @@ inline IOBufferReader *
 HttpSM::get_postbuf_clone_reader()
 {
   return this->_postbuf.get_post_data_buffer_clone_reader();
+}
+
+inline ProxyTransaction *
+HttpSM::get_server_txn() const
+{
+  return server_txn;
+}
+
+inline ProxyTransaction *
+HttpSM::get_ua_txn()
+{
+  return ua_txn;
 }

@@ -43,6 +43,8 @@ ts.Disk.ssl_multicert_config.AddLine(
 # Case 1, global config policy=permissive properties=signature
 #         override for foo.com policy=enforced properties=all
 ts.Disk.records_config.update({
+    'proxy.config.diags.debug.tags': 'http|connect|hostdb|dns',
+    'proxy.config.diags.debug.enabled': 1,
     'proxy.config.ssl.server.cert.path': '{0}'.format(ts.Variables.SSLDir),
     'proxy.config.ssl.server.private_key.path': '{0}'.format(ts.Variables.SSLDir),
     'proxy.config.http.connect_ports': '{0} {1}'.format(ts.Variables.ssl_port, ts.Variables.s_client_port),

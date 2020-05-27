@@ -39,6 +39,7 @@
 #include "YamlSNIConfig.h"
 #include "tscpp/util/TextView.h"
 #include "tscore/IpMap.h"
+#include "P_ALPNSupport.h"
 
 #define CONNECT_SUCCESS 1
 #define CONNECT_FAILURE 0
@@ -220,6 +221,9 @@ struct NetVCOptions {
   const char *ssl_client_ca_cert_path = nullptr;
 
   bool tls_upstream = false;
+
+  unsigned char alpn_protocols_array[MAX_ALPN_STRING];
+  int alpn_protocols_array_size = 0;
 
   /// Reset all values to defaults.
 

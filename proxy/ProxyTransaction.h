@@ -39,15 +39,22 @@ public:
   /// Virtual Methods
   //
   virtual void new_transaction(bool from_early_data = false);
+  virtual void attach_transaction(HttpSM *attach_sm);
   virtual bool attach_server_session(PoolableSession *ssession, bool transaction_done = true);
   Action *adjust_thread(Continuation *cont, int event, void *data);
-  virtual void release(IOBufferReader *r) = 0;
-  virtual void transaction_done();
+  virtual void release()          = 0;
+  virtual void transaction_done() = 0;
+  virtual void destroy();
 
   virtual void set_active_timeout(ink_hrtime timeout_in);
   virtual void set_inactivity_timeout(ink_hrtime timeout_in);
   virtual void cancel_inactivity_timeout();
   virtual void cancel_active_timeout();
+  virtual bool is_read_closed() const;
+  virtual bool expect_send_trailer() const;
+  virtual void set_expect_send_trailer();
+  virtual bool expect_receive_trailer() const;
+  virtual void set_expect_receive_trailer();
 
   // Implement VConnection interface.
   VIO *do_io_read(Continuation *c, int64_t nbytes = INT64_MAX, MIOBuffer *buf = nullptr) override;
@@ -63,8 +70,8 @@ public:
   virtual int get_transaction_priority_weight() const;
   virtual int get_transaction_priority_dependence() const;
   virtual bool allow_half_open() const;
-  virtual void increment_client_transactions_stat() = 0;
-  virtual void decrement_client_transactions_stat() = 0;
+  virtual void increment_transactions_stat() = 0;
+  virtual void decrement_transactions_stat() = 0;
 
   virtual NetVConnection *get_netvc() const;
   virtual bool is_first_transaction() const;
@@ -84,6 +91,13 @@ public:
 
   // Returns true if there is a request body for this request
   virtual bool has_request_body(int64_t content_length, bool is_chunked_set) const;
+
+  sockaddr const *get_remote_addr() const;
+
+  // Returns true if there is a request body for this request
+  virtual bool has_request_body(int64_t content_length, bool is_chunked_set) const;
+
+  virtual HostDBApplicationInfo::HttpVersion get_version(HTTPHdr &hdr) const;
 
   /// Non-Virtual Methods
   //
@@ -114,14 +128,18 @@ public:
   // This function must return a non-negative number that is different for two in-progress transactions with the same proxy_ssn
   // session.
   //
-  void set_rx_error_code(ProxyError e);
-  void set_tx_error_code(ProxyError e);
+  virtual void set_rx_error_code(ProxyError e);
+  virtual void set_tx_error_code(ProxyError e);
 
   bool support_sni() const;
 
   /// Variables
   //
   HttpSessionAccept::Options upstream_outbound_options; // overwritable copy of options
+
+  void set_reader(IOBufferReader *reader);
+
+  IOBufferReader *get_reader();
 
 protected:
   ProxySession *_proxy_ssn = nullptr;
@@ -273,4 +291,26 @@ ProxyTransaction::adjust_thread(Continuation *cont, int event, void *data)
     }
   }
   return nullptr;
+}
+
+inline void
+ProxyTransaction::set_reader(IOBufferReader *reader)
+{
+  _reader = reader;
+}
+
+inline IOBufferReader *
+ProxyTransaction::get_reader()
+{
+  return _reader;
+}
+
+inline sockaddr const *
+ProxyTransaction::get_remote_addr() const
+{
+  if (_proxy_ssn) {
+    return _proxy_ssn->get_remote_addr();
+  } else {
+    return nullptr;
+  }
 }

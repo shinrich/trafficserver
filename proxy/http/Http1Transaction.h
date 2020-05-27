@@ -35,31 +35,37 @@ public:
   Http1Transaction(ProxySession *session) : super_type(session) {}
   ~Http1Transaction() = default;
 
+  Http1Transaction() {}
+  virtual ~Http1Transaction() {}
+
   ////////////////////
   // Methods
-  void release(IOBufferReader *r) override;
+  void destroy() override; // todo make ~Http1Transaction()
 
-  bool allow_half_open() const override;
-  void transaction_done() override;
+  void
+  transaction_done() override
+  {
+  }
   int get_transaction_id() const override;
-  void increment_client_transactions_stat() override;
-  void decrement_client_transactions_stat() override;
-
-  void reset();
-  void set_reader(IOBufferReader *reader);
 
   ////////////////////
   // Variables
 
 protected:
-  bool outbound_transparent{false};
 };
 
-//////////////////////////////////
-// INLINE
-
 inline void
-Http1Transaction::set_reader(IOBufferReader *reader)
+Http1Transaction::destroy() // todo make ~Http1Transaction()
 {
-  _reader = reader;
+  _sm = nullptr;
+}
+
+inline int
+Http1Transaction::get_transaction_id() const
+{
+  // For HTTP/1 there is only one on-going transaction at a time per session/connection.  Therefore, the transaction count can be
+  // presumed not to increase during the lifetime of a transaction, thus this function will return a consistent unique transaction
+  // identifier.
+  //
+  return _proxy_ssn->get_transact_count();
 }

@@ -41,7 +41,7 @@
 #include "HTTP.h"
 #include "ProxySession.h"
 #include "Http2ClientSession.h"
-#include "Http1ServerSession.h"
+#include "PoolableSession.h"
 #include "HttpSM.h"
 #include "HttpConfig.h"
 #include "P_Net.h"
@@ -4921,12 +4921,11 @@ TSHttpSsnClientVConnGet(TSHttpSsn ssnp)
 TSVConn
 TSHttpSsnServerVConnGet(TSHttpSsn ssnp)
 {
-  TSVConn vconn       = nullptr;
   PoolableSession *ss = reinterpret_cast<PoolableSession *>(ssnp);
   if (ss != nullptr) {
-    vconn = reinterpret_cast<TSVConn>(ss->get_netvc());
+    return reinterpret_cast<TSVConn>(ss->get_netvc());
   }
-  return vconn;
+  return nullptr;
 }
 
 TSVConn
@@ -5792,7 +5791,7 @@ TSHttpTxnOutgoingAddrGet(TSHttpTxn txnp)
 
   HttpSM *sm = reinterpret_cast<HttpSM *>(txnp);
 
-  PoolableSession *ssn = sm->get_server_session();
+  ProxyTransaction *ssn = sm->get_server_txn();
   if (ssn == nullptr) {
     return nullptr;
   }
@@ -5926,14 +5925,12 @@ TSHttpTxnServerPacketMarkSet(TSHttpTxn txnp, int mark)
   HttpSM *sm = (HttpSM *)txnp;
 
   // change the mark on an active server session
-  if (nullptr != sm->ua_txn) {
-    PoolableSession *ssn = sm->ua_txn->get_server_session();
-    if (nullptr != ssn) {
-      NetVConnection *vc = ssn->get_netvc();
-      if (vc != nullptr) {
-        vc->options.packet_mark = (uint32_t)mark;
-        vc->apply_options();
-      }
+  ProxyTransaction *ssn = sm->get_server_txn();
+  if (nullptr != ssn) {
+    NetVConnection *vc = ssn->get_netvc();
+    if (vc != nullptr) {
+      vc->options.packet_mark = (uint32_t)mark;
+      vc->apply_options();
     }
   }
 
@@ -5968,14 +5965,12 @@ TSHttpTxnServerPacketTosSet(TSHttpTxn txnp, int tos)
   HttpSM *sm = (HttpSM *)txnp;
 
   // change the tos on an active server session
-  if (nullptr != sm->ua_txn) {
-    PoolableSession *ssn = sm->ua_txn->get_server_session();
-    if (nullptr != ssn) {
-      NetVConnection *vc = ssn->get_netvc();
-      if (vc != nullptr) {
-        vc->options.packet_tos = (uint32_t)tos;
-        vc->apply_options();
-      }
+  ProxyTransaction *ssn = sm->get_server_txn();
+  if (nullptr != ssn) {
+    NetVConnection *vc = ssn->get_netvc();
+    if (vc != nullptr) {
+      vc->options.packet_tos = (uint32_t)tos;
+      vc->apply_options();
     }
   }
 
@@ -6010,14 +6005,12 @@ TSHttpTxnServerPacketDscpSet(TSHttpTxn txnp, int dscp)
   HttpSM *sm = (HttpSM *)txnp;
 
   // change the tos on an active server session
-  if (nullptr != sm->ua_txn) {
-    PoolableSession *ssn = sm->ua_txn->get_server_session();
-    if (nullptr != ssn) {
-      NetVConnection *vc = ssn->get_netvc();
-      if (vc != nullptr) {
-        vc->options.packet_tos = (uint32_t)dscp << 2;
-        vc->apply_options();
-      }
+  ProxyTransaction *ssn = sm->get_server_txn();
+  if (nullptr != ssn) {
+    NetVConnection *vc = ssn->get_netvc();
+    if (vc != nullptr) {
+      vc->options.packet_tos = (uint32_t)dscp << 2;
+      vc->apply_options();
     }
   }
 
@@ -7798,7 +7791,7 @@ TSHttpTxnServerFdGet(TSHttpTxn txnp, int *fdp)
   HttpSM *sm = reinterpret_cast<HttpSM *>(txnp);
   *fdp       = -1;
 
-  PoolableSession *ss = sm->get_server_session();
+  ProxyTransaction *ss = sm->get_server_txn();
   if (ss == nullptr) {
     return TS_ERROR;
   }
@@ -8727,6 +8720,7 @@ _conf_to_memberp(TSOverridableConfigKey conf, OverridableHttpConfigParams *overr
   case TS_CONFIG_SSL_CERT_FILEPATH:
   case TS_CONFIG_SSL_CLIENT_PRIVATE_KEY_FILENAME:
   case TS_CONFIG_SSL_CLIENT_CA_CERT_FILENAME:
+  case TS_CONFIG_SSL_CLIENT_ALPN_PROTOCOLS:
     // String, must be handled elsewhere
     break;
   case TS_CONFIG_PARENT_FAILURES_UPDATE_HOSTDB:
@@ -8957,6 +8951,11 @@ TSHttpTxnConfigStringSet(TSHttpTxn txnp, TSOverridableConfigKey conf, const char
   case TS_CONFIG_SSL_CLIENT_CA_CERT_FILENAME:
     if (value && length > 0) {
       s->t_state.my_txn_conf().ssl_client_ca_cert_filename = const_cast<char *>(value);
+    }
+    break;
+  case TS_CONFIG_SSL_CLIENT_ALPN_PROTOCOLS:
+    if (value && length > 0) {
+      s->t_state.my_txn_conf().ssl_client_alpn_protocols = const_cast<char *>(value);
     }
     break;
   case TS_CONFIG_SSL_CERT_FILEPATH:

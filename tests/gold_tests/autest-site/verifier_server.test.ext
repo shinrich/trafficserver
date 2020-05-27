@@ -100,9 +100,6 @@ def _configure_server(obj, process, name, replay_path, http_ports=None, https_po
         process.Setup.Copy(replay_path, run_replay_path, CopyLogic.SoftFiles)
         command += "{} ".format(run_replay_path)
 
-    if verbose:
-        command += ' --verbose diag '
-
     if other_args:
         command += "{} ".format(other_args)
     process.Command = command

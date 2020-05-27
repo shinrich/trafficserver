@@ -56,7 +56,9 @@ ts.Disk.records_config.update({
     'proxy.config.url_remap.pristine_host_hdr': 1,
     'proxy.config.dns.nameservers': '127.0.0.1:{0}'.format(dns.Variables.Port),
     'proxy.config.exec_thread.autoconfig.scale': 1.0,
-    'proxy.config.dns.resolv_conf': 'NULL'
+    'proxy.config.dns.resolv_conf': 'NULL',
+    'proxy.config.diags.debug.enabled': 1,
+    'proxy.config.diags.debug.tags': 'http',
 })
 
 dns.addRecords(records={"foo.com.": ["127.0.0.1"]})

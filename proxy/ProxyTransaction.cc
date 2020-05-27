@@ -57,8 +57,8 @@ ProxyTransaction::new_transaction(bool from_early_data)
     }
   }
 
-  this->increment_client_transactions_stat();
-  _sm->attach_client_session(this, _reader);
+  this->increment_transactions_stat();
+  _sm->attach_client_session(this);
 }
 
 bool
@@ -181,7 +181,7 @@ void
 ProxyTransaction::transaction_done()
 {
   SCOPED_MUTEX_LOCK(lock, this->mutex, this_ethread());
-  this->decrement_client_transactions_stat();
+  this->decrement_transactions_stat();
 }
 
 // Implement VConnection interface.
@@ -225,4 +225,84 @@ bool
 ProxyTransaction::allow_half_open() const
 {
   return false;
+}
+
+ProxyTransaction::is_read_closed() const
+{
+  return false;
+}
+
+bool
+ProxyTransaction::expect_send_trailer() const
+{
+  return false;
+}
+
+void
+ProxyTransaction::set_expect_send_trailer()
+{
+}
+bool
+ProxyTransaction::expect_receive_trailer() const
+{
+  return false;
+}
+
+void
+ProxyTransaction::set_expect_receive_trailer()
+{
+}
+
+void
+ProxyTransaction::attach_transaction(HttpSM *attach_sm)
+{
+  _sm = attach_sm;
+}
+
+void
+ProxyTransaction::release()
+{
+  HttpTxnDebug("[%" PRId64 "] session released by sm [%" PRId64 "]", _proxy_ssn ? _proxy_ssn->connection_id() : 0,
+               _sm ? _sm->sm_id : 0);
+
+  this->decrement_transactions_stat();
+
+  // Pass along the release to the session
+  if (_proxy_ssn) {
+    _proxy_ssn->release(this);
+  }
+}
+
+bool
+ProxyTransaction::has_request_body(int64_t request_content_length, bool is_chunked) const
+{
+  return request_content_length > 0 || is_chunked;
+}
+
+HostDBApplicationInfo::HttpVersion
+ProxyTransaction::get_version(HTTPHdr &hdr) const
+{
+  if (hdr.version_get() == HTTPVersion(1, 1)) {
+    return HostDBApplicationInfo::HTTP_VERSION_11;
+  } else if (hdr.version_get() == HTTPVersion(1, 0)) {
+    return HostDBApplicationInfo::HTTP_VERSION_10;
+  } else {
+    return HostDBApplicationInfo::HTTP_VERSION_09;
+  }
+}
+
+bool
+ProxyTransaction::allow_half_open() const
+{
+  return false;
+}
+
+void
+ProxyTransaction::increment_transactions_stat()
+{
+}
+
+void
+ProxyTransaction::decrement_transactions_stat()
+{
 }
