@@ -101,7 +101,6 @@ def verify_session_count(output):
     global numberOfRequests
     nReq = numberOfRequests * 2
     session_ids = [line[0:line.find("\n")] for line in str(output).split("session id: ")[1:]]
-    #print(session_ids)
     if len(session_ids) != nReq:
         return "Found {} session_id's, expected {}".format(len(session_ids), nReq)
     return ""
