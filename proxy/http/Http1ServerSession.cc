@@ -203,10 +203,12 @@ Http1ServerSession::get_protocol_string() const
 void
 Http1ServerSession::increment_current_active_connections_stat()
 {
+  // TODO: Implement stats
 }
 void
 Http1ServerSession::decrement_current_active_connections_stat()
 {
+  // TODO: Implement stats
 }
 
 void

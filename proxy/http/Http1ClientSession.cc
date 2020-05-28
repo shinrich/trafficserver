@@ -471,7 +471,6 @@ Http1ClientSession::attach_server_session(SessionPoolInterface *ssession, bool t
     ssession->state = SessionPoolInterface::HSS_KA_CLIENT_SLAVE;
     bound_ss        = ssession;
     HttpSsnDebug("[%" PRId64 "] attaching server session [%" PRId64 "] as slave", con_id, ssession->connection_id());
-    // ink_assert(ssession->get_reader()->read_avail() == 0);
     ink_assert(ssession->get_netvc() != this->get_netvc());
 
     // handling potential keep-alive here
