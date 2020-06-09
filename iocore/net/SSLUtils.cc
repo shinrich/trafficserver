@@ -1950,8 +1950,6 @@ SSLMultiCertConfigLoader::load_certs_and_cross_reference_names(std::vector<X509 
   SimpleTokenizer key_tok(SSL_CERT_SEPARATE_DELIM);
   if (sslMultCertSettings && sslMultCertSettings->key) {
     key_tok.setString((const char *)sslMultCertSettings->key);
-  } else if (sslMultCertSettings && sslMultCertSettings->cert) {
-    key_tok.setString((const char *)sslMultCertSettings->cert);
   } else {
     key_tok.setString("");
   }
