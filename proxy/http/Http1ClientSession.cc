@@ -266,6 +266,12 @@ Http1ClientSession::do_io_close(int alerrno)
     HTTP_SUM_DYN_STAT(http_transactions_per_client_con, transact_count);
     HTTP_DECREMENT_DYN_STAT(http_current_client_connections_stat);
     conn_decrease = false;
+    // Can go ahead and close the netvc now, but keeping around the session object
+    // until all the transactions are closed
+    if (_vc) {
+      _vc->do_io_close();
+      _vc = nullptr;
+    }
   }
   if (transact_count == released_transactions) {
     this->destroy();

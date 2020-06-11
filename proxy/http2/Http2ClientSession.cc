@@ -275,15 +275,22 @@ Http2ClientSession::do_io_close(int alerrno)
   ink_assert(this->mutex->thread_holding == this_ethread());
   send_connection_event(&this->connection_state, HTTP2_SESSION_EVENT_FINI, this);
 
+  // Can go ahead and close the netvc now, but keeping around the session object
+  // until all the transactions are closed
+  if (_vc) {
+    // Copy aside the client address before releasing the vc
+    cached_client_addr.assign(_vc->get_remote_addr());
+    cached_local_addr.assign(_vc->get_local_addr());
+    _vc->do_io_close();
+    _vc = nullptr;
+  }
+
   {
     SCOPED_MUTEX_LOCK(lock, this->connection_state.mutex, this_ethread());
     this->connection_state.release_stream();
   }
 
   this->clear_session_active();
-
-  // Point the write_vio at the session in case of inactivity timeout
-  this->do_io_write(this, 0, nullptr);
 }
 
 void
