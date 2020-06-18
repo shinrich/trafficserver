@@ -47,7 +47,7 @@ public:
   bool LessThan(HttpTransact::State *, HttpTransact::State *);
 
 private:
-  int _old_remap_plugin_behavior  = -1;
+  int _old_remap_plugin_behavior = -1;
 };
 
 /**
