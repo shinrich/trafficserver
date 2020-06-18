@@ -201,11 +201,11 @@ ProxySession::connection_id() const
 }
 
 void
-ProxySession::attach_server_session(SessionPoolInterface *ssession, bool transaction_done)
+ProxySession::attach_server_session(PoolableSession *ssession, bool transaction_done)
 {
 }
 
-SessionPoolInterface *
+PoolableSession *
 ProxySession::get_server_session() const
 {
   return nullptr;

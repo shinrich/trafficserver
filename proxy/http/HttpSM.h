@@ -221,11 +221,11 @@ public:
   // Called by httpSessionManager so that we can reset
   //  the session timeouts and initiate a read while
   //  holding the lock for the server session
-  void attach_server_session(SessionPoolInterface *s);
+  void attach_server_session(PoolableSession *s);
 
   // Used to read attributes of
   // the current active server session
-  SessionPoolInterface *get_server_session() const;
+  PoolableSession *get_server_session() const;
 
   ProxyTransaction *
   get_ua_txn()

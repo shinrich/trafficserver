@@ -70,7 +70,7 @@ ProxyTransaction::release(IOBufferReader *r)
 }
 
 void
-ProxyTransaction::attach_server_session(SessionPoolInterface *ssession, bool transaction_done)
+ProxyTransaction::attach_server_session(PoolableSession *ssession, bool transaction_done)
 {
   _proxy_ssn->attach_server_session(ssession, transaction_done);
 }

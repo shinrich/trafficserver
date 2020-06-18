@@ -36,7 +36,7 @@
 
 #include "HttpConnectionCount.h"
 #include "HttpProxyAPIEnums.h"
-#include "SessionPoolInterface.h"
+#include "PoolableSession.h"
 
 class HttpSM;
 class MIOBuffer;
@@ -47,10 +47,10 @@ enum {
   HTTP_SS_MAGIC_DEAD  = 0xDEADFEED,
 };
 
-class Http1ServerSession : public SessionPoolInterface
+class Http1ServerSession : public PoolableSession
 {
   using self_type  = Http1ServerSession;
-  using super_type = SessionPoolInterface;
+  using super_type = PoolableSession;
 
 public:
   Http1ServerSession() : super_type() {}
