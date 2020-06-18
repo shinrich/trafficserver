@@ -5021,7 +5021,7 @@ HttpSM::do_http_server_open(bool raw)
   // session when we already have an attached server session.
   else if ((TS_SERVER_SESSION_SHARING_MATCH_NONE == t_state.txn_conf->server_session_sharing_match || is_private()) &&
            (ua_txn != nullptr)) {
-    SessionPoolInterface *existing_ss = ua_txn->get_server_session();
+    PoolableSession *existing_ss = ua_txn->get_server_session();
 
     if (existing_ss) {
       // [amc] Not sure if this is the best option, but we don't get here unless session sharing is disabled
@@ -5048,7 +5048,7 @@ HttpSM::do_http_server_open(bool raw)
   // to get a new one.
   // ua_txn is null when t_state.req_flavor == REQ_FLAVOR_SCHEDULED_UPDATE
   else if (ua_txn != nullptr) {
-    SessionPoolInterface *existing_ss = ua_txn->get_server_session();
+    PoolableSession *existing_ss = ua_txn->get_server_session();
     if (existing_ss) {
       existing_ss->get_netvc()->set_inactivity_timeout(HRTIME_SECONDS(t_state.txn_conf->keep_alive_no_activity_timeout_out));
       existing_ss->release(nullptr);
@@ -6049,7 +6049,7 @@ HttpSM::write_header_into_buffer(HTTPHdr *h, MIOBuffer *b)
 }
 
 void
-HttpSM::attach_server_session(SessionPoolInterface *s)
+HttpSM::attach_server_session(PoolableSession *s)
 {
   hsm_release_assert(server_session == nullptr);
   hsm_release_assert(server_entry == nullptr);
@@ -8294,7 +8294,7 @@ PostDataBuffers::~PostDataBuffers()
   this->clear();
 }
 
-SessionPoolInterface *
+PoolableSession *
 HttpSM::get_server_session() const
 {
   return server_session;
