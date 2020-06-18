@@ -36,7 +36,7 @@
 #include "HttpSM.h"
 #include "HttpDebugNames.h"
 #include "Plugin.h"
-#include "SessionPoolInterface.h"
+#include "PoolableSession.h"
 
 #define HttpSsnDebug(fmt, ...) SsnDebug(this, "http_cs", fmt, __VA_ARGS__)
 
@@ -456,11 +456,11 @@ Http1ClientSession::new_transaction()
 }
 
 bool
-Http1ClientSession::attach_server_session(SessionPoolInterface *ssession, bool transaction_done)
+Http1ClientSession::attach_server_session(PoolableSession *ssession, bool transaction_done)
 {
   if (ssession) {
     ink_assert(bound_ss == nullptr);
-    ssession->state = SessionPoolInterface::HSS_KA_CLIENT_SLAVE;
+    ssession->state = PoolableSession::PS_KA_RESERVED;
     bound_ss        = ssession;
     HttpSsnDebug("[%" PRId64 "] attaching server session [%" PRId64 "] as slave", con_id, ssession->connection_id());
     ink_assert(ssession->get_netvc() != this->get_netvc());
@@ -549,7 +549,7 @@ Http1ClientSession::is_outbound_transparent() const
   return f_outbound_transparent;
 }
 
-SessionPoolInterface *
+PoolableSession *
 Http1ClientSession::get_server_session() const
 {
   return bound_ss;

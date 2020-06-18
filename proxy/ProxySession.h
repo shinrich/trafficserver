@@ -40,7 +40,7 @@
 #define SsnDebug(ssn, tag, ...) SpecificDebug((ssn)->debug(), tag, __VA_ARGS__)
 
 class ProxyTransaction;
-class SessionPoolInterface;
+class PoolableSession;
 
 enum class ProxyErrorClass {
   NONE,
@@ -89,7 +89,7 @@ public:
   // Virtual Methods
   virtual void new_connection(NetVConnection *new_vc, MIOBuffer *iobuf, IOBufferReader *reader) = 0;
   virtual void start()                                                                          = 0;
-  virtual bool attach_server_session(SessionPoolInterface *ssession, bool transaction_done = true);
+  virtual bool attach_server_session(PoolableSession *ssession, bool transaction_done = true);
 
   virtual void release(ProxyTransaction *trans) = 0;
 
@@ -112,7 +112,7 @@ public:
   virtual void set_half_close_flag(bool flag);
   virtual bool get_half_close_flag() const;
 
-  virtual SessionPoolInterface *get_server_session() const;
+  virtual PoolableSession *get_server_session() const;
 
   // Replicate NetVConnection API
   virtual sockaddr const *get_remote_addr() const;

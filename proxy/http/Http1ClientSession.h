@@ -63,7 +63,7 @@ public:
   void destroy() override;
   void free() override;
 
-  bool attach_server_session(SessionPoolInterface *ssession, bool transaction_done = true) override;
+  bool attach_server_session(PoolableSession *ssession, bool transaction_done = true) override;
 
   // Implement VConnection interface.
   void do_io_close(int lerrno = -1) override;
@@ -76,7 +76,7 @@ public:
   int get_transact_count() const override;
   virtual bool is_outbound_transparent() const;
 
-  SessionPoolInterface *get_server_session() const override;
+  PoolableSession *get_server_session() const override;
   const char *get_protocol_string() const override;
 
   void increment_current_active_connections_stat() override;
@@ -112,7 +112,7 @@ private:
   VIO *ka_vio       = nullptr;
   VIO *slave_ka_vio = nullptr;
 
-  SessionPoolInterface *bound_ss = nullptr;
+  PoolableSession *bound_ss = nullptr;
 
   int released_transactions = 0;
 

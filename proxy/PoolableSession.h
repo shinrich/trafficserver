@@ -25,16 +25,17 @@
 
 #include "ProxySession.h"
 
-class SessionPoolInterface : public ProxySession
+class PoolableSession : public ProxySession
 {
-  using self_type = SessionPoolInterface;
+  using self_type  = PoolableSession;
+  using super_type = ProxySession;
 
 public:
-  enum HSS_State {
-    HSS_INIT,
-    HSS_ACTIVE,
-    HSS_KA_CLIENT_SLAVE,
-    HSS_KA_SHARED,
+  enum Pooled_State {
+    PS_INIT,
+    PS_SSN_IN_USE,  // actively in use
+    PS_KA_RESERVED, // stuck to client
+    PS_KA_POOLED,   // free for reuse
   };
 
   /// Hash map descriptor class for IP map.
@@ -48,8 +49,8 @@ public:
     static sockaddr const *key_of(self_type const *ssn);
     static bool equal(sockaddr const *lhs, sockaddr const *rhs);
     // Add a couple overloads for internal convenience.
-    static bool equal(sockaddr const *lhs, SessionPoolInterface const *rhs);
-    static bool equal(SessionPoolInterface const *lhs, sockaddr const *rhs);
+    static bool equal(sockaddr const *lhs, PoolableSession const *rhs);
+    static bool equal(PoolableSession const *lhs, sockaddr const *rhs);
   } _ip_link;
 
   /// Hash map descriptor class for FQDN map.
@@ -65,7 +66,7 @@ public:
   } _fqdn_link;
 
   CryptoHash hostname_hash;
-  HSS_State state = HSS_INIT;
+  Pooled_State state = PS_INIT;
 
   // Copy of the owning SM's server session sharing settings
   TSServerSessionSharingMatchMask sharing_match = TS_SERVER_SESSION_SHARING_MATCH_MASK_NONE;
@@ -78,12 +79,12 @@ public:
   void
   set_active()
   {
-    state = HSS_ACTIVE;
+    state = PS_SSN_IN_USE;
   }
   bool
   is_active()
   {
-    return state == HSS_ACTIVE;
+    return state == PS_SSN_IN_USE;
   }
   void
   set_private(bool new_private = true)
@@ -105,74 +106,74 @@ private:
 //
 // LINKAGE
 
-inline SessionPoolInterface *&
-SessionPoolInterface::IPLinkage::next_ptr(self_type *ssn)
+inline PoolableSession *&
+PoolableSession::IPLinkage::next_ptr(self_type *ssn)
 {
   return ssn->_ip_link._next;
 }
 
-inline SessionPoolInterface *&
-SessionPoolInterface::IPLinkage::prev_ptr(self_type *ssn)
+inline PoolableSession *&
+PoolableSession::IPLinkage::prev_ptr(self_type *ssn)
 {
   return ssn->_ip_link._prev;
 }
 
 inline uint32_t
-SessionPoolInterface::IPLinkage::hash_of(sockaddr const *key)
+PoolableSession::IPLinkage::hash_of(sockaddr const *key)
 {
   return ats_ip_hash(key);
 }
 
 inline sockaddr const *
-SessionPoolInterface::IPLinkage::key_of(self_type const *ssn)
+PoolableSession::IPLinkage::key_of(self_type const *ssn)
 {
   return ssn->get_remote_addr();
 }
 
 inline bool
-SessionPoolInterface::IPLinkage::equal(sockaddr const *lhs, sockaddr const *rhs)
+PoolableSession::IPLinkage::equal(sockaddr const *lhs, sockaddr const *rhs)
 {
   return ats_ip_addr_port_eq(lhs, rhs);
 }
 
 inline bool
-SessionPoolInterface::IPLinkage::equal(sockaddr const *lhs, SessionPoolInterface const *rhs)
+PoolableSession::IPLinkage::equal(sockaddr const *lhs, PoolableSession const *rhs)
 {
   return ats_ip_addr_port_eq(lhs, key_of(rhs));
 }
 
 inline bool
-SessionPoolInterface::IPLinkage::equal(SessionPoolInterface const *lhs, sockaddr const *rhs)
+PoolableSession::IPLinkage::equal(PoolableSession const *lhs, sockaddr const *rhs)
 {
   return ats_ip_addr_port_eq(key_of(lhs), rhs);
 }
 
-inline SessionPoolInterface *&
-SessionPoolInterface::FQDNLinkage::next_ptr(self_type *ssn)
+inline PoolableSession *&
+PoolableSession::FQDNLinkage::next_ptr(self_type *ssn)
 {
   return ssn->_fqdn_link._next;
 }
 
-inline SessionPoolInterface *&
-SessionPoolInterface::FQDNLinkage::prev_ptr(self_type *ssn)
+inline PoolableSession *&
+PoolableSession::FQDNLinkage::prev_ptr(self_type *ssn)
 {
   return ssn->_fqdn_link._prev;
 }
 
 inline uint64_t
-SessionPoolInterface::FQDNLinkage::hash_of(CryptoHash const &key)
+PoolableSession::FQDNLinkage::hash_of(CryptoHash const &key)
 {
   return key.fold();
 }
 
 inline CryptoHash const &
-SessionPoolInterface::FQDNLinkage::key_of(self_type *ssn)
+PoolableSession::FQDNLinkage::key_of(self_type *ssn)
 {
   return ssn->hostname_hash;
 }
 
 inline bool
-SessionPoolInterface::FQDNLinkage::equal(CryptoHash const &lhs, CryptoHash const &rhs)
+PoolableSession::FQDNLinkage::equal(CryptoHash const &lhs, CryptoHash const &rhs)
 {
   return lhs == rhs;
 }

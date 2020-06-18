@@ -37,7 +37,7 @@ public:
   /// Virtual Methods
   //
   virtual void new_transaction(bool from_early_data = false);
-  virtual bool attach_server_session(SessionPoolInterface *ssession, bool transaction_done = true);
+  virtual bool attach_server_session(PoolableSession *ssession, bool transaction_done = true);
   Action *adjust_thread(Continuation *cont, int event, void *data);
   virtual void release(IOBufferReader *r) = 0;
   virtual void transaction_done();
@@ -106,7 +106,7 @@ public:
   const IpAllow::ACL &get_acl() const;
 
   ProxySession *get_proxy_ssn();
-  SessionPoolInterface *get_server_session() const;
+  PoolableSession *get_server_session() const;
   HttpSM *get_sm() const;
 
   // This function must return a non-negative number that is different for two in-progress transactions with the same proxy_ssn
@@ -194,7 +194,7 @@ ProxyTransaction::set_proxy_ssn(ProxySession *new_proxy_ssn)
   _proxy_ssn = new_proxy_ssn;
 }
 
-inline SessionPoolInterface *
+inline PoolableSession *
 ProxyTransaction::get_server_session() const
 {
   return _proxy_ssn ? _proxy_ssn->get_server_session() : nullptr;

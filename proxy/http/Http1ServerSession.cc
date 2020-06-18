@@ -81,7 +81,7 @@ Http1ServerSession::new_connection(NetVConnection *new_vc, MIOBuffer *iobuf, IOB
     buf_reader  = reader;
   }
   Debug("http_ss", "[%" PRId64 "] session born, netvc %p", con_id, new_vc);
-  state = HSS_INIT;
+  state = PS_INIT;
 
   new_vc->set_tcp_congestion_control(SERVER_SIDE);
 }
@@ -104,7 +104,7 @@ Http1ServerSession::do_io_close(int alerrno)
   ts::LocalBufferWriter<256> w;
   bool debug_p = is_debug_tag_set("http_ss");
 
-  if (state == HSS_ACTIVE) {
+  if (state == PS_SSN_IN_USE) {
     HTTP_DECREMENT_DYN_STAT(http_current_server_transactions_stat);
   }
 
@@ -152,7 +152,7 @@ Http1ServerSession::release(ProxyTransaction *trans)
 {
   Debug("http_ss", "Releasing session, private_session=%d, sharing_match=%d", this->is_private(), sharing_match);
   // Set our state to KA for stat issues
-  state = HSS_KA_SHARED;
+  state = PS_KA_POOLED;
 
   _vc->control_flags.set_flags(0);
 

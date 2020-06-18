@@ -56,7 +56,7 @@ ProxyTransaction::new_transaction(bool from_early_data)
 }
 
 bool
-ProxyTransaction::attach_server_session(SessionPoolInterface *ssession, bool transaction_done)
+ProxyTransaction::attach_server_session(PoolableSession *ssession, bool transaction_done)
 {
   return _proxy_ssn->attach_server_session(ssession, transaction_done);
 }
