@@ -230,9 +230,6 @@ Http1ClientSession::do_io_close(int alerrno)
     half_close = false;
   }
 
-  // Clean up the write VIO in case of inactivity timeout
-  this->do_io_write(this, 0, nullptr);
-
   if (half_close && this->trans.get_sm()) {
     read_state = HCS_HALF_CLOSED;
     SET_HANDLER(&Http1ClientSession::state_wait_for_close);
@@ -249,6 +246,8 @@ Http1ClientSession::do_io_close(int alerrno)
 
       ka_vio = _vc->do_io_read(this, INT64_MAX, read_buffer);
       ink_assert(slave_ka_vio != ka_vio);
+      // Clean up the write VIO in case of inactivity timeout
+      this->do_io_write(this, 0, nullptr);
 
       // Set the active timeout to the same as the inactive time so
       //   that this connection does not hang around forever if
@@ -268,6 +267,10 @@ Http1ClientSession::do_io_close(int alerrno)
     HTTP_SUM_DYN_STAT(http_transactions_per_client_con, transact_count);
     HTTP_DECREMENT_DYN_STAT(http_current_client_connections_stat);
     conn_decrease = false;
+
+    // Clean up the write VIO in case of inactivity timeout
+    this->do_io_write(nullptr, 0, nullptr);
+
     // Can go ahead and close the netvc now, but keeping around the session object
     // until all the transactions are closed
     if (_vc) {
