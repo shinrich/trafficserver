@@ -177,7 +177,7 @@ ServerSessionPool::acquireSession(sockaddr const *addr, CryptoHash const &hostna
     // And matches the other constraints as well
     // Note the port is matched as part of the address key so it doesn't need to be checked again.
     if (match_style & (~TS_SERVER_SESSION_SHARING_MATCH_MASK_IP)) {
-      while (first != m_ip_pool.end() && ats_ip_addr_port_eq(first->get_server_ip(), addr)) {
+      while (first != m_ip_pool.end() && ats_ip_addr_port_eq(first->get_remote_addr(), addr)) {
         if ((!(match_style & TS_SERVER_SESSION_SHARING_MATCH_MASK_HOSTONLY) || first->hostname_hash == hostname_hash) &&
             (!(match_style & TS_SERVER_SESSION_SHARING_MATCH_MASK_SNI) || validate_sni(sm, first->get_netvc())) &&
             (!(match_style & TS_SERVER_SESSION_SHARING_MATCH_MASK_HOSTSNISYNC) || validate_host_sni(sm, first->get_netvc())) &&
