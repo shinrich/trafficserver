@@ -5994,8 +5994,9 @@ HttpSM::attach_server_session(PoolableSession *s)
 {
   hsm_release_assert(server_session == nullptr);
   hsm_release_assert(server_entry == nullptr);
+  hsm_release_assert(s != nullptr);
   hsm_release_assert(s->is_active());
-  server_session        = dynamic_cast<Http1ServerSession *>(s);
+  server_session        = static_cast<Http1ServerSession *>(s);
   server_transact_count = server_session->transact_count++;
 
   // update the dst_addr when using an existing session

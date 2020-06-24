@@ -1,6 +1,6 @@
 /** @file
 
-  ProxySession - Base class for protocol client sessions.
+  PoolableSession - class that extends ProxySession so that they can be cataloged for reuse.
 
   @section license License
 
@@ -31,11 +31,11 @@ class PoolableSession : public ProxySession
   using super_type = ProxySession;
 
 public:
-  enum Pooled_State {
-    PS_INIT,
-    PS_SSN_IN_USE,  // actively in use
-    PS_KA_RESERVED, // stuck to client
-    PS_KA_POOLED,   // free for reuse
+  enum PooledState {
+    INIT,
+    SSN_IN_USE,  // actively in use
+    KA_RESERVED, // stuck to client
+    KA_POOLED,   // free for reuse
   };
 
   /// Hash map descriptor class for IP map.
@@ -66,7 +66,7 @@ public:
   } _fqdn_link;
 
   CryptoHash hostname_hash;
-  Pooled_State state = PS_INIT;
+  PooledState state = INIT;
 
   // Copy of the owning SM's server session sharing settings
   TSServerSessionSharingMatchMask sharing_match = TS_SERVER_SESSION_SHARING_MATCH_MASK_NONE;
@@ -76,32 +76,45 @@ public:
   // singleton that keeps track of the connection counts.
   OutboundConnTrack::Group *conn_track_group = nullptr;
 
-  void
-  set_active()
-  {
-    state = PS_SSN_IN_USE;
-  }
-  bool
-  is_active()
-  {
-    return state == PS_SSN_IN_USE;
-  }
-  void
-  set_private(bool new_private = true)
-  {
-    private_session = new_private;
-  }
-  bool
-  is_private() const
-  {
-    return private_session;
-  }
+  void set_active();
+  bool is_active();
+  void set_private(bool new_private = true);
+  bool is_private() const;
+
+  void set_netvc(NetVConnection *newvc);
 
 private:
   // Sessions become if authentication headers
   //  are sent over them
   bool private_session = false;
 };
+
+inline void
+PoolableSession::set_active()
+{
+  state = SSN_IN_USE;
+}
+inline bool
+PoolableSession::is_active()
+{
+  return state == SSN_IN_USE;
+}
+inline void
+PoolableSession::set_private(bool new_private)
+{
+  private_session = new_private;
+}
+inline bool
+PoolableSession::is_private() const
+{
+  return private_session;
+}
+
+inline void
+PoolableSession::set_netvc(NetVConnection *newvc)
+{
+  ProxySession::_vc = newvc;
+}
 
 //
 // LINKAGE
