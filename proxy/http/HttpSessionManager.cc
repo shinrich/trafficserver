@@ -32,7 +32,6 @@
 
 #include "HttpSessionManager.h"
 #include "../ProxySession.h"
-//#include "Http1ServerSession.h"
 #include "HttpSM.h"
 #include "HttpDebugNames.h"
 
@@ -202,7 +201,7 @@ ServerSessionPool::acquireSession(sockaddr const *addr, CryptoHash const &hostna
 void
 ServerSessionPool::releaseSession(PoolableSession *ss)
 {
-  ss->state = PoolableSession::PS_KA_POOLED;
+  ss->state = PoolableSession::KA_POOLED;
   // Now we need to issue a read on the connection to detect
   //  if it closes on us.  We will get called back in the
   //  continuation for this bucket, ensuring we have the lock
@@ -261,7 +260,7 @@ ServerSessionPool::eventHandler(int event, void *data)
       // keeping the connection alive will not keep us above the # of max connections
       // to the origin and we are below the min number of keep alive connections to this
       // origin, then reset the timeouts on our end and do not close the connection
-      if ((event == VC_EVENT_INACTIVITY_TIMEOUT || event == VC_EVENT_ACTIVE_TIMEOUT) && s->state == PoolableSession::PS_KA_POOLED &&
+      if ((event == VC_EVENT_INACTIVITY_TIMEOUT || event == VC_EVENT_ACTIVE_TIMEOUT) && s->state == PoolableSession::KA_POOLED &&
           s->conn_track_group) {
         Debug("http_ss", "s->conn_track_group->min_keep_alive_conns : %d", s->conn_track_group->min_keep_alive_conns);
         bool connection_count_below_min = s->conn_track_group->_count <= s->conn_track_group->min_keep_alive_conns;
@@ -282,7 +281,7 @@ ServerSessionPool::eventHandler(int event, void *data)
       //   our lists and close it down
       Debug("http_ss", "[%" PRId64 "] [session_pool] session %p received io notice [%s]", s->connection_id(), s,
             HttpDebugNames::get_event_name(event));
-      ink_assert(s->state == PoolableSession::PS_KA_POOLED);
+      ink_assert(s->state == PoolableSession::KA_POOLED);
       // Out of the pool! Now!
       m_ip_pool.erase(spot);
       m_fqdn_pool.erase(s);
@@ -360,7 +359,7 @@ HttpSessionManager::acquire_session(Continuation * /* cont ATS_UNUSED */, sockad
         (!(match_style & TS_SERVER_SESSION_SHARING_MATCH_MASK_CERT) ||
          ServerSessionPool::validate_cert(sm, to_return->get_netvc()))) {
       Debug("http_ss", "[%" PRId64 "] [acquire session] returning attached session ", to_return->connection_id());
-      to_return->state = PoolableSession::PS_SSN_IN_USE;
+      to_return->state = PoolableSession::SSN_IN_USE;
       sm->attach_server_session(to_return);
       return HSM_DONE;
     }
