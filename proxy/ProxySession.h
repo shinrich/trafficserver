@@ -100,8 +100,6 @@ public:
   virtual void decrement_current_active_connections_stat() = 0;
 
   // Virtual Accessors
-  NetVConnection *get_netvc() const;
-  void set_netvc(NetVConnection *newvc);
   virtual int get_transact_count() const          = 0;
   virtual const char *get_protocol_string() const = 0;
 
@@ -127,6 +125,7 @@ public:
   virtual const char *protocol_contains(std::string_view tag_prefix) const;
 
   // Non-Virtual Methods
+  NetVConnection *get_netvc() const;
   int do_api_callout(TSHttpHookID id);
 
   void set_debug(bool flag);
@@ -283,10 +282,4 @@ inline NetVConnection *
 ProxySession::get_netvc() const
 {
   return _vc;
-}
-
-inline void
-ProxySession::set_netvc(NetVConnection *newvc)
-{
-  _vc = newvc;
 }
