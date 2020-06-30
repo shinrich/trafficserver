@@ -446,7 +446,7 @@ Http2Stream::initiating_close()
     bool sent_write_complete = false;
     if (_sm) {
       // Push out any last IO events
-      if (write_vio.cont && write_vio.nbytes > 0) {
+      if (write_vio.cont) {
         SCOPED_MUTEX_LOCK(lock, write_vio.mutex, this_ethread());
         // Are we done?
         if (write_vio.nbytes == write_vio.ndone) {
@@ -672,8 +672,7 @@ Http2Stream::signal_read_event(int event)
 void
 Http2Stream::signal_write_event(int event)
 {
-  if (this->write_vio.cont == nullptr || this->write_vio.cont->mutex == nullptr || this->write_vio.op == VIO::NONE ||
-      this->write_vio.nbytes == 0) {
+  if (this->write_vio.cont == nullptr || this->write_vio.cont->mutex == nullptr || this->write_vio.op == VIO::NONE) {
     return;
   }
 
@@ -696,7 +695,7 @@ Http2Stream::signal_write_event(bool call_update)
     return;
   }
 
-  if (this->write_vio.get_writer()->write_avail() == 0 || this->write_vio.nbytes == 0) {
+  if (this->write_vio.get_writer()->write_avail() == 0) {
     return;
   }
 
