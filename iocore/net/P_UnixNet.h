@@ -767,8 +767,8 @@ EventIO::refresh(int e)
     return 0;
   }
 
-  ink_assert(event_loop);
 #if TS_USE_KQUEUE && defined(USE_EDGE_TRIGGER)
+  ink_assert(event_loop);
   e = e & events;
   struct kevent ev[2];
   int n = 0;
