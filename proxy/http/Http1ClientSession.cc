@@ -428,19 +428,19 @@ Http1ClientSession::release(ProxyTransaction *trans)
   }
 }
 
-void
+ProxyTransaction *
 Http1ClientSession::new_transaction()
 {
   // If the client connection terminated during API callouts we're done.
   if (nullptr == _vc) {
     this->do_io_close(); // calls the SSN_CLOSE hooks to match the SSN_START hooks.
-    return;
+    return nullptr;
   }
 
   if (!_vc->add_to_active_queue()) {
     // no room in the active queue close the connection
     this->do_io_close();
-    return;
+    return nullptr;
   }
 
   // Defensive programming, make sure nothing persists across
@@ -453,6 +453,7 @@ Http1ClientSession::new_transaction()
   transact_count++;
 
   trans.new_transaction(read_from_early_data > 0 ? true : false);
+  return &trans;
 }
 
 bool
