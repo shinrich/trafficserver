@@ -37,7 +37,7 @@
 #include "HttpConfig.h"
 #include "IPAllow.h"
 #include "ProxySession.h"
-#include "Http1Transaction.h"
+#include "Http1ClientTransaction.h"
 
 #ifdef USE_HTTP_DEBUG_LISTS
 extern ink_mutex debug_cs_list_mutex;
@@ -85,7 +85,7 @@ public:
 private:
   Http1ClientSession(Http1ClientSession &);
 
-  void new_transaction();
+  ProxyTransaction *new_transaction() override;
 
   int state_keep_alive(int event, void *data);
   int state_slave_keep_alive(int event, void *data);
@@ -125,7 +125,7 @@ public:
   /// Set outbound connection to transparent.
   bool f_outbound_transparent = false;
 
-  Http1Transaction trans;
+  Http1ClientTransaction trans;
 };
 
 extern ClassAllocator<Http1ClientSession> http1ClientSessionAllocator;

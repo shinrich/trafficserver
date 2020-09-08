@@ -51,8 +51,8 @@ ProxyTransaction::new_transaction(bool from_early_data)
     }
   }
 
-  this->increment_client_transactions_stat();
-  _sm->attach_client_session(this, _reader);
+  this->increment_transactions_stat();
+  _sm->attach_client_session(this);
 }
 
 bool
@@ -182,7 +182,7 @@ void
 ProxyTransaction::transaction_done()
 {
   SCOPED_MUTEX_LOCK(lock, this->mutex, this_ethread());
-  this->decrement_client_transactions_stat();
+  this->decrement_transactions_stat();
 }
 
 // Implement VConnection interface.
@@ -214,4 +214,51 @@ void
 ProxyTransaction::reenable(VIO *vio)
 {
   _proxy_ssn->reenable(vio);
+}
+
+bool
+ProxyTransaction::is_read_closed() const
+{
+  return false;
+}
+
+bool
+ProxyTransaction::expect_send_trailer() const
+{
+  return false;
+}
+
+void
+ProxyTransaction::set_expect_send_trailer()
+{
+}
+bool
+ProxyTransaction::expect_receive_trailer() const
+{
+  return false;
+}
+
+void
+ProxyTransaction::set_expect_receive_trailer()
+{
+}
+
+void
+ProxyTransaction::attach_transaction(HttpSM *attach_sm)
+{
+  _sm = attach_sm;
+}
+
+void
+ProxyTransaction::release()
+{
+  HttpTxnDebug("[%" PRId64 "] session released by sm [%" PRId64 "]", _proxy_ssn ? _proxy_ssn->connection_id() : 0,
+               _sm ? _sm->sm_id : 0);
+
+  this->decrement_transactions_stat();
+
+  // Pass along the release to the session
+  if (_proxy_ssn) {
+    _proxy_ssn->release(this);
+  }
 }

@@ -67,8 +67,15 @@ ts.Disk.remap_config.AddLine(
 ts.Disk.ssl_multicert_config.AddLine(
     'dest_ip=* ssl_cert_name=server.pem ssl_key_name=server.key'
 )
-ts.Disk.records_config.update({'proxy.config.ssl.server.cert.path': '{0}'.format(ts.Variables.SSLDir), 'proxy.config.ssl.server.private_key.path': '{0}'.format(ts.Variables.SSLDir), 'proxy.config.exec_thread.autoconfig.scale': 1.0, 'proxy.config.ssl.server.cipher_suite':
-                               'ECDHE-RSA-AES128-GCM-SHA256:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-RSA-AES128-SHA256:ECDHE-RSA-AES256-SHA384:AES128-GCM-SHA256:AES256-GCM-SHA384:ECDHE-RSA-RC4-SHA:ECDHE-RSA-AES128-SHA:ECDHE-RSA-AES256-SHA:RC4-SHA:RC4-MD5:AES128-SHA:AES256-SHA:DES-CBC3-SHA!SRP:!DSS:!PSK:!aNULL:!eNULL:!SSLv2', })
+ts.Disk.records_config.update({
+    'proxy.config.diags.debug.enabled': 0,
+    'proxy.config.diags.debug.tags': 'http|connect',
+    'proxy.config.ssl.server.cert.path': '{0}'.format(ts.Variables.SSLDir),
+    'proxy.config.ssl.server.private_key.path': '{0}'.format(ts.Variables.SSLDir),
+    'proxy.config.ssl.client.verify.server': 0,
+    'proxy.config.exec_thread.autoconfig.scale': 1.0,
+    'proxy.config.ssl.server.cipher_suite': 'ECDHE-RSA-AES128-GCM-SHA256:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-RSA-AES128-SHA256:ECDHE-RSA-AES256-SHA384:AES128-GCM-SHA256:AES256-GCM-SHA384:ECDHE-RSA-RC4-SHA:ECDHE-RSA-AES128-SHA:ECDHE-RSA-AES256-SHA:RC4-SHA:RC4-MD5:AES128-SHA:AES256-SHA:DES-CBC3-SHA!SRP:!DSS:!PSK:!aNULL:!eNULL:!SSLv2',
+})
 
 tr = Test.AddTestRun("Run-Test")
 tr.Command = './ssl-post 127.0.0.1 40 {0} {1}'.format(header_count, ts.Variables.ssl_port)

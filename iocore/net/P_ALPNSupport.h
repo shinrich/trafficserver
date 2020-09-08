@@ -29,6 +29,8 @@ class SSLNextProtocolSet;
 class SSLNextProtocolAccept;
 class Continuation;
 
+#define MAX_ALPN_STRING 30
+
 class ALPNSupport
 {
 public:
@@ -37,6 +39,7 @@ public:
   void enableProtocol(int idx);
   void clear();
   bool setSelectedProtocol(const unsigned char *proto, unsigned int len);
+  static bool process_alpn_protocols(const std::string_view protocols, unsigned char *alpn_array, int &alpn_array_len);
 
   Continuation *
   endpoint() const
