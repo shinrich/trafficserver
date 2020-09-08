@@ -61,9 +61,11 @@ public:
   virtual int get_transaction_id() const = 0;
   virtual int get_transaction_priority_weight() const;
   virtual int get_transaction_priority_dependence() const;
-  virtual bool allow_half_open() const              = 0;
-  virtual void increment_client_transactions_stat() = 0;
-  virtual void decrement_client_transactions_stat() = 0;
+  virtual bool allow_half_open() const              { return false; }
+  virtual void increment_client_transactions_stat() {}
+  virtual void decrement_client_transactions_stat() {}
+  virtual void increment_server_transactions_stat() {}
+  virtual void decrement_server_transactions_stat() {}
 
   virtual NetVConnection *get_netvc() const;
   virtual bool is_first_transaction() const;
@@ -121,6 +123,10 @@ public:
   /// Variables
   //
   HttpSessionAccept::Options upstream_outbound_options; // overwritable copy of options
+
+  void set_reader(IOBufferReader *reader);
+
+  IOBufferReader *get_reader();
 
 protected:
   ProxySession *_proxy_ssn = nullptr;
@@ -278,4 +284,16 @@ ProxyTransaction::adjust_thread(Continuation *cont, int event, void *data)
     }
   }
   return nullptr;
+}
+
+inline void 
+ProxyTransaction::set_reader(IOBufferReader *reader)
+{
+  _reader = reader;
+}
+
+inline IOBufferReader *
+ProxyTransaction::get_reader()
+{
+  return _reader;
 }
