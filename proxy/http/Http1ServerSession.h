@@ -37,6 +37,7 @@
 #include "HttpConnectionCount.h"
 #include "HttpProxyAPIEnums.h"
 #include "PoolableSession.h"
+#include "Http1ServerTransaction.h"
 
 class HttpSM;
 class MIOBuffer;
@@ -103,6 +104,8 @@ private:
   int magic = HTTP_SS_MAGIC_DEAD;
 
   IOBufferReader *buf_reader = nullptr;
+
+  Http1ServerTransaction trans;
 };
 
 extern ClassAllocator<Http1ServerSession> httpServerSessionAllocator;
