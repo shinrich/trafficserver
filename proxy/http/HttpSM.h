@@ -59,7 +59,8 @@ static size_t const HTTP_HEADER_BUFFER_SIZE_INDEX = CLIENT_CONNECTION_FIRST_READ
 //   the larger buffer size
 static size_t const HTTP_SERVER_RESP_HDR_BUFFER_INDEX = BUFFER_SIZE_INDEX_8K;
 
-class Http1ServerSession;
+
+class PoolableSession;
 class AuthHttpAdapter;
 
 class HttpSM;
@@ -225,7 +226,11 @@ public:
 
   // Used to read attributes of
   // the current active server session
-  PoolableSession *get_server_session() const;
+  ProxyTransaction 
+  *get_server_txn() const
+  {
+    return server_txn;
+  }
 
   ProxyTransaction *
   get_ua_txn()
@@ -368,7 +373,7 @@ protected:
   IOBufferReader *ua_raw_buffer_reader = nullptr;
 
   HttpVCTableEntry *server_entry     = nullptr;
-  Http1ServerSession *server_session = nullptr;
+  ProxyTransaction  *server_txn   = nullptr;
 
   /* Because we don't want to take a session from a shared pool if we know that it will be private,
    * but we cannot set it to private until we have an attached server session.
