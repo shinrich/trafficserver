@@ -347,6 +347,7 @@ void
 Http2Stream::do_io_close(int /* flags */)
 {
   SCOPED_MUTEX_LOCK(lock, this->mutex, this_ethread());
+  super::release();
 
   if (!closed) {
     REMEMBER(NO_EVENT, this->reentrancy_count);
@@ -897,8 +898,9 @@ Http2Stream::clear_io_events()
 
 //  release and do_io_close are the same for the HTTP/2 protocol
 void
-Http2Stream::release(IOBufferReader *r)
+Http2Stream::release()
 {
+  super::release();
   this->do_io_close();
 }
 
