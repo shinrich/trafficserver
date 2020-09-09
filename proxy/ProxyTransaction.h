@@ -85,6 +85,8 @@ public:
 
   virtual void set_proxy_ssn(ProxySession *set_proxy_ssn);
 
+  sockaddr const *get_remote_addr() const;
+
   /// Non-Virtual Methods
   //
   const char *get_protocol_string();
@@ -295,4 +297,14 @@ inline IOBufferReader *
 ProxyTransaction::get_reader()
 {
   return _reader;
+}
+
+inline  sockaddr const *
+ProxyTransaction::get_remote_addr() const
+{
+  if (_proxy_ssn) {
+   return _proxy_ssn->get_remote_addr();
+  } else {
+    return nullptr;
+  }
 }
