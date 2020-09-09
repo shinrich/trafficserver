@@ -26,7 +26,7 @@
 #include "HttpSM.h"
 
 void
-Http1ClientTransaction::release(IOBufferReader *r)
+Http1ClientTransaction::release()
 {
   // Must set this inactivity count here rather than in the session because the state machine
   // is not available then
@@ -36,14 +36,7 @@ Http1ClientTransaction::release(IOBufferReader *r)
   _proxy_ssn->clear_session_active();
   _proxy_ssn->ssn_last_txn_time = Thread::get_hrtime();
 
-  // Make sure that the state machine is returning
-  //  correct buffer reader
-  ink_assert(r == _reader);
-  if (r != _reader) {
-    this->do_io_close();
-  } else {
-    super_type::release(r);
-  }
+  super_type::release();
 }
 
 void

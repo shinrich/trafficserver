@@ -52,11 +52,11 @@ ProxyTransaction::new_transaction(bool from_early_data)
   }
 
   this->increment_client_transactions_stat();
-  _sm->attach_client_session(this, _reader);
+  _sm->attach_client_session(this);
 }
 
 void
-ProxyTransaction::release(IOBufferReader *r)
+ProxyTransaction::release()
 {
   HttpTxnDebug("[%" PRId64 "] session released by sm [%" PRId64 "]", _proxy_ssn ? _proxy_ssn->connection_id() : 0,
                _sm ? _sm->sm_id : 0);

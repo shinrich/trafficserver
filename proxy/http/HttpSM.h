@@ -217,7 +217,7 @@ public:
 
   void init(bool from_early_data = false);
 
-  void attach_client_session(ProxyTransaction *client_vc_arg, IOBufferReader *buffer_reader);
+  void attach_client_session(ProxyTransaction *client_vc_arg);
 
   // Called by httpSessionManager so that we can reset
   //  the session timeouts and initiate a read while
@@ -362,7 +362,6 @@ public:
   History<HISTORY_DEFAULT_SIZE> history;
 
 protected:
-  IOBufferReader *ua_buffer_reader     = nullptr;
   IOBufferReader *ua_raw_buffer_reader = nullptr;
 
   HttpVCTableEntry *server_entry     = nullptr;
@@ -375,7 +374,6 @@ protected:
    */
   bool will_be_private_ss              = false;
   int shared_session_retries           = 0;
-  IOBufferReader *server_buffer_reader = nullptr;
 
   HttpTransformInfo transform_info;
   HttpTransformInfo post_transform_info;

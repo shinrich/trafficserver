@@ -111,7 +111,7 @@ public:
 private:
   int magic = HTTP_SS_MAGIC_DEAD;
 
-  IOBufferReader *buf_reader = nullptr;
+  IOBufferReader *_reader = nullptr;
 
   Http1ServerTransaction trans;
 };
@@ -132,5 +132,5 @@ Http1ServerSession::attach_hostname(const char *hostname)
 inline IOBufferReader *
 Http1ServerSession::get_reader()
 {
-  return buf_reader;
+  return _reader;
 };

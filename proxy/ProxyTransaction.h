@@ -39,7 +39,7 @@ public:
   virtual void new_transaction(bool from_early_data = false);
   virtual void attach_server_session(PoolableSession *ssession, bool transaction_done = true);
   Action *adjust_thread(Continuation *cont, int event, void *data);
-  virtual void release(IOBufferReader *r);
+  virtual void release();
   virtual void transaction_done() = 0;
   virtual void destroy();
 

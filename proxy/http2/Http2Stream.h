@@ -61,7 +61,7 @@ public:
   int main_event_handler(int event, void *edata);
 
   void destroy() override;
-  void release(IOBufferReader *r) override;
+  void release() override;
   void reenable(VIO *vio) override;
   void transaction_done() override;
 
