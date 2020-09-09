@@ -52,7 +52,7 @@ ProxyTransaction::new_transaction(bool from_early_data)
   }
 
   this->increment_client_transactions_stat();
-  _sm->attach_client_session(this, _reader);
+  _sm->attach_client_session(this);
 }
 
 bool

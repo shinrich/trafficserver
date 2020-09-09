@@ -75,10 +75,10 @@ Http1ServerSession::new_connection(NetVConnection *new_vc, MIOBuffer *iobuf, IOB
 
   if (iobuf == nullptr) {
     read_buffer = new_MIOBuffer(HTTP_SERVER_RESP_HDR_BUFFER_INDEX);
-    buf_reader  = read_buffer->alloc_reader();
+    _reader  = read_buffer->alloc_reader();
   } else {
     read_buffer = iobuf;
-    buf_reader  = reader;
+    _reader  = reader;
   }
   Debug("http_ss", "[%" PRId64 "] session born, netvc %p", con_id, new_vc);
   state = INIT;

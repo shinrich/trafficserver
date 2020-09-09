@@ -26,8 +26,17 @@
 #include "HttpSM.h"
 
 void
-Http1ClientTransaction::release(IOBufferReader *r)
+Http1ClientTransaction::release()
 {
+  // Must set this inactivity count here rather than in the session because the state machine
+  // is not available then
+  MgmtInt ka_in = _sm->t_state.txn_conf->keep_alive_no_activity_timeout_in;
+  set_inactivity_timeout(HRTIME_SECONDS(ka_in));
+
+  _proxy_ssn->clear_session_active();
+  _proxy_ssn->ssn_last_txn_time = Thread::get_hrtime();
+
+  super_type::release();
 }
 
 void
