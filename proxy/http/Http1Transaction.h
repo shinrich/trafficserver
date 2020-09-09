@@ -33,13 +33,14 @@ public:
   using super_type = ProxyTransaction;
 
   Http1Transaction() {}
+  virtual ~Http1Transaction() {}
 
   ////////////////////
   // Methods
   //void release(IOBufferReader *r) override;
   void destroy() override; // todo make ~Http1Transaction()
 
-  void transaction_done() override;
+  void transaction_done() override {}
   int get_transaction_id() const override;
   //void increment_client_transactions_stat() override;
   //void decrement_client_transactions_stat() override;

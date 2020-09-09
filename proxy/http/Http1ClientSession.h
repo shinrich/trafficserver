@@ -85,7 +85,7 @@ public:
 private:
   Http1ClientSession(Http1ClientSession &);
 
-  void new_transaction();
+  ProxyTransaction *new_transaction() override;
 
   int state_keep_alive(int event, void *data);
   int state_slave_keep_alive(int event, void *data);

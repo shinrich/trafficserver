@@ -226,8 +226,8 @@ public:
 
   // Used to read attributes of
   // the current active server session
-  ProxyTransaction 
-  *get_server_txn() const
+  ProxyTransaction *
+  get_server_txn() const
   {
     return server_txn;
   }
@@ -548,7 +548,7 @@ public:
   const char *client_sec_protocol = "-";
   const char *client_cipher_suite = "-";
   const char *client_curve        = "-";
-  int server_transact_count       = 0;
+  int server_transact_count = 0;
 
   TransactionMilestones milestones;
   ink_hrtime api_timer = 0;

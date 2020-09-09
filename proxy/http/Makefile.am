@@ -51,6 +51,7 @@ libhttp_a_SOURCES = \
 	Http1Transaction.h \
 	Http1ClientTransaction.h \
 	Http1ServerTransaction.h \
+	Http1ServerTransaction.cc \
 	HttpConfig.cc \
 	HttpConfig.h \
 	HttpConnectionCount.cc \
