@@ -3143,7 +3143,6 @@ HttpSM::tunnel_handler_server(int event, HttpTunnelProducer *p)
       t_state.client_info.keep_alive = HTTP_NO_KEEPALIVE;
     }
   } else {
-    server_session->attach_hostname(t_state.current.server->name);
     HTTP_DECREMENT_DYN_STAT(http_current_server_transactions_stat);
 
     // If the option to attach the server session to the client session is set
@@ -3154,18 +3153,18 @@ HttpSM::tunnel_handler_server(int event, HttpTunnelProducer *p)
     bool release_origin_connection = true;
     if (t_state.txn_conf->attach_server_session_to_client == 1 && ua_txn && t_state.client_info.keep_alive == HTTP_KEEPALIVE) {
       Debug("http", "attaching server session to the client");
-      if (ua_txn->attach_server_session(server_session)) {
+      if (ua_txn->attach_server_session(static_cast<PoolableSession*>(server_txn->get_proxy_ssn())))
         release_origin_connection = false;
       }
     }
     if (release_origin_connection) {
       // Release the session back into the shared session pool
-      server_session->set_inactivity_timeout(HRTIME_SECONDS(t_state.txn_conf->keep_alive_no_activity_timeout_out));
-      server_session->release(nullptr);
+      server_txn->set_inactivity_timeout(HRTIME_SECONDS(t_state.txn_conf->keep_alive_no_activity_timeout_out));
+      server_txn->release(nullptr);
     }
   }
 
-  server_session = nullptr; // Because p->vc == server_session
+  server_txn = nullptr; // Because p->vc == server_txn
   server_entry   = nullptr;
 
   return 0;
@@ -4987,7 +4986,7 @@ HttpSM::do_http_server_open(bool raw)
 
   // If there is already an attached server session mark it as private.
   if (server_txn != nullptr && will_be_private_ss) {
-    server_txn->set_private();
+    static_cast<PoolableSession*>(server_txn->get_proxy_ssn())->set_private();
   }
 
   if ((raw == false) && TS_SERVER_SESSION_SHARING_MATCH_NONE != t_state.txn_conf->server_session_sharing_match &&
@@ -5462,7 +5461,6 @@ HttpSM::release_server_session(bool serve_from_cache)
         t_state.www_auth_content != HttpTransact::CACHE_AUTH_NONE)) &&
       plugin_tunnel_type == HTTP_NO_PLUGIN_TUNNEL) {
     HTTP_DECREMENT_DYN_STAT(http_current_server_transactions_stat);
-    server_txn->attach_hostname(t_state.current.server->name);
     if (t_state.www_auth_content == HttpTransact::CACHE_AUTH_NONE || serve_from_cache == false) {
       // Must explicitly set the keep_alive_no_activity time before doing the release
       server_txn->set_inactivity_timeout(HRTIME_SECONDS(t_state.txn_conf->keep_alive_no_activity_timeout_out));
@@ -5471,7 +5469,7 @@ HttpSM::release_server_session(bool serve_from_cache)
       // an authenticated server connection - attach to the local client
       // we are serving from cache for the current transaction
       t_state.www_auth_content = HttpTransact::CACHE_AUTH_SERVE;
-      ua_txn->attach_server_session(server_txn, false);
+      ua_txn->attach_server_session(static_cast<PoolableSession*>(server_txn->get_proxy_ssn()), false);
     }
   } else {
     if (TS_SERVER_SESSION_SHARING_MATCH_NONE == t_state.txn_conf->server_session_sharing_match) {
@@ -6052,12 +6050,12 @@ HttpSM::attach_server_session(PoolableSession *s)
   hsm_release_assert(server_entry == nullptr);
   hsm_release_assert(s != nullptr);
   hsm_release_assert(s->is_active());
-  server_txn        = s->get_transaction();
-  server_transact_count = s->transact_count++;
+  server_txn        = s->new_transaction();
+  server_transact_count = s->get_transact_count();
 
   // update the dst_addr when using an existing session
   // for e.g using Host based session pools may ignore the DNS IP
-  if (!ats_ip_addr_eq(&t_state.current.server->dst_addr, &server_txn->get_server_ip())) {
+  if (0 == ats_ip_addr_cmp(&t_state.current.server->dst_addr.sa, server_txn->get_remote_addr())) {
     ip_port_text_buffer ipb1, ipb2;
     Debug("http_ss", "updating ip when attaching server session from %s to %s",
           ats_ip_ntop(&t_state.current.server->dst_addr.sa, ipb1, sizeof(ipb1)),
@@ -6116,7 +6114,7 @@ HttpSM::attach_server_session(PoolableSession *s)
   // first tunnel instead of the producer of the second tunnel.
   // The real read is setup in setup_server_read_response_header()
   //
-  server_entry->read_vio = server_txn->do_io_read(this, 0, server_txn->read_buffer);
+  server_entry->read_vio = server_txn->do_io_read(this, 0, server_buffer_reader->mbuf);
 
   // Transfer control of the write side as well
   server_entry->write_vio = server_txn->do_io_write(this, 0, nullptr);
@@ -6130,7 +6128,7 @@ HttpSM::attach_server_session(PoolableSession *s)
 
   if (plugin_tunnel_type != HTTP_NO_PLUGIN_TUNNEL || will_be_private_ss) {
     SMDebug("http_ss", "Setting server session to private");
-    server_txn->set_private();
+    static_cast<PoolableSession*>(server_txn->get_proxy_ssn())->set_private();
   }
 }
 
@@ -8080,7 +8078,7 @@ bool
 HttpSM::set_server_session_private(bool private_session)
 {
   if (server_txn != nullptr) {
-    server_txn->set_private(private_session);
+    static_cast<PoolableSession*>(server_txn->get_proxy_ssn())->set_private(private_session);
     return true;
   }
   return false;
@@ -8091,7 +8089,7 @@ HttpSM::is_private()
 {
   bool res = false;
   if (server_txn) {
-    res = server_txn->is_private();
+    res = static_cast<PoolableSession*>(server_txn->get_proxy_ssn())->is_private();
   } else if (ua_txn) {
     Http1ServerSession *ss = dynamic_cast<Http1ServerSession *>(ua_txn->get_server_session());
     if (ss) {
@@ -8291,8 +8289,3 @@ PostDataBuffers::~PostDataBuffers()
   this->clear();
 }
 
-PoolableSession *
-HttpSM::get_server_session() const
-{
-  return server_session;
-}

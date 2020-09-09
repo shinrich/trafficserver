@@ -79,6 +79,14 @@ public:
   void attach_hostname(const char *hostname);
   IpEndpoint const &get_server_ip() const;
 
+  ProxyTransaction *new_transaction() override
+  {
+    transact_count++;
+    trans.set_reader(this->get_reader());
+    trans.set_proxy_ssn(this);
+    return &trans;
+  }
+
   ////////////////////
   // Variables
 
