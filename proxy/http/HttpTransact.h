@@ -933,7 +933,6 @@ public:
   static bool handleIfRedirect(State *s);
 
   static void StartAccessControl(State *s);
-  static void HandleRequestAuthorized(State *s);
   static void BadRequest(State *s);
   static void Forbidden(State *s);
   static void SelfLoop(State *s);

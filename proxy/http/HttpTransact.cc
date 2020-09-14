@@ -2018,12 +2018,6 @@ HttpTransact::OSDNSLookup(State *s)
 void
 HttpTransact::StartAccessControl(State *s)
 {
-  HandleRequestAuthorized(s);
-}
-
-void
-HttpTransact::HandleRequestAuthorized(State *s)
-{
   if (s->force_dns) {
     TRANSACT_RETURN(SM_ACTION_API_OS_DNS, HttpTransact::DecideCacheLookup);
   } else {
