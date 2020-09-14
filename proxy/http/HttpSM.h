@@ -37,6 +37,7 @@
 #include "tscore/ink_platform.h"
 #include "P_EventSystem.h"
 #include "HttpCacheSM.h"
+#include "ConnectSM.h"
 #include "HttpTransact.h"
 #include "UrlRewrite.h"
 #include "HttpTunnel.h"
@@ -212,6 +213,7 @@ public:
 
   static HttpSM *allocate();
   HttpCacheSM &get_cache_sm(); // Added to get the object of CacheSM YTS Team, yamsat
+  ConnectSM &get_connect_sm();
   std::string_view get_outbound_sni() const;
   std::string_view get_outbound_cert() const;
 
@@ -390,6 +392,8 @@ protected:
 
   HttpCacheSM cache_sm;
   HttpCacheSM transform_cache_sm;
+
+  ConnectSM connect_sm;
 
   HttpSMHandler default_handler = nullptr;
   Action *pending_action        = nullptr;
@@ -650,6 +654,12 @@ inline HttpCacheSM &
 HttpSM::get_cache_sm()
 {
   return cache_sm;
+}
+
+inline ConnectSM &
+HttpSM::get_connect_sm()
+{
+  return connect_sm;
 }
 
 inline HttpSM *
