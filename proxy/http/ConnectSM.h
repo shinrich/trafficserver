@@ -28,42 +28,71 @@
 
 class HttpSM; // So we can reach through to access the HttpTranact::state
 class ConnectSM;
+class ProxyTransaction;
 typedef int (ConnectSM::*ConnectSMHandler)(int event, void *data);
-typedef void (*ReturnFunc)();
+
+struct ConnectAction : public Action {
+  ConnectAction();
+  void cancel(Continuation *c = nullptr) override;
+  void
+  init(ConnectSM *sm_arg)
+  {
+    sm = sm_arg;
+  };
+  ConnectSM *sm = nullptr;
+};
+
 
 class ConnectSM : public Continuation
 {
 public:
 
-  enum Action {
-    Undefined,
-    DnsRequest,
-    StartConnect,
-    RetryConnect,
-    Done
+  ConnectSM() {
+    _captive_action.init(this);
+  }
+
+  enum ReturnState {
+    UndefinedState,
+    ServerTxnCreated,
+    Tunnel,
+    ErrorForbid,
+    ErrorResponse,
+    ErrorThrottle,
+    ErrorTransparent
   };
 
-  void start_machine(HttpSM *root_sm, Action next_action);
+  ReturnState _return_state = UndefinedState;
+
+  ProxyTransaction *get_server_txn() const { return _server_txn; }
+
+  Action *acquire_txn(HttpSM *sm, bool raw = false);
+
+  void cancel_pending_action() 
+  {
+    if (_pending_action) {
+      _pending_action->cancel();
+    }
+  }
 
 private:
-  ConnectSM::Action _action = Undefined;
-  ConnectSM::Action _next_action = Undefined;
   int _max_connect_retries = 0;
   HttpSM *_root_sm = nullptr;
-  Action *pending_action        = nullptr;
-  ReturnFunc _return_point = nullptr;
+  Action *_pending_action        = nullptr;
+  ProxyTransaction  *_server_txn   = nullptr;
+  ConnectAction _captive_action;
+
+  bool is_private() const;
 
   // Event handler methods
-  int state_server_open(int event, void *data);
-  int state_hostdb_lookup(int event, void *data);
-
-  // Return methods
-  void OSDNSLookup();
-
-  // Do the actions needed to move from _state to _next_state
-  void transition_state();
-  // Call return and move to the next state
-  void call_transact_and_transition(ReturnFunc f);
+  int state_http_server_open(int event, void *data);
+  //int state_hostdb_lookup(int event, void *data);
+ 
+  /* Because we don't want to take a session from a shared pool if we know that it will be private,
+   * but we cannot set it to private until we have an attached server session.
+   * So we use this variable to indicate that
+   * we should create a new connection and then once we attach the session we'll mark it as private.
+   */
+  bool will_be_private_ss              = false;
 
 
 };

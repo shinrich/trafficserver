@@ -221,10 +221,10 @@ public:
 
   void attach_client_session(ProxyTransaction *client_vc_arg);
 
-  // Called by httpSessionManager so that we can reset
+  // Called by on return from the connectSM to set 
   //  the session timeouts and initiate a read while
   //  holding the lock for the server session
-  void attach_server_session(PoolableSession *s);
+  void attach_server_session();
 
   // Used to read attributes of
   // the current active server session
@@ -369,12 +369,6 @@ protected:
   HttpVCTableEntry *server_entry     = nullptr;
   ProxyTransaction  *server_txn   = nullptr;
 
-  /* Because we don't want to take a session from a shared pool if we know that it will be private,
-   * but we cannot set it to private until we have an attached server session.
-   * So we use this variable to indicate that
-   * we should create a new connection and then once we attach the session we'll mark it as private.
-   */
-  bool will_be_private_ss              = false;
   int shared_session_retries           = 0;
 
   HttpTransformInfo transform_info;
@@ -427,8 +421,8 @@ protected:
   int state_cache_open_write(int event, void *data);
 
   // Http Server Handlers
-  int state_http_server_open(int event, void *data);
-  int state_raw_http_server_open(int event, void *data);
+  int state_http_server_opened(int event, void *data);
+  int state_raw_http_server_opened(int event, void *data);
   int state_send_server_request_header(int event, void *data);
   int state_acquire_server_read(int event, void *data);
   int state_read_server_response_header(int event, void *data);
@@ -456,7 +450,7 @@ protected:
   void do_hostdb_lookup();
   void do_hostdb_reverse_lookup();
   void do_cache_lookup_and_read();
-  void do_http_server_open(bool raw = false);
+  //void do_http_server_open(bool raw = false);
   void send_origin_throttled_response();
   void do_setup_post_tunnel(HttpVC_t to_vc_type);
   void do_cache_prepare_write();

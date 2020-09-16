@@ -454,3 +454,4 @@ HttpSessionManager::release_session(PoolableSession *to_release)
 
   return released_p ? HSM_DONE : HSM_RETRY;
 }
+
