@@ -155,7 +155,11 @@ public:
   void do_io_shutdown(ShutdownHowTo_t howto) override;
   void reenable(VIO *vio) override;
 
-  virtual ProxyTransaction *new_transaction() { return nullptr; }
+  virtual ProxyTransaction *
+  new_transaction()
+  {
+    return nullptr;
+  }
 
   ////////////////////
   // Members
