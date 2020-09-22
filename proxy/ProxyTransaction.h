@@ -61,11 +61,27 @@ public:
   virtual int get_transaction_id() const = 0;
   virtual int get_transaction_priority_weight() const;
   virtual int get_transaction_priority_dependence() const;
-  virtual bool allow_half_open() const              { return false; }
-  virtual void increment_client_transactions_stat() {}
-  virtual void decrement_client_transactions_stat() {}
-  virtual void increment_server_transactions_stat() {}
-  virtual void decrement_server_transactions_stat() {}
+  virtual bool
+  allow_half_open() const
+  {
+    return false;
+  }
+  virtual void
+  increment_client_transactions_stat()
+  {
+  }
+  virtual void
+  decrement_client_transactions_stat()
+  {
+  }
+  virtual void
+  increment_server_transactions_stat()
+  {
+  }
+  virtual void
+  decrement_server_transactions_stat()
+  {
+  }
 
   virtual NetVConnection *get_netvc() const;
   virtual bool is_first_transaction() const;
@@ -287,7 +303,7 @@ ProxyTransaction::adjust_thread(Continuation *cont, int event, void *data)
   return nullptr;
 }
 
-inline void 
+inline void
 ProxyTransaction::set_reader(IOBufferReader *reader)
 {
   _reader = reader;
@@ -299,11 +315,11 @@ ProxyTransaction::get_reader()
   return _reader;
 }
 
-inline  sockaddr const *
+inline sockaddr const *
 ProxyTransaction::get_remote_addr() const
 {
   if (_proxy_ssn) {
-   return _proxy_ssn->get_remote_addr();
+    return _proxy_ssn->get_remote_addr();
   } else {
     return nullptr;
   }

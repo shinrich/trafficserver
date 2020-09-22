@@ -38,6 +38,7 @@
 
 class ProxyTransaction;
 class HttpSM;
+class ConnectSM;
 
 void initialize_thread_for_http_sessions(EThread *thread, int thread_index);
 
@@ -64,14 +65,14 @@ public:
   ServerSessionPool();
   /// Handle events from server sessions.
   int eventHandler(int event, void *data);
-  static bool validate_host_sni(HttpSM *sm, NetVConnection *netvc);
-  static bool validate_sni(HttpSM *sm, NetVConnection *netvc);
-  static bool validate_cert(HttpSM *sm, NetVConnection *netvc);
   int
   count() const
   {
     return m_ip_pool.count();
   }
+  static bool validate_host_sni(ConnectSM *s, NetVConnection *netvc);
+  static bool validate_sni(ConnectSM *s, NetVConnection *netvc);
+  static bool validate_cert(ConnectSM *s, NetVConnection *netvc);
 
 protected:
   using IPTable   = IntrusiveHashMap<PoolableSession::IPLinkage>;
@@ -91,7 +92,7 @@ public:
       @return A pointer to the session or @c NULL if not matching session was found.
   */
   HSMresult_t acquireSession(sockaddr const *addr, CryptoHash const &host_hash, TSServerSessionSharingMatchMask match_style,
-                             HttpSM *sm, PoolableSession *&server_session);
+                             ConnectSM *s, PoolableSession *&server_session);
   /** Release a session to to pool.
    */
   void releaseSession(PoolableSession *ss);
@@ -110,7 +111,7 @@ class HttpSessionManager
 public:
   HttpSessionManager() {}
   ~HttpSessionManager() {}
-  HSMresult_t acquire_session(Continuation *cont, sockaddr const *addr, const char *hostname, ProxyTransaction *ua_txn, HttpSM *sm);
+  HSMresult_t acquire_session(ConnectSM *cont, sockaddr const *addr, const char *hostname, ProxyTransaction *ua_txn);
   HSMresult_t release_session(PoolableSession *to_release);
   void purge_keepalives();
   void init();

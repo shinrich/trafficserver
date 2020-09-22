@@ -35,11 +35,11 @@ public:
   ////////////////////
   // Methods
   void release() override;
-  //void destroy() override; // todo make ~Http1Transaction()
+  // void destroy() override; // todo make ~Http1Transaction()
 
   bool allow_half_open() const override;
   void transaction_done() override;
-  //int get_transaction_id() const override;
+  // int get_transaction_id() const override;
   void increment_client_transactions_stat() override;
   void decrement_client_transactions_stat() override;
 
@@ -49,4 +49,3 @@ public:
 protected:
   bool outbound_transparent{false};
 };
-
