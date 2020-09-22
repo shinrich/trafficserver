@@ -29,10 +29,11 @@
 class HttpSM; // So we can reach through to access the HttpTranact::state
 class ConnectSM;
 class ProxyTransaction;
+class NetVConnection;
 typedef int (ConnectSM::*ConnectSMHandler)(int event, void *data);
 
 struct ConnectAction : public Action {
-  ConnectAction();
+  ConnectAction() {}
   void cancel(Continuation *c = nullptr) override;
   void
   init(ConnectSM *sm_arg)
@@ -42,57 +43,68 @@ struct ConnectAction : public Action {
   ConnectSM *sm = nullptr;
 };
 
-
 class ConnectSM : public Continuation
 {
 public:
+  ConnectSM() { _captive_action.init(this); }
 
-  ConnectSM() {
-    _captive_action.init(this);
-  }
-
-  enum ReturnState {
-    UndefinedState,
-    ServerTxnCreated,
-    Tunnel,
-    ErrorForbid,
-    ErrorResponse,
-    ErrorThrottle,
-    ErrorTransparent
-  };
+  enum ReturnState { UndefinedState, ServerTxnCreated, Tunnel, ErrorForbid, ErrorResponse, ErrorThrottle, ErrorTransparent };
 
   ReturnState _return_state = UndefinedState;
 
-  ProxyTransaction *get_server_txn() const { return _server_txn; }
+  ProxyTransaction *
+  get_server_txn() const
+  {
+    return _server_txn;
+  }
+  NetVConnection *
+  get_netvc() const
+  {
+    return _netvc;
+  }
 
   Action *acquire_txn(HttpSM *sm, bool raw = false);
 
-  void cancel_pending_action() 
+  void
+  cancel_pending_action()
   {
     if (_pending_action) {
       _pending_action->cancel();
     }
   }
 
+  void
+  set_server_txn(ProxyTransaction *txn)
+  {
+    _server_txn = txn;
+  }
+
+  HttpSM *
+  get_root_sm() const
+  {
+    return _root_sm;
+  }
+  void init(HttpSM *sm);
+
 private:
-  int _max_connect_retries = 0;
-  HttpSM *_root_sm = nullptr;
-  Action *_pending_action        = nullptr;
-  ProxyTransaction  *_server_txn   = nullptr;
+  int _max_connect_retries      = 0;
+  HttpSM *_root_sm              = nullptr;
+  Action *_pending_action       = nullptr;
+  ProxyTransaction *_server_txn = nullptr;
+  NetVConnection *_netvc        = nullptr;
   ConnectAction _captive_action;
 
   bool is_private() const;
 
   // Event handler methods
   int state_http_server_open(int event, void *data);
-  //int state_hostdb_lookup(int event, void *data);
- 
+  int state_http_server_raw_open(int event, void *data);
+  // int state_hostdb_lookup(int event, void *data);
+
   /* Because we don't want to take a session from a shared pool if we know that it will be private,
    * but we cannot set it to private until we have an attached server session.
    * So we use this variable to indicate that
    * we should create a new connection and then once we attach the session we'll mark it as private.
    */
-  bool will_be_private_ss              = false;
-
-
+  bool will_be_private_ss = false;
 };

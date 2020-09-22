@@ -60,7 +60,6 @@ static size_t const HTTP_HEADER_BUFFER_SIZE_INDEX = CLIENT_CONNECTION_FIRST_READ
 //   the larger buffer size
 static size_t const HTTP_SERVER_RESP_HDR_BUFFER_INDEX = BUFFER_SIZE_INDEX_8K;
 
-
 class PoolableSession;
 class AuthHttpAdapter;
 
@@ -221,10 +220,10 @@ public:
 
   void attach_client_session(ProxyTransaction *client_vc_arg);
 
-  // Called by on return from the connectSM to set 
+  // Called by on return from the connectSM to set
   //  the session timeouts and initiate a read while
   //  holding the lock for the server session
-  void attach_server_session();
+  void attach_server_session(ProxyTransaction *new_server_txn);
 
   // Used to read attributes of
   // the current active server session
@@ -366,10 +365,10 @@ public:
 protected:
   IOBufferReader *ua_raw_buffer_reader = nullptr;
 
-  HttpVCTableEntry *server_entry     = nullptr;
-  ProxyTransaction  *server_txn   = nullptr;
+  HttpVCTableEntry *server_entry = nullptr;
+  ProxyTransaction *server_txn   = nullptr;
 
-  int shared_session_retries           = 0;
+  int shared_session_retries = 0;
 
   HttpTransformInfo transform_info;
   HttpTransformInfo post_transform_info;
@@ -450,7 +449,7 @@ protected:
   void do_hostdb_lookup();
   void do_hostdb_reverse_lookup();
   void do_cache_lookup_and_read();
-  //void do_http_server_open(bool raw = false);
+  // void do_http_server_open(bool raw = false);
   void send_origin_throttled_response();
   void do_setup_post_tunnel(HttpVC_t to_vc_type);
   void do_cache_prepare_write();
@@ -544,7 +543,7 @@ public:
   const char *client_sec_protocol = "-";
   const char *client_cipher_suite = "-";
   const char *client_curve        = "-";
-  int server_transact_count = 0;
+  int server_transact_count       = 0;
 
   TransactionMilestones milestones;
   ink_hrtime api_timer = 0;

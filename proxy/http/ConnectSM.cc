@@ -29,6 +29,7 @@
 #include "PluginVC.h"
 #include "HttpSessionManager.h"
 #include "Http1ServerSession.h"
+#include "HttpTransactHeaders.h"
 
 void
 ConnectAction::cancel(Continuation *c)
@@ -84,7 +85,7 @@ ConnectSM::is_private() const
 {
   bool res = false;
   if (_server_txn) {
-    res = static_cast<PoolableSession*>(_server_txn->get_proxy_ssn())->is_private();
+    res = static_cast<PoolableSession *>(_server_txn->get_proxy_ssn())->is_private();
   } else if (_root_sm->ua_txn) {
     Http1ServerSession *ss = dynamic_cast<Http1ServerSession *>(_root_sm->ua_txn->get_server_session());
     if (ss) {
@@ -99,9 +100,10 @@ ConnectSM::is_private() const
 Action *
 ConnectSM::acquire_txn(HttpSM *sm, bool raw)
 {
+  this->init(sm);
   HttpTransact::State &s = sm->t_state;
-  int ip_family = s.current.server->dst_addr.sa.sa_family;
-  auto fam_name = ats_ip_family_name(ip_family);
+  int ip_family          = s.current.server->dst_addr.sa.sa_family;
+  auto fam_name          = ats_ip_family_name(ip_family);
   Debug("http_connect", "entered inside acquire_txn [%.*s]", static_cast<int>(fam_name.size()), fam_name.data());
 
   this->_pending_action = nullptr;
@@ -118,7 +120,7 @@ ConnectSM::acquire_txn(HttpSM *sm, bool raw)
 
   char addrbuf[INET6_ADDRPORTSTRLEN];
   Debug("http_connect", "[%" PRId64 "] open connection to %s: %s", _root_sm->sm_id, s.current.server->name,
-          ats_ip_nptop(&s.current.server->dst_addr.sa, addrbuf, sizeof(addrbuf)));
+        ats_ip_nptop(&s.current.server->dst_addr.sa, addrbuf, sizeof(addrbuf)));
 
   if (sm->plugin_tunnel) {
     PluginVCCore *t           = sm->plugin_tunnel;
@@ -215,29 +217,18 @@ ConnectSM::acquire_txn(HttpSM *sm, bool raw)
     }
   }
 
-#ifdef OLD // Should it be possible that _server_txn is already set?
-  // If there is already an attached server session mark it as private.
-  if (_server_txn != nullptr && will_be_private_ss) {
-    static_cast<PoolableSession*>(_server_txn->get_proxy_ssn())->set_private();
-  }
-#endif
-
   if ((raw == false) && TS_SERVER_SESSION_SHARING_MATCH_NONE != s.txn_conf->server_session_sharing_match &&
-      (s.txn_conf->keep_alive_post_out == 1 || s.hdr_info.request_content_length == 0) && !is_private() &&
-      sm->ua_txn != nullptr) {
+      (s.txn_conf->keep_alive_post_out == 1 || s.hdr_info.request_content_length == 0) && !is_private() && sm->ua_txn != nullptr) {
     HSMresult_t shared_result;
-    shared_result = httpSessionManager.acquire_session(this,                                 // state machine
+    shared_result = httpSessionManager.acquire_session(this,                           // state machine
                                                        &s.current.server->dst_addr.sa, // ip + port
                                                        s.current.server->name,         // hostname
-                                                       sm->ua_txn,                               // has ptr to bound ua sessions
-                                                       sm                                  // sm
-    );
+                                                       sm->ua_txn);                    // has ptr to bound ua sessions
 
     switch (shared_result) {
     case HSM_DONE:
       ink_release_assert(_server_txn != nullptr);
       _return_state = ServerTxnCreated;
-      //handle_http_server_open();
       return ACTION_RESULT_DONE;
     case HSM_NOT_FOUND:
       ink_release_assert(_server_txn == nullptr);
@@ -253,7 +244,7 @@ ConnectSM::acquire_txn(HttpSM *sm, bool raw)
   // Avoid a problem where server session sharing is disabled and we have keep-alive, we are trying to open a new server
   // session when we already have an attached server session.
   else if ((TS_SERVER_SESSION_SHARING_MATCH_NONE == s.txn_conf->server_session_sharing_match || is_private()) &&
-           (ua_txn != nullptr)) {
+           (sm->ua_txn != nullptr)) {
     PoolableSession *existing_ss = sm->ua_txn->get_server_session();
 
     if (existing_ss) {
@@ -264,9 +255,8 @@ ConnectSM::acquire_txn(HttpSM *sm, bool raw)
       if (ats_ip_addr_port_eq(existing_ss->get_remote_addr(), &s.current.server->dst_addr.sa)) {
         sm->ua_txn->attach_server_session(nullptr);
         existing_ss->set_active();
-        sm->attach_server_session(existing_ss);
+        _server_txn = existing_ss->new_transaction();
         ink_release_assert(_server_txn != nullptr);
-        //handle_http_server_open();
         _return_state = ServerTxnCreated;
         return ACTION_RESULT_DONE;
       } else {
@@ -282,7 +272,7 @@ ConnectSM::acquire_txn(HttpSM *sm, bool raw)
   // to get a new one.
   // ua_txn is null when s.req_flavor == REQ_FLAVOR_SCHEDULED_UPDATE
   else if (sm->ua_txn != nullptr) {
-    PoolableSession *existing_ss = ua_txn->get_server_session();
+    PoolableSession *existing_ss = sm->ua_txn->get_server_session();
     if (existing_ss) {
       existing_ss->set_inactivity_timeout(HRTIME_SECONDS(s.txn_conf->keep_alive_no_activity_timeout_out));
       existing_ss->release(_server_txn);
@@ -305,8 +295,7 @@ ConnectSM::acquire_txn(HttpSM *sm, bool raw)
       httpSessionManager.purge_keepalives();
       // Eventually may want to have a queue as the origin_max_connection does to allow for a combination
       // of retries and errors.  But at this point, we are just going to allow the error case.
-      s.current.state = HttpTransact::CONNECTION_ERROR;
-      //call_transact_and_set_next_state(HttpTransact::HandleResponse);
+      s.current.state     = HttpTransact::CONNECTION_ERROR;
       this->_return_state = ErrorResponse;
       return ACTION_RESULT_DONE;
     }
@@ -314,8 +303,8 @@ ConnectSM::acquire_txn(HttpSM *sm, bool raw)
 
   // See if the outbound connection tracker data is needed. If so, get it here for consistency.
   if (s.txn_conf->outbound_conntrack.max > 0 || s.txn_conf->outbound_conntrack.min > 0) {
-    s.outbound_conn_track_state = OutboundConnTrack::obtain(
-      s.txn_conf->outbound_conntrack, std::string_view{s.current.server->name}, s.current.server->dst_addr);
+    s.outbound_conn_track_state = OutboundConnTrack::obtain(s.txn_conf->outbound_conntrack,
+                                                            std::string_view{s.current.server->name}, s.current.server->dst_addr);
   }
 
   // Check to see if we have reached the max number of connections on this upstream host.
@@ -336,6 +325,7 @@ ConnectSM::acquire_txn(HttpSM *sm, bool raw)
       } else if (s.http_config_param->outbound_conntrack.queue_size > 0) { // queue enabled, check for a slot
         auto wcount = ct_state.enqueue();
         if (wcount < s.http_config_param->outbound_conntrack.queue_size) {
+          using lbw = ts::LocalBufferWriter<256>;
           ct_state.rescheduled();
           Debug("http_connect", "%s", lbw().print("[{}] queued for {}\0", sm->sm_id, s.current.server->dst_addr).data());
           _pending_action =
@@ -343,21 +333,23 @@ ConnectSM::acquire_txn(HttpSM *sm, bool raw)
         } else {              // the queue is full
           ct_state.dequeue(); // release the queue slot
           ct_state.blocked(); // note the blockage.
-          //HTTP_INCREMENT_DYN_STAT(http_origin_connections_throttled_stat);
-          //send_origin_throttled_response();
+          // SKH
+          // HTTP_INCREMENT_DYN_STAT(http_origin_connections_throttled_stat);
+          // send_origin_throttled_response();
         }
       } else { // queue size is 0, always block.
         ct_state.blocked();
-        //HTTP_INCREMENT_DYN_STAT(http_origin_connections_throttled_stat);
-        //send_origin_throttled_response();
+        // SKH
+        // HTTP_INCREMENT_DYN_STAT(http_origin_connections_throttled_stat);
+        // send_origin_throttled_response();
       }
 
       ct_state.Warn_Blocked(&s.txn_conf->outbound_conntrack, _root_sm->sm_id, ccount - 1, &s.current.server->dst_addr.sa,
-                            debug_on && is_debug_tag_set("http") ? "http" : nullptr);
+                            is_debug_tag_set("http") ? "http" : nullptr);
 
       if (_pending_action) {
         return &_captive_action;
-      }  else {
+      } else {
         _return_state = ErrorThrottle;
         return ACTION_RESULT_DONE;
       }
@@ -373,9 +365,8 @@ ConnectSM::acquire_txn(HttpSM *sm, bool raw)
 
   NetVCOptions opt;
   opt.f_blocking_connect = false;
-  opt.set_sock_param(s.txn_conf->sock_recv_buffer_size_out, s.txn_conf->sock_send_buffer_size_out,
-                     s.txn_conf->sock_option_flag_out, s.txn_conf->sock_packet_mark_out,
-                     s.txn_conf->sock_packet_tos_out);
+  opt.set_sock_param(s.txn_conf->sock_recv_buffer_size_out, s.txn_conf->sock_send_buffer_size_out, s.txn_conf->sock_option_flag_out,
+                     s.txn_conf->sock_packet_mark_out, s.txn_conf->sock_packet_tos_out);
 
   set_tls_options(opt, s.txn_conf);
 
@@ -451,8 +442,7 @@ ConnectSM::acquire_txn(HttpSM *sm, bool raw)
       opt.set_sni_servername(sni_name.data(), sni_name.length());
     }
     int len = 0;
-    if (s.txn_conf->ssl_client_sni_policy != nullptr &&
-        !strcmp(s.txn_conf->ssl_client_sni_policy, "verify_with_name_source")) {
+    if (s.txn_conf->ssl_client_sni_policy != nullptr && !strcmp(s.txn_conf->ssl_client_sni_policy, "verify_with_name_source")) {
       // also set sni_hostname with host header from server request in this policy
       const char *host = s.hdr_info.server_request.host_get(&len);
       if (host && len > 0) {
@@ -463,12 +453,12 @@ ConnectSM::acquire_txn(HttpSM *sm, bool raw)
       opt.set_ssl_servername(s.server_info.name);
     }
 
-    connect_action_handle = sslNetProcessor.connect_re(this,                                 // state machine
-                                                &s.current.server->dst_addr.sa, // addr + port
-                                                &opt);
+    connect_action_handle = sslNetProcessor.connect_re(this,                           // state machine
+                                                       &s.current.server->dst_addr.sa, // addr + port
+                                                       &opt);
   } else {
     Debug("http_connect", "calling netProcessor.connect_re");
-    connect_action_handle = netProcessor.connect_re(this,                                 // state machine
+    connect_action_handle = netProcessor.connect_re(this,                           // state machine
                                                     &s.current.server->dst_addr.sa, // addr + port
                                                     &opt);
   }
@@ -484,25 +474,53 @@ ConnectSM::acquire_txn(HttpSM *sm, bool raw)
 }
 
 int
+ConnectSM::state_http_server_raw_open(int event, void *data)
+{
+  _root_sm->milestones[TS_MILESTONE_SERVER_CONNECT_END] = Thread::get_hrtime();
+
+  _pending_action = nullptr;
+  switch (event) {
+  case NET_EVENT_OPEN:
+    _netvc        = static_cast<NetVConnection *>(data);
+    _return_state = ServerTxnCreated;
+    _root_sm->handleEvent(event, data);
+
+    break;
+
+  case VC_EVENT_ERROR:
+  case NET_EVENT_OPEN_FAILED:
+    _return_state = ErrorTransparent;
+    _root_sm->handleEvent(event, data);
+    break;
+
+  default:
+    ink_release_assert(0);
+    break;
+  }
+
+  // call_transact_and_set_next_state(HttpTransact::OriginServerRawOpen);
+  return 0;
+}
+
+int
 ConnectSM::state_http_server_open(int event, void *data)
 {
   HttpTransact::State &s = _root_sm->t_state;
   Debug("http_connect", "entered inside state_http_server_open");
-  //STATE_ENTER(&HttpSM::state_http_server_open, event);
+  // STATE_ENTER(&HttpSM::state_http_server_open, event);
   ink_release_assert(event == EVENT_INTERVAL || event == NET_EVENT_OPEN || event == NET_EVENT_OPEN_FAILED ||
                      _pending_action == nullptr);
   if (event != NET_EVENT_OPEN) {
     _pending_action = nullptr;
   }
   _root_sm->milestones[TS_MILESTONE_SERVER_CONNECT_END] = Thread::get_hrtime();
-  NetVConnection *netvc                       = nullptr;
+  NetVConnection *netvc                                 = nullptr;
 
   switch (event) {
   case NET_EVENT_OPEN: {
-    Http1ServerSession *session =
-      (TS_SERVER_SESSION_SHARING_POOL_THREAD == s.http_config_param->server_session_sharing_pool) ?
-        THREAD_ALLOC_INIT(httpServerSessionAllocator, mutex->thread_holding) :
-        httpServerSessionAllocator.alloc();
+    Http1ServerSession *session = (TS_SERVER_SESSION_SHARING_POOL_THREAD == s.http_config_param->server_session_sharing_pool) ?
+                                    THREAD_ALLOC_INIT(httpServerSessionAllocator, mutex->thread_holding) :
+                                    httpServerSessionAllocator.alloc();
     session->sharing_pool  = static_cast<TSServerSessionSharingPoolType>(s.http_config_param->server_session_sharing_pool);
     session->sharing_match = static_cast<TSServerSessionSharingMatchMask>(s.txn_conf->server_session_sharing_match);
 
@@ -526,11 +544,12 @@ ConnectSM::state_http_server_open(int event, void *data)
     // the max and or min number of connections per host. Transfer responsibility for this to the
     // session object.
     if (s.outbound_conn_track_state.is_active()) {
-      Debug("http_connect", "[%" PRId64 "] max number of outbound connections: %d", _root_sm->sm_id, s.txn_conf->outbound_conntrack.max);
+      Debug("http_connect", "[%" PRId64 "] max number of outbound connections: %d", _root_sm->sm_id,
+            s.txn_conf->outbound_conntrack.max);
       session->enable_outbound_connection_tracking(s.outbound_conn_track_state.drop());
     }
-
-    this->attach_server_session(session);
+    _server_txn = session->new_transaction();
+    //_root_sm->attach_server_session(_server_txn);
     if (s.current.request_to == HttpTransact::PARENT_PROXY) {
       session->to_parent_proxy = true;
       HTTP_INCREMENT_DYN_STAT(http_current_parent_proxy_connections_stat);
@@ -539,14 +558,14 @@ ConnectSM::state_http_server_open(int event, void *data)
     } else {
       session->to_parent_proxy = false;
     }
-    if (plugin_tunnel_type == HTTP_NO_PLUGIN_TUNNEL) {
+    if (_root_sm->plugin_tunnel_type == HTTP_NO_PLUGIN_TUNNEL) {
       Debug("http_connect", "[%" PRId64 "] setting handler for TCP handshake", _root_sm->sm_id);
       // Just want to get a write-ready event so we know that the TCP handshake is complete.
-      _server_txn->handler = &ConnectSM::state_http_server_open;
+      _server_txn->handler = (ContinuationHandler)&ConnectSM::state_http_server_open;
       _server_txn->do_io_write(this, 1, _server_txn->get_reader());
     } else { // in the case of an intercept plugin don't to the connect timeout change
       Debug("http_connect", "[%" PRId64 "] not setting handler for TCP handshake", _root_sm->sm_id);
-      //handle_http_server_open();
+      // handle_http_server_open();
       _return_state = ServerTxnCreated;
       _root_sm->handleEvent(event, data);
     }
@@ -559,11 +578,11 @@ ConnectSM::state_http_server_open(int event, void *data)
     Debug("http_connect", "[%" PRId64 "] TCP Handshake complete", _root_sm->sm_id);
     _return_state = ServerTxnCreated;
     _root_sm->handleEvent(event, data);
-    //server_entry->vc_handler = &HttpSM::state_send_server_request_header;
+    // server_entry->vc_handler = &HttpSM::state_send_server_request_header;
 
     // Reset the timeout to the non-connect timeout
-    //server_txn->set_inactivity_timeout(get_server_inactivity_timeout());
-    //handle_http_server_open();
+    // server_txn->set_inactivity_timeout(get_server_inactivity_timeout());
+    // handle_http_server_open();
     return 0;
   case VC_EVENT_INACTIVITY_TIMEOUT:
   case VC_EVENT_ACTIVE_TIMEOUT:
@@ -590,20 +609,19 @@ ConnectSM::state_http_server_open(int event, void *data)
       }
       _return_state = ErrorTransparent;
       _root_sm->handleEvent(event, data);
-      //s.client_info.keep_alive = HTTP_NO_KEEPALIVE; // part of the problem, clear it.
-      //terminate_sm                   = true;
+      // s.client_info.keep_alive = HTTP_NO_KEEPALIVE; // part of the problem, clear it.
+      // terminate_sm                   = true;
     } else if (ENET_THROTTLING == s.current.server->connect_result) {
       HTTP_INCREMENT_DYN_STAT(http_origin_connections_throttled_stat);
-      //send_origin_throttled_response();
+      // send_origin_throttled_response();
       _return_state = ErrorThrottle;
       _root_sm->handleEvent(event, data);
     } else {
       // Go ahead and release the failed server session.  Since it didn't receive a response, the release logic will
       // see that it didn't get a valid response and it will close it rather than returning it to the server session pool
-      release_server_session();
       _return_state = ErrorResponse;
       _root_sm->handleEvent(event, data);
-      //call_transact_and_set_next_state(HttpTransact::HandleResponse);
+      // call_transact_and_set_next_state(HttpTransact::HandleResponse);
     }
     return 0;
 
@@ -616,3 +634,11 @@ ConnectSM::state_http_server_open(int event, void *data)
   return 0;
 }
 
+void
+ConnectSM::init(HttpSM *sm)
+{
+  this->_root_sm    = sm;
+  this->mutex       = sm->mutex;
+  this->_server_txn = nullptr;
+  this->_netvc      = nullptr;
+}

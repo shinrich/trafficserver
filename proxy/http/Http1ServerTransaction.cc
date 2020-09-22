@@ -41,4 +41,3 @@ Http1ServerTransaction::decrement_server_transactions_stat()
 {
   HTTP_DECREMENT_DYN_STAT(http_current_server_transactions_stat);
 }
-
