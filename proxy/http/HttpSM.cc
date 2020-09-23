@@ -217,18 +217,6 @@ HttpVCTable::cleanup_entry(HttpVCTableEntry *e)
 {
   ink_assert(e->vc);
   if (e->in_tunnel == false) {
-    // Update stats
-    switch (e->vc_type) {
-    case HTTP_UA_VC:
-      // proxy.process.http.current_client_transactions is decremented in HttpSM::destroy
-      break;
-    default:
-      // This covers:
-      // HTTP_UNKNOWN, HTTP_SERVER_VC, HTTP_TRANSFORM_VC, HTTP_CACHE_READ_VC,
-      // HTTP_CACHE_WRITE_VC, HTTP_RAW_SERVER_VC
-      break;
-    }
-
     if (e->vc_type == HTTP_SERVER_VC) {
       HTTP_INCREMENT_DYN_STAT(http_origin_shutdown_cleanup_entry);
     }
@@ -1761,31 +1749,32 @@ HttpSM::state_http_server_opened(int event, void *data)
   switch (connect_sm._return_state) {
   case ConnectSM::ServerTxnCreated:
     // Grab the server_txn from the connect_sm
-    attach_server_session(connect_sm.get_server_txn());
+    attach_server_session();
     handle_http_server_open();
     break;
   case ConnectSM::ErrorForbid:
     // Grab the server_txn from the connect_sm
-    attach_server_session(connect_sm.get_server_txn());
+    attach_server_session();
     call_transact_and_set_next_state(HttpTransact::Forbidden);
     break;
   case ConnectSM::Tunnel:
     // Grab the server_txn from the connect_sm
-    attach_server_session(connect_sm.get_server_txn());
+    attach_server_session();
     break;
   case ConnectSM::ErrorResponse:
+    // Maybe should call ConnectSM::cleanup here?
     release_server_session();
     call_transact_and_set_next_state(HttpTransact::HandleResponse);
     break;
   case ConnectSM::ErrorThrottle:
     // Grab the server_txn from the connect_sm
-    attach_server_session(connect_sm.get_server_txn());
+    attach_server_session();
     HTTP_INCREMENT_DYN_STAT(http_origin_connections_throttled_stat);
     send_origin_throttled_response();
     break;
   case ConnectSM::ErrorTransparent:
     // Grab the server_txn from the connect_sm
-    attach_server_session(connect_sm.get_server_txn());
+    attach_server_session();
     t_state.client_info.keep_alive = HTTP_NO_KEEPALIVE; // part of the problem, clear it.
     terminate_sm                   = true;
     break;
@@ -3277,7 +3266,6 @@ HttpSM::tunnel_handler_ua(int event, HttpTunnelConsumer *c)
   } else {
     ink_assert(ua_txn->get_reader() != nullptr);
     ua_txn->release();
-    // ua_txn       = NULL;
   }
 
   return 0;
@@ -5511,7 +5499,11 @@ HttpSM::attach_server_session(ProxyTransaction *new_server_txn)
 {
   hsm_release_assert(this->server_txn == nullptr);
   hsm_release_assert(this->server_entry == nullptr);
-  server_txn            = new_server_txn;
+  if (new_server_txn == nullptr) {
+    server_txn = connect_sm.release_server_txn();
+  } else {
+    server_txn = new_server_txn;
+  }
   server_transact_count = server_txn->get_proxy_ssn()->get_transact_count();
 
   // Set the mutex so that we have something to update
@@ -6392,11 +6384,10 @@ HttpSM::kill_this()
     cache_sm.end_both();
     transform_cache_sm.end_both();
     vc_table.cleanup_all();
+    connect_sm.cleanup();
 
-    // tunnel.deallocate_buffers();
-    // Why don't we just kill the tunnel?  Might still be
-    // active if the state machine is going down hard,
-    // and we should clean it up.
+    // Clean up the tunnel resources. Take
+    // it down if it is still active
     tunnel.kill_tunnel();
 
     // It possible that a plugin added transform hook
@@ -6952,7 +6943,6 @@ HttpSM::set_next_state()
       }
     }
 
-    // do_http_server_open();
     Action *action_handle = connect_sm.acquire_txn(this);
     if (action_handle != ACTION_RESULT_DONE) {
       pending_action = action_handle;
@@ -7123,7 +7113,6 @@ HttpSM::set_next_state()
     HTTP_SM_SET_DEFAULT_HANDLER(&HttpSM::state_raw_http_server_opened);
 
     ink_assert(server_entry == nullptr);
-    // do_http_server_open(true);
     Action *action_handle = connect_sm.acquire_txn(this, true);
     if (action_handle != ACTION_RESULT_DONE) {
       pending_action = action_handle;
@@ -7520,6 +7509,9 @@ HttpSM::get_http_schedule(int event, void * /* data ATS_UNUSED */)
   return 0;
 }
 
+/*
+ * Used from an InkAPI
+ */
 bool
 HttpSM::set_server_session_private(bool private_session)
 {

@@ -53,15 +53,19 @@ public:
   ReturnState _return_state = UndefinedState;
 
   ProxyTransaction *
-  get_server_txn() const
+  release_server_txn()
   {
-    return _server_txn;
+    auto retval = _server_txn;
+    _server_txn = nullptr;
+    return retval;
   }
   NetVConnection *
   get_netvc() const
   {
     return _netvc;
   }
+
+  void cleanup();
 
   Action *acquire_txn(HttpSM *sm, bool raw = false);
 
