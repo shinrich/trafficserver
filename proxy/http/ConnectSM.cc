@@ -123,8 +123,9 @@ ConnectSM::acquire_txn(HttpSM *sm, bool raw)
         ats_ip_nptop(&s.current.server->dst_addr.sa, addrbuf, sizeof(addrbuf)));
 
   if (sm->plugin_tunnel) {
-    PluginVCCore *t           = sm->plugin_tunnel;
-    sm->plugin_tunnel         = nullptr;
+    PluginVCCore *t   = sm->plugin_tunnel;
+    sm->plugin_tunnel = nullptr;
+    SET_HANDLER(&ConnectSM::state_http_server_open);
     Action *pvc_action_handle = t->connect_re(this);
 
     // This connect call is always reentrant
@@ -333,15 +334,9 @@ ConnectSM::acquire_txn(HttpSM *sm, bool raw)
         } else {              // the queue is full
           ct_state.dequeue(); // release the queue slot
           ct_state.blocked(); // note the blockage.
-          // SKH
-          // HTTP_INCREMENT_DYN_STAT(http_origin_connections_throttled_stat);
-          // send_origin_throttled_response();
         }
       } else { // queue size is 0, always block.
         ct_state.blocked();
-        // SKH
-        // HTTP_INCREMENT_DYN_STAT(http_origin_connections_throttled_stat);
-        // send_origin_throttled_response();
       }
 
       ct_state.Warn_Blocked(&s.txn_conf->outbound_conntrack, _root_sm->sm_id, ccount - 1, &s.current.server->dst_addr.sa,
@@ -507,7 +502,6 @@ ConnectSM::state_http_server_open(int event, void *data)
 {
   HttpTransact::State &s = _root_sm->t_state;
   Debug("http_connect", "entered inside state_http_server_open");
-  // STATE_ENTER(&HttpSM::state_http_server_open, event);
   ink_release_assert(event == EVENT_INTERVAL || event == NET_EVENT_OPEN || event == NET_EVENT_OPEN_FAILED ||
                      _pending_action == nullptr);
   if (event != NET_EVENT_OPEN) {
@@ -549,7 +543,6 @@ ConnectSM::state_http_server_open(int event, void *data)
       session->enable_outbound_connection_tracking(s.outbound_conn_track_state.drop());
     }
     _server_txn = session->new_transaction();
-    //_root_sm->attach_server_session(_server_txn);
     if (s.current.request_to == HttpTransact::PARENT_PROXY) {
       session->to_parent_proxy = true;
       HTTP_INCREMENT_DYN_STAT(http_current_parent_proxy_connections_stat);
@@ -565,7 +558,6 @@ ConnectSM::state_http_server_open(int event, void *data)
       _server_txn->do_io_write(this, 1, _server_txn->get_reader());
     } else { // in the case of an intercept plugin don't to the connect timeout change
       Debug("http_connect", "[%" PRId64 "] not setting handler for TCP handshake", _root_sm->sm_id);
-      // handle_http_server_open();
       _return_state = ServerTxnCreated;
       _root_sm->handleEvent(event, data);
     }
@@ -578,11 +570,6 @@ ConnectSM::state_http_server_open(int event, void *data)
     Debug("http_connect", "[%" PRId64 "] TCP Handshake complete", _root_sm->sm_id);
     _return_state = ServerTxnCreated;
     _root_sm->handleEvent(event, data);
-    // server_entry->vc_handler = &HttpSM::state_send_server_request_header;
-
-    // Reset the timeout to the non-connect timeout
-    // server_txn->set_inactivity_timeout(get_server_inactivity_timeout());
-    // handle_http_server_open();
     return 0;
   case VC_EVENT_INACTIVITY_TIMEOUT:
   case VC_EVENT_ACTIVE_TIMEOUT:
@@ -609,11 +596,8 @@ ConnectSM::state_http_server_open(int event, void *data)
       }
       _return_state = ErrorTransparent;
       _root_sm->handleEvent(event, data);
-      // s.client_info.keep_alive = HTTP_NO_KEEPALIVE; // part of the problem, clear it.
-      // terminate_sm                   = true;
     } else if (ENET_THROTTLING == s.current.server->connect_result) {
       HTTP_INCREMENT_DYN_STAT(http_origin_connections_throttled_stat);
-      // send_origin_throttled_response();
       _return_state = ErrorThrottle;
       _root_sm->handleEvent(event, data);
     } else {
@@ -621,7 +605,6 @@ ConnectSM::state_http_server_open(int event, void *data)
       // see that it didn't get a valid response and it will close it rather than returning it to the server session pool
       _return_state = ErrorResponse;
       _root_sm->handleEvent(event, data);
-      // call_transact_and_set_next_state(HttpTransact::HandleResponse);
     }
     return 0;
 
@@ -641,4 +624,13 @@ ConnectSM::init(HttpSM *sm)
   this->mutex       = sm->mutex;
   this->_server_txn = nullptr;
   this->_netvc      = nullptr;
+}
+
+void
+ConnectSM::cleanup()
+{
+  if (_server_txn) {
+    _server_txn->do_io_close();
+    _server_txn = nullptr;
+  }
 }

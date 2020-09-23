@@ -429,8 +429,6 @@ HttpSessionManager::acquire_session(ConnectSM *connectSM, sockaddr const *ip, co
   if (to_return) {
     Debug("http_ss", "[%" PRId64 "] [acquire session] return session from shared pool", to_return->connection_id());
     to_return->state = PoolableSession::SSN_IN_USE;
-    // the attach_server_session will issue the do_io_read under the sm lock
-    // sm->attach_server_session(to_return);
     connectSM->set_server_txn(to_return->new_transaction());
     retval = HSM_DONE;
   }

@@ -223,7 +223,7 @@ public:
   // Called by on return from the connectSM to set
   //  the session timeouts and initiate a read while
   //  holding the lock for the server session
-  void attach_server_session(ProxyTransaction *new_server_txn);
+  void attach_server_session(ProxyTransaction *new_server_txn = nullptr);
 
   // Used to read attributes of
   // the current active server session
