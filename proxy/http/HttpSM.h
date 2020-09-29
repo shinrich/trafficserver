@@ -410,7 +410,7 @@ protected:
   int state_read_client_request_header(int event, void *data);
   int state_watch_for_client_abort(int event, void *data);
   int state_read_push_response_header(int event, void *data);
-  int state_hostdb_lookup(int event, void *data);
+  int state_hostdb_lookedup(int event, void *data);
   int state_hostdb_reverse_lookup(int event, void *data);
   int state_mark_os_down(int event, void *data);
   int state_handle_stat_page(int event, void *data);
@@ -453,7 +453,7 @@ protected:
   int tunnel_handler_transform_read(int event, HttpTunnelProducer *p);
   int tunnel_handler_plugin_agent(int event, HttpTunnelConsumer *c);
 
-  void do_hostdb_lookup();
+  // void do_hostdb_lookup();
   void do_hostdb_reverse_lookup();
   void do_cache_lookup_and_read();
   // void do_http_server_open(bool raw = false);
