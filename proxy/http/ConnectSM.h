@@ -30,6 +30,7 @@ class HttpSM; // So we can reach through to access the HttpTranact::state
 class ConnectSM;
 class ProxyTransaction;
 class NetVConnection;
+class HostDBInfo;
 typedef int (ConnectSM::*ConnectSMHandler)(int event, void *data);
 
 struct ConnectAction : public Action {
@@ -48,7 +49,16 @@ class ConnectSM : public Continuation
 public:
   ConnectSM() { _captive_action.init(this); }
 
-  enum ReturnState { UndefinedState, ServerTxnCreated, Tunnel, ErrorForbid, ErrorResponse, ErrorThrottle, ErrorTransparent };
+  enum ReturnState {
+    UndefinedState,
+    DnsHostdbSuccess,
+    ServerTxnCreated,
+    Tunnel,
+    ErrorForbid,
+    ErrorResponse,
+    ErrorThrottle,
+    ErrorTransparent
+  };
 
   ReturnState _return_state = UndefinedState;
 
@@ -68,6 +78,10 @@ public:
   void cleanup();
 
   Action *acquire_txn(HttpSM *sm, bool raw = false);
+
+  Action *acquire_dns(HttpSM *sm);
+  Action *do_dns_lookup(HttpSM *sm);
+  Action *do_hostdb_lookup(HttpSM *sm = nullptr);
 
   void
   cancel_pending_action()
@@ -103,7 +117,9 @@ private:
   // Event handler methods
   int state_http_server_open(int event, void *data);
   int state_http_server_raw_open(int event, void *data);
-  // int state_hostdb_lookup(int event, void *data);
+  int state_hostdb_lookup(int event, void *data);
+  void process_hostdb_info(HostDBInfo *r);
+  void process_srv_info(HostDBInfo *r);
 
   /* Because we don't want to take a session from a shared pool if we know that it will be private,
    * but we cannot set it to private until we have an attached server session.

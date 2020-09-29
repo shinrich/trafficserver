@@ -1758,8 +1758,7 @@ HttpSM::state_http_server_opened(int event, void *data)
     call_transact_and_set_next_state(HttpTransact::Forbidden);
     break;
   case ConnectSM::Tunnel:
-    // Grab the server_txn from the connect_sm
-    attach_server_session();
+    // Should be all ready
     break;
   case ConnectSM::ErrorResponse:
     // Maybe should call ConnectSM::cleanup here?
@@ -2037,6 +2036,18 @@ HttpSM::state_send_server_request_header(int event, void *data)
   return 0;
 }
 
+int
+HttpSM::state_hostdb_lookedup(int event, void *data)
+{
+  ink_release_assert(connect_sm._return_state == ConnectSM::DnsHostdbSuccess);
+  if (data == pending_action) {
+    pending_action = nullptr;
+  }
+  call_transact_and_set_next_state(nullptr);
+  return 0;
+}
+
+#ifdef OLD
 void
 HttpSM::process_srv_info(HostDBInfo *r)
 {
@@ -2219,6 +2230,8 @@ HttpSM::state_hostdb_lookup(int event, void *data)
   return 0;
 }
 
+#endif
+
 int
 HttpSM::state_hostdb_reverse_lookup(int event, void *data)
 {
@@ -2278,9 +2291,10 @@ HttpSM::state_mark_os_down(int event, void *data)
       mark_host_failure(mark_down, t_state.request_sent_time);
     }
   }
+  // SKH - Don't think this is right
   // We either found our entry or we did not.  Either way find
   //  the entry we should use now
-  return state_hostdb_lookup(event, data);
+  return state_hostdb_lookedup(event, data);
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -4001,6 +4015,52 @@ HttpSM::do_remap_request(bool run_inline)
   return;
 }
 
+#ifdef OLD
+void
+HttpSM::do_hostdb_lookup()
+{
+  HTTP_SM_SET_DEFAULT_HANDLER(&HttpSM::state_hostdb_lookedup);
+  Action *action_return = connect_sm.do_dns_lookup(this);
+  if (action_return == ACTION_RESULT_DONE) {
+    // call_transact_and_set_next_state(nullptr);
+    this->state_hostdb_lookedup(EVENT_DONE, nullptr);
+  } else {
+    // SKH - not clear this is the correct spot for this logic
+    // Seems like the server_entry clean up should be closer to the
+    // actual connect logic
+    //
+    // We need to close the previous attempt
+    // Because it could be a server side retry by DNS rr
+    if (server_entry) {
+      ink_assert(server_entry->vc_type == HTTP_SERVER_VC);
+      vc_table.cleanup_entry(server_entry);
+      server_entry = nullptr;
+      server_txn   = nullptr;
+    } else {
+      // Now that we have gotten the user agent request, we can cancel
+      // the inactivity timeout associated with it.  Note, however, that
+      // we must not cancel the inactivity timeout if the message
+      // contains a body (as indicated by the non-zero request_content_length
+      // field).  This indicates that a POST operation is taking place and
+      // that the client is still sending data to the origin server.  The
+      // origin server cannot reply until the entire request is received.  In
+      // light of this dependency, TS must ensure that the client finishes
+      // sending its request and for this reason, the inactivity timeout
+      // cannot be cancelled.
+      if (ua_txn && !t_state.hdr_info.request_content_length) {
+        ua_txn->cancel_inactivity_timeout();
+      } else if (!ua_txn) {
+        terminate_sm = true;
+        break; // Give up if there is no session
+      }
+    }
+    ink_release_assert(pending_action == nullptr);
+    pending_action = action_return;
+  }
+}
+#endif
+
+#ifdef OLD
 void
 HttpSM::do_hostdb_lookup()
 {
@@ -4090,6 +4150,7 @@ HttpSM::do_hostdb_lookup()
   ink_assert(!"not reached");
   return;
 }
+#endif
 
 void
 HttpSM::do_hostdb_reverse_lookup()
@@ -6804,101 +6865,15 @@ HttpSM::set_next_state()
   }
 
   case HttpTransact::SM_ACTION_DNS_LOOKUP: {
-    sockaddr const *addr;
-
-    if (t_state.api_server_addr_set) {
-      /* If the API has set the server address before the OS DNS lookup
-       * then we can skip the lookup
-       */
-      ip_text_buffer ipb;
-      SMDebug("dns", "[HttpTransact::HandleRequest] Skipping DNS lookup for API supplied target %s.",
-              ats_ip_ntop(&t_state.server_info.dst_addr, ipb, sizeof(ipb)));
-      // this seems wasteful as we will just copy it right back
-      ats_ip_copy(t_state.host_db_info.ip(), &t_state.server_info.dst_addr);
-      t_state.dns_info.lookup_success = true;
-      call_transact_and_set_next_state(nullptr);
-      break;
-    } else if (0 == ats_ip_pton(t_state.dns_info.lookup_name, t_state.host_db_info.ip()) &&
-               ats_is_ip_loopback(t_state.host_db_info.ip())) {
-      // If it's 127.0.0.1 or ::1 don't bother with hostdb
-      SMDebug("dns", "[HttpTransact::HandleRequest] Skipping DNS lookup for %s because it's loopback",
-              t_state.dns_info.lookup_name);
-      t_state.dns_info.lookup_success = true;
-      call_transact_and_set_next_state(nullptr);
-      break;
-    } else if (t_state.http_config_param->use_client_target_addr == 2 && !t_state.url_remap_success &&
-               t_state.parent_result.result != PARENT_SPECIFIED && t_state.client_info.is_transparent &&
-               t_state.dns_info.os_addr_style == HttpTransact::DNSLookupInfo::OS_Addr::OS_ADDR_TRY_DEFAULT &&
-               ats_is_ip(addr = ua_txn->get_netvc()->get_local_addr())) {
-      /* If the connection is client side transparent and the URL
-       * was not remapped/directed to parent proxy, we can use the
-       * client destination IP address instead of doing a DNS
-       * lookup. This is controlled by the 'use_client_target_addr'
-       * configuration parameter.
-       */
-      if (is_debug_tag_set("dns")) {
-        ip_text_buffer ipb;
-        SMDebug("dns", "[HttpTransact::HandleRequest] Skipping DNS lookup for client supplied target %s.",
-                ats_ip_ntop(addr, ipb, sizeof(ipb)));
-      }
-      ats_ip_copy(t_state.host_db_info.ip(), addr);
-      if (t_state.hdr_info.client_request.version_get() == HTTPVersion(0, 9)) {
-        t_state.host_db_info.app.http_data.http_version = HostDBApplicationInfo::HTTP_VERSION_09;
-      } else if (t_state.hdr_info.client_request.version_get() == HTTPVersion(1, 0)) {
-        t_state.host_db_info.app.http_data.http_version = HostDBApplicationInfo::HTTP_VERSION_10;
-      } else {
-        t_state.host_db_info.app.http_data.http_version = HostDBApplicationInfo::HTTP_VERSION_11;
-      }
-
-      t_state.dns_info.lookup_success = true;
-      // cache this result so we don't have to unreliably duplicate the
-      // logic later if the connect fails.
-      t_state.dns_info.os_addr_style = HttpTransact::DNSLookupInfo::OS_Addr::OS_ADDR_TRY_CLIENT;
-      call_transact_and_set_next_state(nullptr);
-      break;
-    } else if (t_state.parent_result.result == PARENT_UNDEFINED && t_state.dns_info.lookup_success) {
-      // Already set, and we don't have a parent proxy to lookup
-      ink_assert(ats_is_ip(t_state.host_db_info.ip()));
-      SMDebug("dns", "[HttpTransact::HandleRequest] Skipping DNS lookup, provided by plugin");
-      call_transact_and_set_next_state(nullptr);
-      break;
-    } else if (t_state.dns_info.looking_up == HttpTransact::ORIGIN_SERVER && t_state.http_config_param->no_dns_forward_to_parent &&
-               t_state.parent_result.result != PARENT_UNDEFINED) {
-      t_state.dns_info.lookup_success = true;
-      call_transact_and_set_next_state(nullptr);
-      break;
-    }
-
-    HTTP_SM_SET_DEFAULT_HANDLER(&HttpSM::state_hostdb_lookup);
-
-    // We need to close the previous attempt
-    // Because it could be a server side retry by DNS rr
-    if (server_entry) {
-      ink_assert(server_entry->vc_type == HTTP_SERVER_VC);
-      vc_table.cleanup_entry(server_entry);
-      server_entry = nullptr;
-      server_txn   = nullptr;
+    HTTP_SM_SET_DEFAULT_HANDLER(&HttpSM::state_hostdb_lookedup);
+    Action *action_return = connect_sm.do_dns_lookup(this);
+    if (action_return == ACTION_RESULT_DONE) {
+      // call_transact_and_set_next_state(nullptr);
+      this->state_hostdb_lookedup(EVENT_DONE, nullptr);
     } else {
-      // Now that we have gotten the user agent request, we can cancel
-      // the inactivity timeout associated with it.  Note, however, that
-      // we must not cancel the inactivity timeout if the message
-      // contains a body (as indicated by the non-zero request_content_length
-      // field).  This indicates that a POST operation is taking place and
-      // that the client is still sending data to the origin server.  The
-      // origin server cannot reply until the entire request is received.  In
-      // light of this dependency, TS must ensure that the client finishes
-      // sending its request and for this reason, the inactivity timeout
-      // cannot be cancelled.
-      if (ua_txn && !t_state.hdr_info.request_content_length) {
-        ua_txn->cancel_inactivity_timeout();
-      } else if (!ua_txn) {
-        terminate_sm = true;
-        return; // Give up if there is no session
-      }
+      ink_release_assert(pending_action == nullptr);
+      pending_action = action_return;
     }
-
-    ink_assert(t_state.dns_info.looking_up != HttpTransact::UNDEFINED_LOOKUP);
-    do_hostdb_lookup();
     break;
   }
 
@@ -7101,7 +7076,15 @@ HttpSM::set_next_state()
     // above isn't triggering.
     HttpSM::do_hostdb_update_if_necessary();
 
-    do_hostdb_lookup();
+    // do_hostdb_lookup();
+    HTTP_SM_SET_DEFAULT_HANDLER(&HttpSM::state_hostdb_lookedup);
+    Action *action_handle = connect_sm.do_hostdb_lookup(this);
+    if (action_handle != ACTION_RESULT_DONE) {
+      ink_assert(pending_action == nullptr);
+      pending_action = action_handle;
+    } else {
+      this->state_hostdb_lookedup(EVENT_DONE, nullptr);
+    }
     break;
   }
 
