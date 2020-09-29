@@ -98,6 +98,177 @@ ConnectSM::is_private() const
 }
 
 Action *
+ConnectSM::do_dns_lookup(HttpSM *sm)
+{
+  this->init(sm);
+  HttpTransact::State &s = sm->t_state;
+  sockaddr const *addr;
+
+  if (s.api_server_addr_set) {
+    /* If the API has set the server address before the OS DNS lookup
+     * then we can skip the lookup
+     */
+    ip_text_buffer ipb;
+    Debug("dns", "[HttpTransact::HandleRequest] Skipping DNS lookup for API supplied target %s.",
+          ats_ip_ntop(&s.server_info.dst_addr, ipb, sizeof(ipb)));
+    // this seems wasteful as we will just copy it right back
+    ats_ip_copy(s.host_db_info.ip(), s.server_info.dst_addr);
+    s.dns_info.lookup_success = true;
+    this->_return_state       = ConnectSM::DnsHostdbSuccess;
+    return ACTION_RESULT_DONE;
+  } else if (0 == ats_ip_pton(s.dns_info.lookup_name, s.host_db_info.ip()) && ats_is_ip_loopback(s.host_db_info.ip())) {
+    // If it's 127.0.0.1 or ::1 don't bother with hostdb
+    Debug("dns", "[HttpTransact::HandleRequest] Skipping DNS lookup for %s because it's loopback", s.dns_info.lookup_name);
+    s.dns_info.lookup_success = true;
+    this->_return_state       = ConnectSM::DnsHostdbSuccess;
+    return ACTION_RESULT_DONE;
+  } else if (s.http_config_param->use_client_target_addr == 2 && !s.url_remap_success &&
+             s.parent_result.result != PARENT_SPECIFIED && s.client_info.is_transparent &&
+             s.dns_info.os_addr_style == HttpTransact::DNSLookupInfo::OS_Addr::OS_ADDR_TRY_DEFAULT &&
+             ats_is_ip(addr = _root_sm->ua_txn->get_netvc()->get_local_addr())) {
+    /* If the connection is client side transparent and the URL
+     * was not remapped/directed to parent proxy, we can use the
+     * client destination IP address instead of doing a DNS
+     * lookup. This is controlled by the 'use_client_target_addr'
+     * configuration parameter.
+     */
+    if (is_debug_tag_set("dns")) {
+      ip_text_buffer ipb;
+      Debug("dns", "[HttpTransact::HandleRequest] Skipping DNS lookup for client supplied target %s.",
+            ats_ip_ntop(addr, ipb, sizeof(ipb)));
+    }
+    ats_ip_copy(s.host_db_info.ip(), addr);
+    if (s.hdr_info.client_request.version_get() == HTTPVersion(0, 9)) {
+      s.host_db_info.app.http_data.http_version = HostDBApplicationInfo::HTTP_VERSION_09;
+    } else if (s.hdr_info.client_request.version_get() == HTTPVersion(1, 0)) {
+      s.host_db_info.app.http_data.http_version = HostDBApplicationInfo::HTTP_VERSION_10;
+    } else {
+      s.host_db_info.app.http_data.http_version = HostDBApplicationInfo::HTTP_VERSION_11;
+    }
+
+    s.dns_info.lookup_success = true;
+    // cache this result so we don't have to unreliably duplicate the
+    // logic later if the connect fails.
+    s.dns_info.os_addr_style = HttpTransact::DNSLookupInfo::OS_Addr::OS_ADDR_TRY_CLIENT;
+    this->_return_state      = ConnectSM::DnsHostdbSuccess;
+    return ACTION_RESULT_DONE;
+  } else if (s.parent_result.result == PARENT_UNDEFINED && s.dns_info.lookup_success) {
+    // Already set, and we don't have a parent proxy to lookup
+    ink_assert(ats_is_ip(s.host_db_info.ip()));
+    Debug("dns", "[HttpTransact::HandleRequest] Skipping DNS lookup, provided by plugin");
+    this->_return_state = ConnectSM::DnsHostdbSuccess;
+    return ACTION_RESULT_DONE;
+  } else if (s.dns_info.looking_up == HttpTransact::ORIGIN_SERVER && s.http_config_param->no_dns_forward_to_parent &&
+             s.parent_result.result != PARENT_UNDEFINED) {
+    s.dns_info.lookup_success = true;
+    this->_return_state       = ConnectSM::DnsHostdbSuccess;
+    return ACTION_RESULT_DONE;
+  }
+
+  SET_HANDLER(&ConnectSM::state_hostdb_lookup);
+
+  ink_assert(s.dns_info.looking_up != HttpTransact::UNDEFINED_LOOKUP);
+  return do_hostdb_lookup();
+}
+
+Action *
+ConnectSM::do_hostdb_lookup(HttpSM *sm)
+{
+  if (sm) {
+    this->init(sm);
+  }
+  HttpTransact::State &s = _root_sm->t_state;
+  ink_assert(s.dns_info.lookup_name != nullptr);
+  ink_assert(_pending_action == nullptr);
+
+  _root_sm->milestones[TS_MILESTONE_DNS_LOOKUP_BEGIN] = Thread::get_hrtime();
+
+  if (s.txn_conf->srv_enabled) {
+    char d[MAXDNAME];
+
+    // Look at the next_hop_scheme to determine what scheme to put in the SRV lookup
+    unsigned int scheme_len = sprintf(d, "_%s._tcp.", hdrtoken_index_to_wks(s.next_hop_scheme));
+    ink_strlcpy(d + scheme_len, s.server_info.name, sizeof(d) - scheme_len);
+
+    Debug("dns_srv", "Beginning lookup of SRV records for origin %s", d);
+
+    HostDBProcessor::Options opt;
+    if (s.api_txn_dns_timeout_value != -1) {
+      opt.timeout = s.api_txn_dns_timeout_value;
+    }
+    Action *srv_lookup_action_handle =
+      hostDBProcessor.getSRVbyname_imm(this, (cb_process_result_pfn)&ConnectSM::process_srv_info, d, 0, opt);
+
+    if (srv_lookup_action_handle != ACTION_RESULT_DONE) {
+      ink_assert(!_pending_action);
+      _pending_action = srv_lookup_action_handle;
+      return &_captive_action;
+    } else {
+      char *host_name = s.dns_info.srv_lookup_success ? s.dns_info.srv_hostname : s.dns_info.lookup_name;
+      opt.port        = s.dns_info.srv_lookup_success ? s.dns_info.srv_port :
+                                                 s.server_info.dst_addr.isValid() ? s.server_info.dst_addr.host_order_port() :
+                                                                                    s.hdr_info.client_request.port_get();
+      opt.flags = (s.cache_info.directives.does_client_permit_dns_storing) ? HostDBProcessor::HOSTDB_DO_NOT_FORCE_DNS :
+                                                                             HostDBProcessor::HOSTDB_FORCE_DNS_RELOAD;
+      opt.timeout = (s.api_txn_dns_timeout_value != -1) ? s.api_txn_dns_timeout_value : 0;
+      opt.host_res_style =
+        ats_host_res_from(_root_sm->ua_txn->get_netvc()->get_local_addr()->sa_family, s.txn_conf->host_res_data.order);
+
+      Action *dns_lookup_action_handle =
+        hostDBProcessor.getbyname_imm(this, (cb_process_result_pfn)&ConnectSM::process_hostdb_info, host_name, 0, opt);
+      if (dns_lookup_action_handle != ACTION_RESULT_DONE) {
+        ink_assert(!_pending_action);
+        _pending_action = dns_lookup_action_handle;
+        return &_captive_action;
+      } else {
+        // call_transact_and_set_next_state(nullptr);
+        this->_return_state = ConnectSM::DnsHostdbSuccess;
+        return ACTION_RESULT_DONE;
+      }
+    }
+  } else { /* we aren't using SRV stuff... */
+    Debug("http_seq", "[HttpSM::do_hostdb_lookup] Doing DNS Lookup");
+
+    // If there is not a current server, we must be looking up the origin
+    //  server at the beginning of the transaction
+    int server_port = 0;
+    if (s.current.server && s.current.server->dst_addr.isValid()) {
+      server_port = s.current.server->dst_addr.host_order_port();
+    } else if (s.server_info.dst_addr.isValid()) {
+      server_port = s.server_info.dst_addr.host_order_port();
+    } else {
+      server_port = s.hdr_info.client_request.port_get();
+    }
+
+    if (s.api_txn_dns_timeout_value != -1) {
+      Debug("http_timeout", "beginning DNS lookup. allowing %d mseconds for DNS lookup", s.api_txn_dns_timeout_value);
+    }
+
+    HostDBProcessor::Options opt;
+    opt.port  = server_port;
+    opt.flags = (s.cache_info.directives.does_client_permit_dns_storing) ? HostDBProcessor::HOSTDB_DO_NOT_FORCE_DNS :
+                                                                           HostDBProcessor::HOSTDB_FORCE_DNS_RELOAD;
+    opt.timeout = (s.api_txn_dns_timeout_value != -1) ? s.api_txn_dns_timeout_value : 0;
+
+    opt.host_res_style =
+      ats_host_res_from(_root_sm->ua_txn->get_netvc()->get_local_addr()->sa_family, s.txn_conf->host_res_data.order);
+
+    Action *dns_lookup_action_handle =
+      hostDBProcessor.getbyname_imm(this, (cb_process_result_pfn)&ConnectSM::process_hostdb_info, s.dns_info.lookup_name, 0, opt);
+
+    if (dns_lookup_action_handle != ACTION_RESULT_DONE) {
+      ink_assert(!_pending_action);
+      _pending_action = dns_lookup_action_handle;
+      return &_captive_action;
+    } else {
+      // call_transact_and_set_next_state(nullptr);
+      this->_return_state = ConnectSM::DnsHostdbSuccess;
+      return ACTION_RESULT_DONE;
+    }
+  }
+}
+
+Action *
 ConnectSM::acquire_txn(HttpSM *sm, bool raw)
 {
   this->init(sm);
@@ -617,6 +788,58 @@ ConnectSM::state_http_server_open(int event, void *data)
   return 0;
 }
 
+int
+ConnectSM::state_hostdb_lookup(int event, void *data)
+{
+  HttpTransact::State &s = _root_sm->t_state;
+  //    ink_assert (m_origin_server_vc == 0);
+  // REQ_FLAVOR_SCHEDULED_UPDATE can be transformed into
+  // REQ_FLAVOR_REVPROXY
+  ink_assert(s.req_flavor == HttpTransact::REQ_FLAVOR_SCHEDULED_UPDATE || s.req_flavor == HttpTransact::REQ_FLAVOR_REVPROXY);
+
+  switch (event) {
+  case EVENT_HOST_DB_LOOKUP:
+    _pending_action = nullptr;
+    process_hostdb_info(static_cast<HostDBInfo *>(data));
+    // Call handler on SM
+    // call_transact_and_set_next_state(nullptr);
+    _return_state = DnsHostdbSuccess;
+    _root_sm->handleEvent(event, &_captive_action);
+    break;
+  case EVENT_SRV_LOOKUP: {
+    _pending_action = nullptr;
+    process_srv_info(static_cast<HostDBInfo *>(data));
+
+    char *host_name = s.dns_info.srv_lookup_success ? s.dns_info.srv_hostname : s.dns_info.lookup_name;
+    HostDBProcessor::Options opt;
+    opt.port  = s.dns_info.srv_lookup_success ? s.dns_info.srv_port : s.server_info.dst_addr.host_order_port();
+    opt.flags = (s.cache_info.directives.does_client_permit_dns_storing) ? HostDBProcessor::HOSTDB_DO_NOT_FORCE_DNS :
+                                                                           HostDBProcessor::HOSTDB_FORCE_DNS_RELOAD;
+    opt.timeout = (s.api_txn_dns_timeout_value != -1) ? s.api_txn_dns_timeout_value : 0;
+    opt.host_res_style =
+      ats_host_res_from(_root_sm->ua_txn->get_netvc()->get_local_addr()->sa_family, s.txn_conf->host_res_data.order);
+
+    Action *dns_lookup_action_handle =
+      hostDBProcessor.getbyname_imm(this, (cb_process_result_pfn)&ConnectSM::process_hostdb_info, host_name, 0, opt);
+    if (dns_lookup_action_handle != ACTION_RESULT_DONE) {
+      ink_assert(!_pending_action);
+      _pending_action = dns_lookup_action_handle;
+    } else {
+      _return_state = DnsHostdbSuccess;
+      _root_sm->handleEvent(event, &_captive_action);
+      // call_transact_and_set_next_state(nullptr);
+    }
+  } break;
+  case EVENT_HOST_DB_IP_REMOVED:
+    ink_assert(!"Unexpected event from HostDB");
+    break;
+  default:
+    ink_assert(!"Unexpected event");
+  }
+
+  return 0;
+}
+
 void
 ConnectSM::init(HttpSM *sm)
 {
@@ -632,5 +855,136 @@ ConnectSM::cleanup()
   if (_server_txn) {
     _server_txn->do_io_close();
     _server_txn = nullptr;
+  }
+}
+
+void
+ConnectSM::process_srv_info(HostDBInfo *r)
+{
+  HttpTransact::State &s = _root_sm->t_state;
+  Debug("dns_srv", "beginning process_srv_info");
+  s.hostdb_entry = Ptr<HostDBInfo>(r);
+
+  /* we didn't get any SRV records, continue w normal lookup */
+  if (!r || !r->is_srv || !r->round_robin) {
+    s.dns_info.srv_hostname[0]    = '\0';
+    s.dns_info.srv_lookup_success = false;
+    s.my_txn_conf().srv_enabled   = false;
+    Debug("dns_srv", "No SRV records were available, continuing to lookup %s", s.dns_info.lookup_name);
+  } else {
+    HostDBRoundRobin *rr = r->rr();
+    HostDBInfo *srv      = nullptr;
+    if (rr) {
+      srv = rr->select_best_srv(s.dns_info.srv_hostname, &mutex->thread_holding->generator, ink_local_time(),
+                                static_cast<int>(s.txn_conf->down_server_timeout));
+    }
+    if (!srv) {
+      s.dns_info.srv_lookup_success = false;
+      s.dns_info.srv_hostname[0]    = '\0';
+      s.my_txn_conf().srv_enabled   = false;
+      Debug("dns_srv", "SRV records empty for %s", s.dns_info.lookup_name);
+    } else {
+      s.dns_info.srv_lookup_success = true;
+      s.dns_info.srv_port           = srv->data.srv.srv_port;
+      s.dns_info.srv_app            = srv->app;
+      ink_assert(srv->data.srv.key == makeHostHash(s.dns_info.srv_hostname));
+      Debug("dns_srv", "select SRV records %s", s.dns_info.srv_hostname);
+    }
+  }
+  return;
+}
+
+void
+ConnectSM::process_hostdb_info(HostDBInfo *r)
+{
+  HttpTransact::State &s = _root_sm->t_state;
+  // Increment the refcount to our item, since we are pointing at it
+  s.hostdb_entry = Ptr<HostDBInfo>(r);
+
+  sockaddr const *client_addr = nullptr;
+  bool use_client_addr        = s.http_config_param->use_client_target_addr == 1 && s.client_info.is_transparent &&
+                         s.dns_info.os_addr_style == HttpTransact::DNSLookupInfo::OS_Addr::OS_ADDR_TRY_DEFAULT;
+  if (use_client_addr) {
+    NetVConnection *vc = _root_sm->ua_txn ? _root_sm->ua_txn->get_netvc() : nullptr;
+    if (vc) {
+      client_addr = vc->get_local_addr();
+      // Regardless of whether the client address matches the DNS record or not,
+      // we want to use that address.  Therefore, we copy over the client address
+      // info and skip the assignment from the DNS cache
+      ats_ip_copy(s.host_db_info.ip(), client_addr);
+      s.dns_info.os_addr_style  = HttpTransact::DNSLookupInfo::OS_Addr::OS_ADDR_TRY_CLIENT;
+      s.dns_info.lookup_success = true;
+      // Leave ret unassigned, so we don't overwrite the host_db_info
+    } else {
+      use_client_addr = false;
+    }
+  }
+
+  if (r && !r->is_failed()) {
+    ink_time_t now              = ink_local_time();
+    HostDBInfo *ret             = nullptr;
+    s.dns_info.lookup_success   = true;
+    s.dns_info.lookup_validated = true;
+
+    HostDBRoundRobin *rr = r->round_robin ? r->rr() : nullptr;
+    if (rr) {
+      // if use_client_target_addr is set, make sure the client addr is in the results pool
+      if (use_client_addr && rr->find_ip(client_addr) == nullptr) {
+        Debug("http", "use_client_target_addr == 1. Client specified address is not in the pool, not validated.");
+        s.dns_info.lookup_validated = false;
+      } else {
+        // Since the time elapsed between current time and client_request_time
+        // may be very large, we cannot use client_request_time to approximate
+        // current time when calling select_best_http().
+        ret = rr->select_best_http(&s.client_info.src_addr.sa, now, static_cast<int>(s.txn_conf->down_server_timeout));
+        // set the srv target`s last_failure
+        if (s.dns_info.srv_lookup_success) {
+          uint32_t last_failure = 0xFFFFFFFF;
+          for (int i = 0; i < rr->rrcount && last_failure != 0; ++i) {
+            if (last_failure > rr->info(i).app.http_data.last_failure) {
+              last_failure = rr->info(i).app.http_data.last_failure;
+            }
+          }
+
+          if (last_failure != 0 && static_cast<uint32_t>(now - s.txn_conf->down_server_timeout) < last_failure) {
+            HostDBApplicationInfo app;
+            app.allotment.application1 = 0;
+            app.allotment.application2 = 0;
+            app.http_data.last_failure = last_failure;
+            hostDBProcessor.setby_srv(s.dns_info.lookup_name, 0, s.dns_info.srv_hostname, &app);
+          }
+        }
+      }
+    } else {
+      if (use_client_addr && !ats_ip_addr_eq(client_addr, &r->data.ip.sa)) {
+        Debug("http", "use_client_target_addr == 1. Comparing single addresses failed, not validated.");
+        s.dns_info.lookup_validated = false;
+      } else {
+        ret = r;
+      }
+    }
+    if (ret) {
+      s.host_db_info = *ret;
+      ink_release_assert(!s.host_db_info.reverse_dns);
+      ink_release_assert(ats_is_ip(s.host_db_info.ip()));
+    }
+  } else {
+    Debug("http", "[%" PRId64 "] DNS lookup failed for '%s'", _root_sm->sm_id, s.dns_info.lookup_name);
+
+    if (!use_client_addr) {
+      s.dns_info.lookup_success = false;
+    }
+    s.host_db_info.app.allotment.application1 = 0;
+    s.host_db_info.app.allotment.application2 = 0;
+    ink_assert(!s.host_db_info.round_robin);
+  }
+
+  _root_sm->milestones[TS_MILESTONE_DNS_LOOKUP_END] = Thread::get_hrtime();
+
+  if (is_debug_tag_set("http_timeout")) {
+    if (s.api_txn_dns_timeout_value != -1) {
+      int foo = static_cast<int>(_root_sm->milestones.difference_msec(TS_MILESTONE_DNS_LOOKUP_BEGIN, TS_MILESTONE_DNS_LOOKUP_END));
+      Debug("http_timeout", "DNS took: %d msec", foo);
+    }
   }
 }
