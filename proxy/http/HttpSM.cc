@@ -7101,8 +7101,6 @@ HttpSM::set_next_state()
     Action *action_handle = connect_sm.acquire_txn(this, true);
     if (action_handle != ACTION_RESULT_DONE) {
       pending_action = action_handle;
-    } else {
-      ink_release_assert(!"Should always be a delay in the raw open case");
     }
     break;
   }
