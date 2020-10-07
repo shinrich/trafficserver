@@ -352,6 +352,17 @@ public:
   // based on sni and host name header values
   void check_sni_host();
 
+  void
+  reset_server()
+  {
+    if (server_entry) {
+      ink_assert(server_entry->vc_type == HTTP_SERVER_VC);
+      vc_table.cleanup_entry(server_entry);
+      server_entry = nullptr;
+      server_txn   = nullptr;
+    }
+  }
+
 protected:
   int reentrancy_count = 0;
 
