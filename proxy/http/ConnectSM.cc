@@ -742,8 +742,6 @@ ConnectSM::state_http_server_open(int event, void *data)
 {
   HttpTransact::State &s = _root_sm->t_state;
   Debug("http_connect", "entered inside state_http_server_open");
-  ink_release_assert(event == EVENT_INTERVAL || event == NET_EVENT_OPEN || event == NET_EVENT_OPEN_FAILED ||
-                     event == VC_EVENT_WRITE_READY || _pending_action == nullptr);
   ink_release_assert(_sm_state == WaitConnect || _sm_state == RetryConnect);
   if (event != NET_EVENT_OPEN) {
     _pending_action = nullptr;
@@ -852,7 +850,6 @@ ConnectSM::state_http_server_open(int event, void *data)
         _root_sm->handleEvent(event, data);
       }
     }
-    ink_release_assert(_pending_action == nullptr);
     return 0;
 
   default:
@@ -918,6 +915,8 @@ ConnectSM::do_retry_request()
 
       // Set up the retry
       if (HttpTransact::is_request_retryable(&s) && s.current.attempts < max_connect_retries) {
+        _root_sm->reset_server();
+        _server_txn = nullptr;
         // If this is a round robin DNS entry & we're tried configured
         //    number of times, we should try another node
         if (HttpTransact::DNSLookupInfo::OS_Addr::OS_ADDR_TRY_CLIENT == s.dns_info.os_addr_style) {
@@ -939,7 +938,6 @@ ConnectSM::do_retry_request()
             _pending_action = action_handle;
           } else {
           }
-          // return CallOSDNSLookup(s);
         } else if ((s.dns_info.srv_lookup_success || s.host_db_info.is_rr_elt()) && (s.txn_conf->connect_attempts_rr_retries > 0) &&
                    (s.current.attempts % s.txn_conf->connect_attempts_rr_retries == 0)) {
           // SKH - Does this case retry?
