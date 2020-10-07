@@ -57,7 +57,8 @@ public:
     ErrorForbid,
     ErrorResponse,
     ErrorThrottle,
-    ErrorTransparent
+    ErrorTransparent,
+    ErrorDNS
   };
 
   ReturnState _return_state = UndefinedState;
@@ -77,10 +78,11 @@ public:
 
   void cleanup();
 
-  Action *acquire_txn(HttpSM *sm, bool raw = false);
+  Action *acquire_txn(HttpSM *sm = nullptr, bool raw = false);
+  Action *retry_connection(HttpSM *sm = nullptr);
 
   Action *acquire_dns(HttpSM *sm);
-  Action *do_dns_lookup(HttpSM *sm);
+  Action *do_dns_lookup(HttpSM *sm = nullptr);
   Action *do_hostdb_lookup(HttpSM *sm = nullptr);
 
   void
@@ -104,6 +106,8 @@ public:
   }
   void init(HttpSM *sm);
 
+  bool do_retry_request();
+
 private:
   int _max_connect_retries      = 0;
   HttpSM *_root_sm              = nullptr;
@@ -112,14 +116,27 @@ private:
   NetVConnection *_netvc        = nullptr;
   ConnectAction _captive_action;
 
+  enum ConnectSMState {
+    UndefinedSMState,
+    WaitConnect,
+    RetryConnect,
+    WaitAddress,
+    RetryAddress,
+  } _sm_state = UndefinedSMState;
+
   bool is_private() const;
 
   // Event handler methods
   int state_http_server_open(int event, void *data);
   int state_http_server_raw_open(int event, void *data);
   int state_hostdb_lookup(int event, void *data);
+  int state_mark_os_down(int event, void *data);
   void process_hostdb_info(HostDBInfo *r);
   void process_srv_info(HostDBInfo *r);
+  void delete_server_rr_entry(int max_retries);
+  void mark_host_failure(HostDBInfo *info, time_t time_down);
+  void do_hostdb_update_if_necessary();
+  bool ReDNSRoundRobin();
 
   /* Because we don't want to take a session from a shared pool if we know that it will be private,
    * but we cannot set it to private until we have an attached server session.

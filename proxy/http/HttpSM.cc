@@ -5081,6 +5081,20 @@ HttpSM::handle_server_setup_error(int event, void *data)
 
   STATE_ENTER(&HttpSM::handle_server_setup_error, event);
 
+  // Should we do a server retry?
+  Action *action_handle = connect_sm.retry_connection(this);
+  if (action_handle != ACTION_RESULT_DONE) {
+    // We need to close the previous attempt
+    if (server_entry) {
+      ink_assert(server_entry->vc_type == HTTP_SERVER_VC);
+      vc_table.cleanup_entry(server_entry);
+      server_entry = nullptr;
+      server_txn   = nullptr;
+    }
+    pending_action = action_handle;
+    return;
+  }
+
   // If there is POST or PUT tunnel wait for the tunnel
   //  to figure out that things have gone to hell
 
