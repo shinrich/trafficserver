@@ -30,6 +30,67 @@
 #include "HttpSessionManager.h"
 #include "Http1ServerSession.h"
 #include "HttpTransactHeaders.h"
+#include "Log.h"
+#include "tscore/bwf_std_format.h"
+
+using lbw = ts::LocalBufferWriter<256>;
+
+inline static HttpTransact::StateMachineAction_t
+how_to_open_connection(HttpTransact::State &s)
+{
+  ink_assert((s.pending_work == nullptr) || (s.current.request_to == HttpTransact::PARENT_PROXY));
+
+  // Originally we returned which type of server to open
+  // Now, however, we may want to issue a cache
+  // operation first in order to lock the cache
+  // entry to prevent multiple origin server requests
+  // for the same document.
+  // The cache operation that we actually issue, of
+  // course, depends on the specified "cache_action".
+  // If there is no cache-action to be issued, just
+  // connect to the server.
+  switch (s.cache_info.action) {
+  case HttpTransact::CACHE_PREPARE_TO_DELETE:
+  case HttpTransact::CACHE_PREPARE_TO_UPDATE:
+  case HttpTransact::CACHE_PREPARE_TO_WRITE:
+    s.transact_return_point = HttpTransact::handle_cache_write_lock;
+    return HttpTransact::SM_ACTION_CACHE_ISSUE_WRITE;
+  default:
+    // This covers:
+    // CACHE_DO_UNDEFINED, CACHE_DO_NO_ACTION, CACHE_DO_DELETE,
+    // CACHE_DO_LOOKUP, CACHE_DO_REPLACE, CACHE_DO_SERVE,
+    // CACHE_DO_SERVE_AND_DELETE, CACHE_DO_SERVE_AND_UPDATE,
+    // CACHE_DO_UPDATE, CACHE_DO_WRITE, TOTAL_CACHE_ACTION_TYPES
+    break;
+  }
+
+  HttpTransact::StateMachineAction_t connect_next_action = HttpTransact::SM_ACTION_ORIGIN_SERVER_OPEN;
+
+  // Setting up a direct CONNECT tunnel enters OriginServerRawOpen. We always do that if we
+  // are not forwarding CONNECT and are not going to a parent proxy.
+  if (s.method == HTTP_WKSIDX_CONNECT) {
+    if (s.txn_conf->forward_connect_method == 1 || s.parent_result.result == PARENT_SPECIFIED) {
+      connect_next_action = HttpTransact::SM_ACTION_ORIGIN_SERVER_OPEN;
+    } else {
+      connect_next_action = HttpTransact::SM_ACTION_ORIGIN_SERVER_RAW_OPEN;
+    }
+  }
+
+  if (!s.already_downgraded) { // false unless downgraded previously (possibly due to HTTP 505)
+    (&s.hdr_info.server_request)->version_set(HTTPVersion(1, 1));
+    HttpTransactHeaders::convert_request(s.current.server->http_version, &s.hdr_info.server_request);
+  }
+
+  return connect_next_action;
+}
+
+inline static void
+update_dns_info(HttpTransact::DNSLookupInfo *dns, HttpTransact::CurrentInfo *from, int attempts, Arena * /* arena ATS_UNUSED */)
+{
+  dns->looking_up  = from->request_to;
+  dns->lookup_name = from->server->name;
+  dns->attempts    = attempts;
+}
 
 void
 ConnectAction::cancel(Continuation *c)
@@ -100,8 +161,10 @@ ConnectSM::is_private() const
 Action *
 ConnectSM::do_dns_lookup(HttpSM *sm)
 {
-  this->init(sm);
-  HttpTransact::State &s = sm->t_state;
+  if (sm) {
+    this->init(sm);
+  }
+  HttpTransact::State &s = _root_sm->t_state;
   sockaddr const *addr;
 
   if (s.api_server_addr_set) {
@@ -271,13 +334,16 @@ ConnectSM::do_hostdb_lookup(HttpSM *sm)
 Action *
 ConnectSM::acquire_txn(HttpSM *sm, bool raw)
 {
-  this->init(sm);
-  HttpTransact::State &s = sm->t_state;
+  if (sm) {
+    this->init(sm);
+  }
+  HttpTransact::State &s = _root_sm->t_state;
   int ip_family          = s.current.server->dst_addr.sa.sa_family;
   auto fam_name          = ats_ip_family_name(ip_family);
   Debug("http_connect", "entered inside acquire_txn [%.*s]", static_cast<int>(fam_name.size()), fam_name.data());
 
   this->_pending_action = nullptr;
+  this->_sm_state       = WaitConnect;
 
   // Clean up connection tracking info if any. Need to do it now so the selected group
   // is consistent with the actual upstream in case of retry.
@@ -293,9 +359,9 @@ ConnectSM::acquire_txn(HttpSM *sm, bool raw)
   Debug("http_connect", "[%" PRId64 "] open connection to %s: %s", _root_sm->sm_id, s.current.server->name,
         ats_ip_nptop(&s.current.server->dst_addr.sa, addrbuf, sizeof(addrbuf)));
 
-  if (sm->plugin_tunnel) {
-    PluginVCCore *t   = sm->plugin_tunnel;
-    sm->plugin_tunnel = nullptr;
+  if (_root_sm->plugin_tunnel) {
+    PluginVCCore *t         = _root_sm->plugin_tunnel;
+    _root_sm->plugin_tunnel = nullptr;
     SET_HANDLER(&ConnectSM::state_http_server_open);
     Action *pvc_action_handle = t->connect_re(this);
 
@@ -307,9 +373,9 @@ ConnectSM::acquire_txn(HttpSM *sm, bool raw)
 
   Debug("http_connect", "[ConnectSM::acquire_txn] Sending request to server");
 
-  sm->milestones[TS_MILESTONE_SERVER_CONNECT] = Thread::get_hrtime();
-  if (sm->milestones[TS_MILESTONE_SERVER_FIRST_CONNECT] == 0) {
-    sm->milestones[TS_MILESTONE_SERVER_FIRST_CONNECT] = sm->milestones[TS_MILESTONE_SERVER_CONNECT];
+  _root_sm->milestones[TS_MILESTONE_SERVER_CONNECT] = Thread::get_hrtime();
+  if (_root_sm->milestones[TS_MILESTONE_SERVER_FIRST_CONNECT] == 0) {
+    _root_sm->milestones[TS_MILESTONE_SERVER_FIRST_CONNECT] = _root_sm->milestones[TS_MILESTONE_SERVER_CONNECT];
   }
 
   // Check for remap rule. If so, only apply ip_allow filter if it is activated (ip_allow_check_enabled_p set).
@@ -390,12 +456,13 @@ ConnectSM::acquire_txn(HttpSM *sm, bool raw)
   }
 
   if ((raw == false) && TS_SERVER_SESSION_SHARING_MATCH_NONE != s.txn_conf->server_session_sharing_match &&
-      (s.txn_conf->keep_alive_post_out == 1 || s.hdr_info.request_content_length == 0) && !is_private() && sm->ua_txn != nullptr) {
+      (s.txn_conf->keep_alive_post_out == 1 || s.hdr_info.request_content_length == 0) && !is_private() &&
+      _root_sm->ua_txn != nullptr) {
     HSMresult_t shared_result;
     shared_result = httpSessionManager.acquire_session(this,                           // state machine
                                                        &s.current.server->dst_addr.sa, // ip + port
                                                        s.current.server->name,         // hostname
-                                                       sm->ua_txn);                    // has ptr to bound ua sessions
+                                                       _root_sm->ua_txn);              // has ptr to bound ua sessions
 
     switch (shared_result) {
     case HSM_DONE:
@@ -416,8 +483,8 @@ ConnectSM::acquire_txn(HttpSM *sm, bool raw)
   // Avoid a problem where server session sharing is disabled and we have keep-alive, we are trying to open a new server
   // session when we already have an attached server session.
   else if ((TS_SERVER_SESSION_SHARING_MATCH_NONE == s.txn_conf->server_session_sharing_match || is_private()) &&
-           (sm->ua_txn != nullptr)) {
-    PoolableSession *existing_ss = sm->ua_txn->get_server_session();
+           (_root_sm->ua_txn != nullptr)) {
+    PoolableSession *existing_ss = _root_sm->ua_txn->get_server_session();
 
     if (existing_ss) {
       // [amc] Not sure if this is the best option, but we don't get here unless session sharing is disabled
@@ -425,7 +492,7 @@ ConnectSM::acquire_txn(HttpSM *sm, bool raw)
       // client has already exchanged a request with this specific origin server and has sent another one
       // shouldn't we just automatically keep the association?
       if (ats_ip_addr_port_eq(existing_ss->get_remote_addr(), &s.current.server->dst_addr.sa)) {
-        sm->ua_txn->attach_server_session(nullptr);
+        _root_sm->ua_txn->attach_server_session(nullptr);
         existing_ss->set_active();
         _server_txn = existing_ss->new_transaction();
         ink_release_assert(_server_txn != nullptr);
@@ -436,19 +503,19 @@ ConnectSM::acquire_txn(HttpSM *sm, bool raw)
         // the existing connection and call connect_re to get a new one
         existing_ss->set_inactivity_timeout(HRTIME_SECONDS(s.txn_conf->keep_alive_no_activity_timeout_out));
         existing_ss->release(_server_txn);
-        sm->ua_txn->attach_server_session(nullptr);
+        _root_sm->ua_txn->attach_server_session(nullptr);
       }
     }
   }
   // Otherwise, we release the existing connection and call connect_re
   // to get a new one.
   // ua_txn is null when s.req_flavor == REQ_FLAVOR_SCHEDULED_UPDATE
-  else if (sm->ua_txn != nullptr) {
-    PoolableSession *existing_ss = sm->ua_txn->get_server_session();
+  else if (_root_sm->ua_txn != nullptr) {
+    PoolableSession *existing_ss = _root_sm->ua_txn->get_server_session();
     if (existing_ss) {
       existing_ss->set_inactivity_timeout(HRTIME_SECONDS(s.txn_conf->keep_alive_no_activity_timeout_out));
       existing_ss->release(_server_txn);
-      sm->ua_txn->attach_server_session(nullptr);
+      _root_sm->ua_txn->attach_server_session(nullptr);
     }
   }
   // Check to see if we have reached the max number of connections.
@@ -499,7 +566,7 @@ ConnectSM::acquire_txn(HttpSM *sm, bool raw)
         if (wcount < s.http_config_param->outbound_conntrack.queue_size) {
           using lbw = ts::LocalBufferWriter<256>;
           ct_state.rescheduled();
-          Debug("http_connect", "%s", lbw().print("[{}] queued for {}\0", sm->sm_id, s.current.server->dst_addr).data());
+          Debug("http_connect", "%s", lbw().print("[{}] queued for {}\0", _root_sm->sm_id, s.current.server->dst_addr).data());
           _pending_action =
             eventProcessor.schedule_in(this, HRTIME_MSECONDS(s.http_config_param->outbound_conntrack.queue_delay.count()));
         } else {              // the queue is full
@@ -540,20 +607,21 @@ ConnectSM::acquire_txn(HttpSM *sm, bool raw)
 
   int scheme_to_use = s.scheme; // get initial scheme
   bool tls_upstream = scheme_to_use == URL_WKSIDX_HTTPS;
-  if (sm->ua_txn) {
+  if (_root_sm->ua_txn) {
     if (raw) {
-      SSLNetVConnection *ssl_vc = dynamic_cast<SSLNetVConnection *>(sm->ua_txn->get_netvc());
+      SSLNetVConnection *ssl_vc = dynamic_cast<SSLNetVConnection *>(_root_sm->ua_txn->get_netvc());
       if (ssl_vc) {
         tls_upstream = ssl_vc->upstream_tls();
       }
     }
-    opt.local_port = sm->ua_txn->get_outbound_port();
+    opt.local_port = _root_sm->ua_txn->get_outbound_port();
 
-    const IpAddr &outbound_ip = AF_INET6 == opt.ip_family ? sm->ua_txn->get_outbound_ip6() : sm->ua_txn->get_outbound_ip4();
+    const IpAddr &outbound_ip =
+      AF_INET6 == opt.ip_family ? _root_sm->ua_txn->get_outbound_ip6() : _root_sm->ua_txn->get_outbound_ip4();
     if (outbound_ip.isValid()) {
       opt.addr_binding = NetVCOptions::INTF_ADDR;
       opt.local_ip     = outbound_ip;
-    } else if (sm->ua_txn->is_outbound_transparent()) {
+    } else if (_root_sm->ua_txn->is_outbound_transparent()) {
       opt.addr_binding = NetVCOptions::FOREIGN_ADDR;
       opt.local_ip     = s.client_info.src_addr;
       /* If the connection is server side transparent, we can bind to the
@@ -562,7 +630,7 @@ ConnectSM::acquire_txn(HttpSM *sm, bool raw)
          configuration parameter.
       */
 
-      NetVConnection *client_vc = sm->ua_txn->get_netvc();
+      NetVConnection *client_vc = _root_sm->ua_txn->get_netvc();
       if (s.http_config_param->use_client_source_port && nullptr != client_vc) {
         opt.local_port = client_vc->get_remote_port();
       }
@@ -603,7 +671,7 @@ ConnectSM::acquire_txn(HttpSM *sm, bool raw)
   if (tls_upstream) {
     Debug("http_connect", "calling sslNetProcessor.connect_re");
 
-    std::string_view sni_name = sm->get_outbound_sni();
+    std::string_view sni_name = _root_sm->get_outbound_sni();
     if (sni_name.length() > 0) {
       opt.set_sni_servername(sni_name.data(), sni_name.length());
     }
@@ -634,8 +702,7 @@ ConnectSM::acquire_txn(HttpSM *sm, bool raw)
     _pending_action = connect_action_handle;
     return &_captive_action;
   } else {
-    _return_state = ServerTxnCreated;
-    return connect_action_handle;
+    return &_captive_action;
   }
 }
 
@@ -643,6 +710,8 @@ int
 ConnectSM::state_http_server_raw_open(int event, void *data)
 {
   _root_sm->milestones[TS_MILESTONE_SERVER_CONNECT_END] = Thread::get_hrtime();
+
+  ink_release_assert(_sm_state == WaitConnect || _sm_state == RetryConnect);
 
   _pending_action = nullptr;
   switch (event) {
@@ -674,7 +743,8 @@ ConnectSM::state_http_server_open(int event, void *data)
   HttpTransact::State &s = _root_sm->t_state;
   Debug("http_connect", "entered inside state_http_server_open");
   ink_release_assert(event == EVENT_INTERVAL || event == NET_EVENT_OPEN || event == NET_EVENT_OPEN_FAILED ||
-                     _pending_action == nullptr);
+                     event == VC_EVENT_WRITE_READY || _pending_action == nullptr);
+  ink_release_assert(_sm_state == WaitConnect || _sm_state == RetryConnect);
   if (event != NET_EVENT_OPEN) {
     _pending_action = nullptr;
   }
@@ -732,6 +802,7 @@ ConnectSM::state_http_server_open(int event, void *data)
       _return_state = ServerTxnCreated;
       _root_sm->handleEvent(event, data);
     }
+    ink_release_assert(_pending_action == nullptr);
     return 0;
   }
   case VC_EVENT_READ_COMPLETE:
@@ -741,6 +812,7 @@ ConnectSM::state_http_server_open(int event, void *data)
     Debug("http_connect", "[%" PRId64 "] TCP Handshake complete", _root_sm->sm_id);
     _return_state = ServerTxnCreated;
     _root_sm->handleEvent(event, data);
+    ink_release_assert(_pending_action == nullptr);
     return 0;
   case VC_EVENT_INACTIVITY_TIMEOUT:
   case VC_EVENT_ACTIVE_TIMEOUT:
@@ -772,11 +844,15 @@ ConnectSM::state_http_server_open(int event, void *data)
       _return_state = ErrorThrottle;
       _root_sm->handleEvent(event, data);
     } else {
-      // Go ahead and release the failed server session.  Since it didn't receive a response, the release logic will
-      // see that it didn't get a valid response and it will close it rather than returning it to the server session pool
-      _return_state = ErrorResponse;
-      _root_sm->handleEvent(event, data);
+      // See if we should retry the request
+      if (!this->do_retry_request()) {
+        // Go ahead and release the failed server session.  Since it didn't receive a response, the release logic will
+        // see that it didn't get a valid response and it will close it rather than returning it to the server session pool
+        _return_state = ErrorResponse;
+        _root_sm->handleEvent(event, data);
+      }
     }
+    ink_release_assert(_pending_action == nullptr);
     return 0;
 
   default:
@@ -786,6 +862,148 @@ ConnectSM::state_http_server_open(int event, void *data)
   }
 
   return 0;
+}
+
+Action *
+ConnectSM::retry_connection(HttpSM *sm)
+{
+  ink_release_assert(_pending_action == nullptr);
+  this->init(sm);
+  if (do_retry_request()) {
+    return &_captive_action;
+  }
+  return ACTION_RESULT_DONE; // Connection already done
+}
+
+bool
+ConnectSM::do_retry_request()
+{
+  HttpTransact::State &s = _root_sm->t_state;
+  // Only doing the server path first
+  if (s.current.request_to == HttpTransact::ORIGIN_SERVER) {
+    unsigned max_connect_retries = 0;
+
+    s.server_info.state = s.current.state;
+
+    switch (s.current.state) {
+    case HttpTransact::CONNECTION_ALIVE:
+    case HttpTransact::OUTBOUND_CONGESTION:
+    case HttpTransact::ACTIVE_TIMEOUT:
+      // No need to retry, just go away
+      return false;
+    case HttpTransact::OPEN_RAW_ERROR:
+    /* fall through */
+    case HttpTransact::CONNECTION_ERROR:
+    /* fall through */
+    case HttpTransact::STATE_UNDEFINED:
+    /* fall through */
+    case HttpTransact::INACTIVE_TIMEOUT:
+    /* fall through */
+    case HttpTransact::PARSE_ERROR:
+    /* fall through */
+    case HttpTransact::CONNECTION_CLOSED:
+    /* fall through */
+    case HttpTransact::BAD_INCOMING_RESPONSE:
+
+      // Set to generic I/O error if not already set specifically.
+      if (!s.current.server->had_connect_fail()) {
+        s.current.server->set_connect_fail(EIO);
+      }
+      if (HttpTransact::is_server_negative_cached(&s)) {
+        max_connect_retries = s.txn_conf->connect_attempts_max_retries_dead_server;
+      } else {
+        // server not yet negative cached - use default number of retries
+        max_connect_retries = s.txn_conf->connect_attempts_max_retries;
+      }
+
+      // Set up the retry
+      if (HttpTransact::is_request_retryable(&s) && s.current.attempts < max_connect_retries) {
+        // If this is a round robin DNS entry & we're tried configured
+        //    number of times, we should try another node
+        if (HttpTransact::DNSLookupInfo::OS_Addr::OS_ADDR_TRY_CLIENT == s.dns_info.os_addr_style) {
+          // attempt was based on client supplied server address. Try again
+          // using HostDB.
+          // Allow DNS attempt
+          s.dns_info.lookup_success = false;
+          // See if we can get data from HostDB for this.
+          s.dns_info.os_addr_style = HttpTransact::DNSLookupInfo::OS_Addr::OS_ADDR_TRY_HOSTDB;
+          // Force host resolution to have the same family as the client.
+          // Because this is a transparent connection, we can't switch address
+          // families - that is locked in by the client source address.
+          ats_force_order_by_family(&s.current.server->dst_addr.sa, s.my_txn_conf().host_res_data.order);
+
+          // Invoke DNS.  Set state to Connect next
+          Action *action_handle = this->do_dns_lookup();
+          _sm_state             = RetryAddress;
+          if (action_handle != ACTION_RESULT_DONE) {
+            _pending_action = action_handle;
+          } else {
+          }
+          // return CallOSDNSLookup(s);
+        } else if ((s.dns_info.srv_lookup_success || s.host_db_info.is_rr_elt()) && (s.txn_conf->connect_attempts_rr_retries > 0) &&
+                   (s.current.attempts % s.txn_conf->connect_attempts_rr_retries == 0)) {
+          // SKH - Does this case retry?
+          this->delete_server_rr_entry(max_connect_retries);
+          SET_HANDLER(&ConnectSM::state_mark_os_down);
+          do_hostdb_update_if_necessary();
+          Action *action_handle = this->do_dns_lookup();
+          _sm_state             = RetryAddress;
+          if (action_handle != ACTION_RESULT_DONE) {
+            _pending_action = action_handle;
+          } else {
+            ReDNSRoundRobin();
+            // Invoke Connect logic
+            Action *action_handle = this->acquire_txn();
+            _sm_state             = RetryConnect;
+            if (action_handle != ACTION_RESULT_DONE) {
+              _pending_action = action_handle;
+            } else {
+            }
+          }
+          // Invoke DNS.  Set state to Connect next
+          return true;
+        } else {
+          HttpTransact::retry_server_connection_not_open(&s, s.current.state, max_connect_retries);
+          Debug("http_trans", "[handle_response_from_server] Error. Retrying...");
+          s.next_action = how_to_open_connection(s);
+
+          if (s.api_server_addr_set) {
+            // If the plugin set a server address, back up to the OS_DNS hook
+            // to let it try another one. Force OS_ADDR_USE_CLIENT so that
+            // in OSDNSLoopkup, we back up to how_to_open_connections which
+            // will tell HttpSM to connect the origin server.
+
+            s.dns_info.os_addr_style = HttpTransact::DNSLookupInfo::OS_Addr::OS_ADDR_USE_CLIENT;
+            // TRANSACT_RETURN(SM_ACTION_API_OS_DNS, OSDNSLookup);
+            // Invoke DNS.  Set state to Connect next
+            Action *action_handle = this->do_dns_lookup();
+            _sm_state             = RetryAddress;
+            if (action_handle != ACTION_RESULT_DONE) {
+              _pending_action = action_handle;
+            } else {
+            }
+            // Invoke DNS.  Set state to Connect next
+          } else {
+            // Invoke Connect logic
+            Action *action_handle = this->acquire_txn();
+            _sm_state             = RetryConnect;
+            if (action_handle != ACTION_RESULT_DONE) {
+              _pending_action = action_handle;
+            } else {
+            }
+          }
+        }
+        return true;
+      } else {
+        return false; // Cannot retry, go away
+      }
+      break;
+    default:
+      ink_assert(!("s->current.state is set to something unsupported"));
+      break;
+    }
+  }
+  return false;
 }
 
 int
@@ -803,8 +1021,14 @@ ConnectSM::state_hostdb_lookup(int event, void *data)
     process_hostdb_info(static_cast<HostDBInfo *>(data));
     // Call handler on SM
     // call_transact_and_set_next_state(nullptr);
-    _return_state = DnsHostdbSuccess;
-    _root_sm->handleEvent(event, &_captive_action);
+    if (_sm_state == RetryAddress) {
+      // Move onto the connect State
+      _sm_state = RetryConnect;
+      this->acquire_txn();
+    } else { // Termimal
+      _return_state = DnsHostdbSuccess;
+      _root_sm->handleEvent(event, &_captive_action);
+    }
     break;
   case EVENT_SRV_LOOKUP: {
     _pending_action = nullptr;
@@ -825,8 +1049,13 @@ ConnectSM::state_hostdb_lookup(int event, void *data)
       ink_assert(!_pending_action);
       _pending_action = dns_lookup_action_handle;
     } else {
-      _return_state = DnsHostdbSuccess;
-      _root_sm->handleEvent(event, &_captive_action);
+      if (_sm_state == RetryAddress) {
+        _sm_state = RetryConnect;
+        this->acquire_txn();
+      } else {
+        _return_state = DnsHostdbSuccess;
+        _root_sm->handleEvent(event, &_captive_action);
+      }
       // call_transact_and_set_next_state(nullptr);
     }
   } break;
@@ -843,10 +1072,12 @@ ConnectSM::state_hostdb_lookup(int event, void *data)
 void
 ConnectSM::init(HttpSM *sm)
 {
-  this->_root_sm    = sm;
-  this->mutex       = sm->mutex;
-  this->_server_txn = nullptr;
-  this->_netvc      = nullptr;
+  this->_root_sm        = sm;
+  this->mutex           = sm->mutex;
+  this->_server_txn     = nullptr;
+  this->_netvc          = nullptr;
+  this->_sm_state       = UndefinedSMState;
+  this->_pending_action = nullptr;
 }
 
 void
@@ -986,5 +1217,196 @@ ConnectSM::process_hostdb_info(HostDBInfo *r)
       int foo = static_cast<int>(_root_sm->milestones.difference_msec(TS_MILESTONE_DNS_LOOKUP_BEGIN, TS_MILESTONE_DNS_LOOKUP_END));
       Debug("http_timeout", "DNS took: %d msec", foo);
     }
+  }
+}
+
+///////////////////////////////////////////////////////////////////////////////
+// Name       : delete_server_rr_entry
+// Description:
+//
+// Details    :
+//
+//   connection to server failed mark down the server round robin entry
+//
+//
+// Possible Next States From Here:
+//
+///////////////////////////////////////////////////////////////////////////////
+void
+ConnectSM::delete_server_rr_entry(int max_retries)
+{
+  HttpTransact::State &s = _root_sm->t_state;
+  char addrbuf[INET6_ADDRSTRLEN];
+
+  Debug("http_trans", "[%d] failed to connect to %s", s.current.attempts,
+        ats_ip_ntop(&s.current.server->dst_addr.sa, addrbuf, sizeof(addrbuf)));
+  Debug("http_trans", "[delete_server_rr_entry] marking rr entry down and finding next one");
+  ink_assert(s.current.server->had_connect_fail());
+  ink_assert(s.current.request_to == HttpTransact::ORIGIN_SERVER);
+  ink_assert(s.current.server == &s.server_info);
+  update_dns_info(&s.dns_info, &s.current, 0, &s.arena);
+  s.current.attempts++;
+  Debug("http_trans", "[delete_server_rr_entry] attempts now: %d, max: %d", s.current.attempts, max_retries);
+  // TRANSACT_RETURN(SM_ACTION_ORIGIN_SERVER_RR_MARK_DOWN, ReDNSRoundRobin);
+}
+
+void
+ConnectSM::do_hostdb_update_if_necessary()
+{
+  HttpTransact::State &s = _root_sm->t_state;
+  int issue_update       = 0;
+
+  if (s.current.server == nullptr || _root_sm->plugin_tunnel_type != HTTP_NO_PLUGIN_TUNNEL) {
+    // No server, so update is not necessary
+    return;
+  }
+  // If we failed back over to the origin server, we don't have our
+  //   hostdb information anymore which means we shouldn't update the hostdb
+  if (!ats_ip_addr_eq(&s.current.server->dst_addr.sa, s.host_db_info.ip())) {
+    Debug("http", "[%" PRId64 "] skipping hostdb update due to server failover", _root_sm->sm_id);
+    return;
+  }
+
+  if (s.updated_server_version != HostDBApplicationInfo::HTTP_VERSION_UNDEFINED) {
+    // we may have incorrectly assumed that the hostdb had the wrong version of
+    // http for the server because our first few connect attempts to the server
+    // failed, causing us to downgrade our requests to a lower version and changing
+    // our information about the server version.
+    //
+    // This test therefore just issues the update only if the hostdb version is
+    // in fact different from the version we want the value to be updated to.
+    if (s.host_db_info.app.http_data.http_version != s.updated_server_version) {
+      s.host_db_info.app.http_data.http_version = s.updated_server_version;
+      issue_update |= 1;
+    }
+
+    s.updated_server_version = HostDBApplicationInfo::HTTP_VERSION_UNDEFINED;
+  }
+  // Check to see if we need to report or clear a connection failure
+  if (s.current.server->had_connect_fail()) {
+    issue_update |= 1;
+    mark_host_failure(&s.host_db_info, s.client_request_time);
+  } else {
+    if (s.host_db_info.app.http_data.last_failure != 0) {
+      s.host_db_info.app.http_data.last_failure = 0;
+      issue_update |= 1;
+      char addrbuf[INET6_ADDRPORTSTRLEN];
+      Debug("http", "[%" PRId64 "] hostdb update marking IP: %s as up", _root_sm->sm_id,
+            ats_ip_nptop(&s.current.server->dst_addr.sa, addrbuf, sizeof(addrbuf)));
+    }
+
+    if (s.dns_info.srv_lookup_success && s.dns_info.srv_app.http_data.last_failure != 0) {
+      s.dns_info.srv_app.http_data.last_failure = 0;
+      hostDBProcessor.setby_srv(s.dns_info.lookup_name, 0, s.dns_info.srv_hostname, &s.dns_info.srv_app);
+      Debug("http", "[%" PRId64 "] hostdb update marking SRV: %s as up", _root_sm->sm_id, s.dns_info.srv_hostname);
+    }
+  }
+
+  if (issue_update) {
+    hostDBProcessor.setby(s.current.server->name, strlen(s.current.server->name), &s.current.server->dst_addr.sa,
+                          &s.host_db_info.app);
+  }
+
+  char addrbuf[INET6_ADDRPORTSTRLEN];
+  Debug("http", "server info = %s", ats_ip_nptop(&s.current.server->dst_addr.sa, addrbuf, sizeof(addrbuf)));
+  return;
+}
+
+void
+ConnectSM::mark_host_failure(HostDBInfo *info, time_t time_down)
+{
+  HttpTransact::State &s = _root_sm->t_state;
+  char addrbuf[INET6_ADDRPORTSTRLEN];
+
+  if (info->app.http_data.last_failure == 0) {
+    char *url_str = s.hdr_info.client_request.url_string_get(&s.arena, nullptr);
+    Log::error("%s", lbw()
+                       .clip(1)
+                       .print("CONNECT Error: {} connecting to {} for '{}' (setting last failure time)",
+                              ts::bwf::Errno(s.current.server->connect_result), s.current.server->dst_addr,
+                              ts::bwf::FirstOf(url_str, "<none>"))
+                       .extend(1)
+                       .write('\0')
+                       .data());
+
+    if (url_str) {
+      s.arena.str_free(url_str);
+    }
+  }
+
+  info->app.http_data.last_failure = time_down;
+
+#ifdef DEBUG
+  ink_assert(ink_local_time() + s.txn_conf->down_server_timeout > time_down);
+#endif
+
+  Debug("http", "[%" PRId64 "] hostdb update marking IP: %s as down", _root_sm->sm_id,
+        ats_ip_nptop(&s.current.server->dst_addr.sa, addrbuf, sizeof(addrbuf)));
+}
+
+int
+ConnectSM::state_mark_os_down(int event, void *data)
+{
+  HostDBInfo *mark_down  = nullptr;
+  HttpTransact::State &s = _root_sm->t_state;
+
+  if (event == EVENT_HOST_DB_LOOKUP && data) {
+    HostDBInfo *r = static_cast<HostDBInfo *>(data);
+
+    if (r->round_robin) {
+      // Look for the entry we need mark down in the round robin
+      ink_assert(s.current.server != nullptr);
+      ink_assert(s.current.request_to == HttpTransact::ORIGIN_SERVER);
+      if (s.current.server) {
+        mark_down = r->rr()->find_ip(&s.current.server->dst_addr.sa);
+      }
+    } else {
+      // No longer a round robin, check to see if our address is the same
+      if (ats_ip_addr_eq(s.host_db_info.ip(), r->ip())) {
+        mark_down = r;
+      }
+    }
+
+    if (mark_down) {
+      mark_host_failure(mark_down, s.request_sent_time);
+    }
+  }
+  // We either found our entry or we did not.  Either way find
+  //  the entry we should use now
+  return state_hostdb_lookup(event, data);
+}
+
+bool
+ConnectSM::ReDNSRoundRobin()
+{
+  HttpTransact::State &s = _root_sm->t_state;
+  ink_assert(s.current.server == &s.server_info);
+  ink_assert(s.current.server->had_connect_fail());
+
+  if (s.dns_info.lookup_success) {
+    // We using a new server now so clear the connection
+    //  failure mark
+    s.current.server->clear_connect_fail();
+
+    // Our ReDNS of the server succeeded so update the necessary
+    //  information and try again. Need to preserve the current port value if possible.
+    in_port_t server_port = s.current.server->dst_addr.host_order_port();
+    // Temporary check to make sure the port preservation can be depended upon. That should be the case
+    // because we get here only after trying a connection. Remove for 6.2.
+    ink_assert(s.current.server->dst_addr.isValid() && 0 != server_port);
+
+    ats_ip_copy(&s.server_info.dst_addr, s.host_db_info.ip());
+    s.server_info.dst_addr.port() = htons(server_port);
+    ats_ip_copy(&s.request_data.dest_ip, &s.server_info.dst_addr);
+    HttpTransact::get_ka_info_from_host_db(&s, &s.server_info, &s.client_info, &s.host_db_info);
+
+    char addrbuf[INET6_ADDRSTRLEN];
+    Debug("http_trans", "[ReDNSRoundRobin] DNS lookup for O.S. successful IP: %s",
+          ats_ip_ntop(&s.server_info.dst_addr.sa, addrbuf, sizeof(addrbuf)));
+    return true;
+  } else {
+    // Our ReDNS failed so output the DNS failure error message
+    _return_state = ErrorDNS;
+    return false;
   }
 }
