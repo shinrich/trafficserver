@@ -86,6 +86,7 @@ void
 Http1ClientSession::release_transaction()
 {
   released_transactions++;
+  trans.decrement_client_transactions_stat();
   if (transact_count == released_transactions) {
     // Make sure we previously called release() or do_io_close() on the session
     ink_release_assert(read_state != HCS_INIT);
