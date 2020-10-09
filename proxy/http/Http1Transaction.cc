@@ -38,7 +38,7 @@ Http1Transaction::release(IOBufferReader *r)
 
   // Make sure that the state machine is returning
   //  correct buffer reader
-  ink_assert(r == _reader);
+  ink_release_assert(r == _reader);
   if (r != _reader) {
     this->do_io_close();
   } else {
