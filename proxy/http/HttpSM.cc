@@ -3367,7 +3367,9 @@ HttpSM::tunnel_handler_ua(int event, HttpTunnelConsumer *c)
     ua_txn->do_io_close();
   } else {
     ink_assert(ua_buffer_reader != nullptr);
+    // auto ssn = ua_txn->get_proxy_ssn();
     ua_txn->release(ua_buffer_reader);
+    ua_txn->get_proxy_ssn()->release(ua_txn);
     ua_buffer_reader = nullptr;
     // ua_txn       = NULL;
   }

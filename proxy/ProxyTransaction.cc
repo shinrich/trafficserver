@@ -63,11 +63,6 @@ ProxyTransaction::release(IOBufferReader *r)
                _sm ? _sm->sm_id : 0);
 
   this->decrement_client_transactions_stat();
-
-  // Pass along the release to the session
-  if (_proxy_ssn) {
-    _proxy_ssn->release(this);
-  }
 }
 
 void
