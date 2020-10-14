@@ -360,6 +360,7 @@ ConnectSM::acquire_txn(HttpSM *sm, bool raw)
     // This connect call is always reentrant
     ink_release_assert(pvc_action_handle == ACTION_RESULT_DONE);
     this->_return_state = Tunnel;
+    _root_sm->handleEvent(EVENT_DONE, nullptr);
     return pvc_action_handle;
   }
 
@@ -411,6 +412,7 @@ ConnectSM::acquire_txn(HttpSM *sm, bool raw)
       s.current.attempts = s.txn_conf->connect_attempts_max_retries; // prevent any more retries with this IP
       // call_transact_and_set_next_state(HttpTransact::Forbidden);
       this->_return_state = ErrorForbid;
+      _root_sm->handleEvent(EVENT_DONE, nullptr);
       return ACTION_RESULT_DONE;
     }
   }
@@ -460,6 +462,7 @@ ConnectSM::acquire_txn(HttpSM *sm, bool raw)
     case HSM_DONE:
       ink_release_assert(_server_txn != nullptr);
       _return_state = ServerTxnCreated;
+      _root_sm->handleEvent(EVENT_DONE, nullptr);
       return ACTION_RESULT_DONE;
     case HSM_NOT_FOUND:
       ink_release_assert(_server_txn == nullptr);
@@ -489,6 +492,7 @@ ConnectSM::acquire_txn(HttpSM *sm, bool raw)
         _server_txn = existing_ss->new_transaction();
         ink_release_assert(_server_txn != nullptr);
         _return_state = ServerTxnCreated;
+        _root_sm->handleEvent(EVENT_DONE, nullptr);
         return ACTION_RESULT_DONE;
       } else {
         // As this is in the non-sharing configuration, we want to close
@@ -528,6 +532,7 @@ ConnectSM::acquire_txn(HttpSM *sm, bool raw)
       // of retries and errors.  But at this point, we are just going to allow the error case.
       s.current.state     = HttpTransact::CONNECTION_ERROR;
       this->_return_state = ErrorResponse;
+      _root_sm->handleEvent(EVENT_DONE, nullptr);
       return ACTION_RESULT_DONE;
     }
   }
@@ -576,6 +581,7 @@ ConnectSM::acquire_txn(HttpSM *sm, bool raw)
         return &_captive_action;
       } else {
         _return_state = ErrorThrottle;
+        _root_sm->handleEvent(EVENT_DONE, nullptr);
         return ACTION_RESULT_DONE;
       }
     } else {
