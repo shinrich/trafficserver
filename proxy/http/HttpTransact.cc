@@ -3681,7 +3681,6 @@ HttpTransact::handle_response_from_server(State *s)
 {
   TxnDebug("http_trans", "[handle_response_from_server] (hrfs)");
   HTTP_RELEASE_ASSERT(s->current.server == &s->server_info);
-  unsigned max_connect_retries = 0;
 
   // plugin call
   s->server_info.state = s->current.state;
@@ -3720,54 +3719,9 @@ HttpTransact::handle_response_from_server(State *s)
       s->current.server->set_connect_fail(EIO);
     }
 
-    if (is_server_negative_cached(s)) {
-      max_connect_retries = s->txn_conf->connect_attempts_max_retries_dead_server;
-    } else {
-      // server not yet negative cached - use default number of retries
-      max_connect_retries = s->txn_conf->connect_attempts_max_retries;
-    }
-
-    if (is_request_retryable(s) && s->current.attempts < max_connect_retries) {
-      // If this is a round robin DNS entry & we're tried configured
-      //    number of times, we should try another node
-      if (DNSLookupInfo::OS_Addr::OS_ADDR_TRY_CLIENT == s->dns_info.os_addr_style) {
-        // attempt was based on client supplied server address. Try again
-        // using HostDB.
-        // Allow DNS attempt
-        s->dns_info.lookup_success = false;
-        // See if we can get data from HostDB for this.
-        s->dns_info.os_addr_style = DNSLookupInfo::OS_Addr::OS_ADDR_TRY_HOSTDB;
-        // Force host resolution to have the same family as the client.
-        // Because this is a transparent connection, we can't switch address
-        // families - that is locked in by the client source address.
-        ats_force_order_by_family(&s->current.server->dst_addr.sa, s->my_txn_conf().host_res_data.order);
-        return CallOSDNSLookup(s);
-      } else if ((s->dns_info.srv_lookup_success || s->host_db_info.is_rr_elt()) &&
-                 (s->txn_conf->connect_attempts_rr_retries > 0) &&
-                 (s->current.attempts % s->txn_conf->connect_attempts_rr_retries == 0)) {
-        delete_server_rr_entry(s, max_connect_retries);
-        return;
-      } else {
-        retry_server_connection_not_open(s, s->current.state, max_connect_retries);
-        TxnDebug("http_trans", "[handle_response_from_server] Error. Retrying...");
-        s->next_action = how_to_open_connection(s);
-
-        if (s->api_server_addr_set) {
-          // If the plugin set a server address, back up to the OS_DNS hook
-          // to let it try another one. Force OS_ADDR_USE_CLIENT so that
-          // in OSDNSLoopkup, we back up to how_to_open_connections which
-          // will tell HttpSM to connect the origin server.
-
-          s->dns_info.os_addr_style = DNSLookupInfo::OS_Addr::OS_ADDR_USE_CLIENT;
-          TRANSACT_RETURN(SM_ACTION_API_OS_DNS, OSDNSLookup);
-        }
-        return;
-      }
-    } else {
-      TxnDebug("http_trans", "[handle_response_from_server] Error. No more retries.");
-      SET_VIA_STRING(VIA_DETAIL_SERVER_CONNECT, VIA_DETAIL_SERVER_FAILURE);
-      handle_server_connection_not_open(s);
-    }
+    TxnDebug("http_trans", "[handle_response_from_server] Error. No more retries.");
+    SET_VIA_STRING(VIA_DETAIL_SERVER_CONNECT, VIA_DETAIL_SERVER_FAILURE);
+    handle_server_connection_not_open(s);
     break;
   case ACTIVE_TIMEOUT:
     TxnDebug("http_trans", "[hrfs] connection not alive");
@@ -3781,36 +3735,6 @@ HttpTransact::handle_response_from_server(State *s)
   }
 
   return;
-}
-
-///////////////////////////////////////////////////////////////////////////////
-// Name       : delete_server_rr_entry
-// Description:
-//
-// Details    :
-//
-//   connection to server failed mark down the server round robin entry
-//
-//
-// Possible Next States From Here:
-//
-///////////////////////////////////////////////////////////////////////////////
-void
-HttpTransact::delete_server_rr_entry(State *s, int max_retries)
-{
-  char addrbuf[INET6_ADDRSTRLEN];
-
-  TxnDebug("http_trans", "[%d] failed to connect to %s", s->current.attempts,
-           ats_ip_ntop(&s->current.server->dst_addr.sa, addrbuf, sizeof(addrbuf)));
-  TxnDebug("http_trans", "[delete_server_rr_entry] marking rr entry "
-                         "down and finding next one");
-  ink_assert(s->current.server->had_connect_fail());
-  ink_assert(s->current.request_to == ORIGIN_SERVER);
-  ink_assert(s->current.server == &s->server_info);
-  update_dns_info(&s->dns_info, &s->current, 0, &s->arena);
-  s->current.attempts++;
-  TxnDebug("http_trans", "[delete_server_rr_entry] attempts now: %d, max: %d", s->current.attempts, max_retries);
-  TRANSACT_RETURN(SM_ACTION_ORIGIN_SERVER_RR_MARK_DOWN, ReDNSRoundRobin);
 }
 
 ///////////////////////////////////////////////////////////////////////////////

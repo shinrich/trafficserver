@@ -2050,191 +2050,6 @@ HttpSM::state_hostdb_lookedup(int event, void *data)
   return 0;
 }
 
-#ifdef OLD
-void
-HttpSM::process_srv_info(HostDBInfo *r)
-{
-  SMDebug("dns_srv", "beginning process_srv_info");
-  t_state.hostdb_entry = Ptr<HostDBInfo>(r);
-
-  /* we didn't get any SRV records, continue w normal lookup */
-  if (!r || !r->is_srv || !r->round_robin) {
-    t_state.dns_info.srv_hostname[0]    = '\0';
-    t_state.dns_info.srv_lookup_success = false;
-    t_state.my_txn_conf().srv_enabled   = false;
-    SMDebug("dns_srv", "No SRV records were available, continuing to lookup %s", t_state.dns_info.lookup_name);
-  } else {
-    HostDBRoundRobin *rr = r->rr();
-    HostDBInfo *srv      = nullptr;
-    if (rr) {
-      srv = rr->select_best_srv(t_state.dns_info.srv_hostname, &mutex->thread_holding->generator, ink_local_time(),
-                                static_cast<int>(t_state.txn_conf->down_server_timeout));
-    }
-    if (!srv) {
-      t_state.dns_info.srv_lookup_success = false;
-      t_state.dns_info.srv_hostname[0]    = '\0';
-      t_state.my_txn_conf().srv_enabled   = false;
-      SMDebug("dns_srv", "SRV records empty for %s", t_state.dns_info.lookup_name);
-    } else {
-      t_state.dns_info.srv_lookup_success = true;
-      t_state.dns_info.srv_port           = srv->data.srv.srv_port;
-      t_state.dns_info.srv_app            = srv->app;
-      // t_state.dns_info.single_srv = (rr->good == 1);
-      ink_assert(srv->data.srv.key == makeHostHash(t_state.dns_info.srv_hostname));
-      SMDebug("dns_srv", "select SRV records %s", t_state.dns_info.srv_hostname);
-    }
-  }
-  return;
-}
-
-void
-HttpSM::process_hostdb_info(HostDBInfo *r)
-{
-  // Increment the refcount to our item, since we are pointing at it
-  t_state.hostdb_entry = Ptr<HostDBInfo>(r);
-
-  sockaddr const *client_addr = nullptr;
-  bool use_client_addr        = t_state.http_config_param->use_client_target_addr == 1 && t_state.client_info.is_transparent &&
-                         t_state.dns_info.os_addr_style == HttpTransact::DNSLookupInfo::OS_Addr::OS_ADDR_TRY_DEFAULT;
-  if (use_client_addr) {
-    NetVConnection *vc = ua_txn ? ua_txn->get_netvc() : nullptr;
-    if (vc) {
-      client_addr = vc->get_local_addr();
-      // Regardless of whether the client address matches the DNS record or not,
-      // we want to use that address.  Therefore, we copy over the client address
-      // info and skip the assignment from the DNS cache
-      ats_ip_copy(t_state.host_db_info.ip(), client_addr);
-      t_state.dns_info.os_addr_style  = HttpTransact::DNSLookupInfo::OS_Addr::OS_ADDR_TRY_CLIENT;
-      t_state.dns_info.lookup_success = true;
-      // Leave ret unassigned, so we don't overwrite the host_db_info
-    } else {
-      use_client_addr = false;
-    }
-  }
-
-  if (r && !r->is_failed()) {
-    ink_time_t now                    = ink_local_time();
-    HostDBInfo *ret                   = nullptr;
-    t_state.dns_info.lookup_success   = true;
-    t_state.dns_info.lookup_validated = true;
-
-    HostDBRoundRobin *rr = r->round_robin ? r->rr() : nullptr;
-    if (rr) {
-      // if use_client_target_addr is set, make sure the client addr is in the results pool
-      if (use_client_addr && rr->find_ip(client_addr) == nullptr) {
-        SMDebug("http", "use_client_target_addr == 1. Client specified address is not in the pool, not validated.");
-        t_state.dns_info.lookup_validated = false;
-      } else {
-        // Since the time elapsed between current time and client_request_time
-        // may be very large, we cannot use client_request_time to approximate
-        // current time when calling select_best_http().
-        ret = rr->select_best_http(&t_state.client_info.src_addr.sa, now, static_cast<int>(t_state.txn_conf->down_server_timeout));
-        // set the srv target`s last_failure
-        if (t_state.dns_info.srv_lookup_success) {
-          uint32_t last_failure = 0xFFFFFFFF;
-          for (int i = 0; i < rr->rrcount && last_failure != 0; ++i) {
-            if (last_failure > rr->info(i).app.http_data.last_failure) {
-              last_failure = rr->info(i).app.http_data.last_failure;
-            }
-          }
-
-          if (last_failure != 0 && static_cast<uint32_t>(now - t_state.txn_conf->down_server_timeout) < last_failure) {
-            HostDBApplicationInfo app;
-            app.allotment.application1 = 0;
-            app.allotment.application2 = 0;
-            app.http_data.last_failure = last_failure;
-            hostDBProcessor.setby_srv(t_state.dns_info.lookup_name, 0, t_state.dns_info.srv_hostname, &app);
-          }
-        }
-      }
-    } else {
-      if (use_client_addr && !ats_ip_addr_eq(client_addr, &r->data.ip.sa)) {
-        SMDebug("http", "use_client_target_addr == 1. Comparing single addresses failed, not validated.");
-        t_state.dns_info.lookup_validated = false;
-      } else {
-        ret = r;
-      }
-    }
-    if (ret) {
-      t_state.host_db_info = *ret;
-      ink_release_assert(!t_state.host_db_info.reverse_dns);
-      ink_release_assert(ats_is_ip(t_state.host_db_info.ip()));
-    }
-  } else {
-    SMDebug("http", "[%" PRId64 "] DNS lookup failed for '%s'", sm_id, t_state.dns_info.lookup_name);
-
-    if (!use_client_addr) {
-      t_state.dns_info.lookup_success = false;
-    }
-    t_state.host_db_info.app.allotment.application1 = 0;
-    t_state.host_db_info.app.allotment.application2 = 0;
-    ink_assert(!t_state.host_db_info.round_robin);
-  }
-
-  milestones[TS_MILESTONE_DNS_LOOKUP_END] = Thread::get_hrtime();
-
-  if (is_debug_tag_set("http_timeout")) {
-    if (t_state.api_txn_dns_timeout_value != -1) {
-      int foo = static_cast<int>(milestones.difference_msec(TS_MILESTONE_DNS_LOOKUP_BEGIN, TS_MILESTONE_DNS_LOOKUP_END));
-      SMDebug("http_timeout", "DNS took: %d msec", foo);
-    }
-  }
-}
-
-//////////////////////////////////////////////////////////////////////////////
-//
-//  HttpSM::state_hostdb_lookup()
-//
-//////////////////////////////////////////////////////////////////////////////
-int
-HttpSM::state_hostdb_lookup(int event, void *data)
-{
-  STATE_ENTER(&HttpSM::state_hostdb_lookup, event);
-  //    ink_assert (m_origin_server_vc == 0);
-  // REQ_FLAVOR_SCHEDULED_UPDATE can be transformed into
-  // REQ_FLAVOR_REVPROXY
-  ink_assert(t_state.req_flavor == HttpTransact::REQ_FLAVOR_SCHEDULED_UPDATE ||
-             t_state.req_flavor == HttpTransact::REQ_FLAVOR_REVPROXY || ua_entry->vc != nullptr);
-
-  switch (event) {
-  case EVENT_HOST_DB_LOOKUP:
-    pending_action = nullptr;
-    process_hostdb_info(static_cast<HostDBInfo *>(data));
-    call_transact_and_set_next_state(nullptr);
-    break;
-  case EVENT_SRV_LOOKUP: {
-    pending_action = nullptr;
-    process_srv_info(static_cast<HostDBInfo *>(data));
-
-    char *host_name = t_state.dns_info.srv_lookup_success ? t_state.dns_info.srv_hostname : t_state.dns_info.lookup_name;
-    HostDBProcessor::Options opt;
-    opt.port  = t_state.dns_info.srv_lookup_success ? t_state.dns_info.srv_port : t_state.server_info.dst_addr.host_order_port();
-    opt.flags = (t_state.cache_info.directives.does_client_permit_dns_storing) ? HostDBProcessor::HOSTDB_DO_NOT_FORCE_DNS :
-                                                                                 HostDBProcessor::HOSTDB_FORCE_DNS_RELOAD;
-    opt.timeout        = (t_state.api_txn_dns_timeout_value != -1) ? t_state.api_txn_dns_timeout_value : 0;
-    opt.host_res_style = ats_host_res_from(ua_txn->get_netvc()->get_local_addr()->sa_family, t_state.txn_conf->host_res_data.order);
-
-    Action *dns_lookup_action_handle =
-      hostDBProcessor.getbyname_imm(this, (cb_process_result_pfn)&HttpSM::process_hostdb_info, host_name, 0, opt);
-    if (dns_lookup_action_handle != ACTION_RESULT_DONE) {
-      ink_assert(!pending_action);
-      pending_action = dns_lookup_action_handle;
-    } else {
-      call_transact_and_set_next_state(nullptr);
-    }
-  } break;
-  case EVENT_HOST_DB_IP_REMOVED:
-    ink_assert(!"Unexpected event from HostDB");
-    break;
-  default:
-    ink_assert(!"Unexpected event");
-  }
-
-  return 0;
-}
-
-#endif
-
 int
 HttpSM::state_hostdb_reverse_lookup(int event, void *data)
 {
@@ -6726,7 +6541,6 @@ HttpSM::set_next_state()
   }
 
   case HttpTransact::SM_ACTION_ORIGIN_SERVER_OPEN: {
-    // HTTP_SM_SET_DEFAULT_HANDLER(&HttpSM::state_http_server_open);
     HTTP_SM_SET_DEFAULT_HANDLER(&HttpSM::state_http_server_opened);
 
     // We need to close the previous attempt
@@ -6757,8 +6571,6 @@ HttpSM::set_next_state()
     Action *action_handle = connect_sm.acquire_txn(this);
     if (action_handle != ACTION_RESULT_DONE) {
       pending_action = action_handle;
-    } else {
-      this->state_http_server_opened(EVENT_DONE, nullptr);
     }
     break;
   }
@@ -6899,28 +6711,6 @@ HttpSM::set_next_state()
       pending_action = action_handle;
     }
 
-    break;
-  }
-
-  case HttpTransact::SM_ACTION_ORIGIN_SERVER_RR_MARK_DOWN: {
-    HTTP_SM_SET_DEFAULT_HANDLER(&HttpSM::state_mark_os_down);
-
-    ink_assert(t_state.dns_info.looking_up == HttpTransact::ORIGIN_SERVER);
-
-    // TODO: This might not be optimal (or perhaps even correct), but it will
-    // effectively mark the host as down. What's odd is that state_mark_os_down
-    // above isn't triggering.
-    HttpSM::do_hostdb_update_if_necessary();
-
-    // do_hostdb_lookup();
-    HTTP_SM_SET_DEFAULT_HANDLER(&HttpSM::state_hostdb_lookedup);
-    Action *action_handle = connect_sm.do_hostdb_lookup(this);
-    if (action_handle != ACTION_RESULT_DONE) {
-      ink_assert(pending_action == nullptr);
-      pending_action = action_handle;
-    } else {
-      this->state_hostdb_lookedup(EVENT_DONE, nullptr);
-    }
     break;
   }
 
