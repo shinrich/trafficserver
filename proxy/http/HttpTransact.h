@@ -384,7 +384,6 @@ public:
 
     SM_ACTION_ORIGIN_SERVER_OPEN,
     SM_ACTION_ORIGIN_SERVER_RAW_OPEN,
-    SM_ACTION_ORIGIN_SERVER_RR_MARK_DOWN,
 
     SM_ACTION_READ_PUSH_HDR,
     SM_ACTION_STORE_PUSH_BODY,
@@ -954,7 +953,6 @@ public:
   static void handle_transform_cache_write(State *s);
   static void handle_response_from_parent(State *s);
   static void handle_response_from_server(State *s);
-  static void delete_server_rr_entry(State *s, int max_retries);
   static void retry_server_connection_not_open(State *s, ServerState_t conn_state, unsigned max_retries);
   static void handle_server_connection_not_open(State *s);
   static void handle_forward_server_connection_open(State *s);

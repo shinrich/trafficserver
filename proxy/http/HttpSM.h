@@ -257,14 +257,6 @@ public:
   //  failed PUSH requests
   void set_ua_half_close_flag();
 
-  // Called by either state_hostdb_lookup() or directly
-  //   by the HostDB in the case of inline completion
-  // Handles the setting of all state necessary before
-  //   calling transact to process the hostdb lookup
-  // A NULL 'r' argument indicates the hostdb lookup failed
-  void process_hostdb_info(HostDBInfo *r);
-  void process_srv_info(HostDBInfo *r);
-
   // Called by transact.  Synchronous.
   VConnection *do_transform_open();
   VConnection *do_post_transform_open();
@@ -297,7 +289,6 @@ public:
   void txn_hook_add(TSHttpHookID id, INKContInternal *cont);
   APIHook *txn_hook_get(TSHttpHookID id);
 
-  bool is_private();
   bool is_redirect_required();
 
   /// Get the protocol stack for the inbound (client, user agent) connection.
