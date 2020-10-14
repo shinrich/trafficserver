@@ -54,6 +54,7 @@ how_to_open_connection(HttpTransact::State &s)
   case HttpTransact::CACHE_PREPARE_TO_UPDATE:
   case HttpTransact::CACHE_PREPARE_TO_WRITE:
     s.transact_return_point = HttpTransact::handle_cache_write_lock;
+    ink_release_assert(!"Should not get here from the retry logic");
     return HttpTransact::SM_ACTION_CACHE_ISSUE_WRITE;
   default:
     // This covers:
@@ -69,23 +70,16 @@ how_to_open_connection(HttpTransact::State &s)
   // Setting up a direct CONNECT tunnel enters OriginServerRawOpen. We always do that if we
   // are not forwarding CONNECT and are not going to a parent proxy.
   if (s.method == HTTP_WKSIDX_CONNECT) {
-    if (s.txn_conf->forward_connect_method == 1 || s.parent_result.result == PARENT_SPECIFIED) {
-      connect_next_action = HttpTransact::SM_ACTION_ORIGIN_SERVER_OPEN;
-    } else {
+    if (s.txn_conf->forward_connect_method != 1 && s.parent_result.result != PARENT_SPECIFIED) {
       connect_next_action = HttpTransact::SM_ACTION_ORIGIN_SERVER_RAW_OPEN;
     }
-  }
-
-  if (!s.already_downgraded) { // false unless downgraded previously (possibly due to HTTP 505)
-    (&s.hdr_info.server_request)->version_set(HTTPVersion(1, 1));
-    HttpTransactHeaders::convert_request(s.current.server->http_version, &s.hdr_info.server_request);
   }
 
   return connect_next_action;
 }
 
 inline static void
-update_dns_info(HttpTransact::DNSLookupInfo *dns, HttpTransact::CurrentInfo *from, int attempts, Arena * /* arena ATS_UNUSED */)
+update_dns_info(HttpTransact::DNSLookupInfo *dns, HttpTransact::CurrentInfo *from, int attempts)
 {
   dns->looking_up  = from->request_to;
   dns->lookup_name = from->server->name;
@@ -342,6 +336,8 @@ ConnectSM::acquire_txn(HttpSM *sm, bool raw)
   auto fam_name          = ats_ip_family_name(ip_family);
   Debug("http_connect", "entered inside acquire_txn [%.*s]", static_cast<int>(fam_name.size()), fam_name.data());
 
+  ink_release_assert(_pending_action == nullptr);
+
   this->_pending_action = nullptr;
   this->_sm_state       = WaitConnect;
 
@@ -349,11 +345,7 @@ ConnectSM::acquire_txn(HttpSM *sm, bool raw)
   // is consistent with the actual upstream in case of retry.
   s.outbound_conn_track_state.clear();
 
-  if (false == s.api_server_addr_set) {
-    ink_assert(s.current.server->dst_addr.host_order_port() > 0);
-  } else {
-    ink_assert(s.current.server->dst_addr.port() != 0); // verify the plugin set it to something.
-  }
+  ink_assert(s.current.server->dst_addr.port() != 0); // verify the plugin set it to something.
 
   char addrbuf[INET6_ADDRPORTSTRLEN];
   Debug("http_connect", "[%" PRId64 "] open connection to %s: %s", _root_sm->sm_id, s.current.server->name,
@@ -937,9 +929,16 @@ ConnectSM::do_retry_request()
           if (action_handle != ACTION_RESULT_DONE) {
             _pending_action = action_handle;
           } else {
+            // Invoke Connect logic
+            Action *action_handle = this->acquire_txn();
+            _sm_state             = RetryConnect;
+            if (action_handle != ACTION_RESULT_DONE) {
+              _pending_action = action_handle;
+            } else {
+            }
           }
         } else if ((s.dns_info.srv_lookup_success || s.host_db_info.is_rr_elt()) && (s.txn_conf->connect_attempts_rr_retries > 0) &&
-                   (s.current.attempts % s.txn_conf->connect_attempts_rr_retries == 0)) {
+                   ((s.current.attempts + 1) % s.txn_conf->connect_attempts_rr_retries == 0)) {
           // SKH - Does this case retry?
           this->delete_server_rr_entry(max_connect_retries);
           SET_HANDLER(&ConnectSM::state_mark_os_down);
@@ -979,6 +978,13 @@ ConnectSM::do_retry_request()
             if (action_handle != ACTION_RESULT_DONE) {
               _pending_action = action_handle;
             } else {
+              // Invoke Connect logic
+              Action *action_handle = this->acquire_txn();
+              _sm_state             = RetryConnect;
+              if (action_handle != ACTION_RESULT_DONE) {
+                _pending_action = action_handle;
+              } else {
+              }
             }
             // Invoke DNS.  Set state to Connect next
           } else {
@@ -1242,7 +1248,7 @@ ConnectSM::delete_server_rr_entry(int max_retries)
   ink_assert(s.current.server->had_connect_fail());
   ink_assert(s.current.request_to == HttpTransact::ORIGIN_SERVER);
   ink_assert(s.current.server == &s.server_info);
-  update_dns_info(&s.dns_info, &s.current, 0, &s.arena);
+  update_dns_info(&s.dns_info, &s.current, 0);
   s.current.attempts++;
   Debug("http_trans", "[delete_server_rr_entry] attempts now: %d, max: %d", s.current.attempts, max_retries);
   // TRANSACT_RETURN(SM_ACTION_ORIGIN_SERVER_RR_MARK_DOWN, ReDNSRoundRobin);
