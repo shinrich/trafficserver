@@ -120,6 +120,7 @@ private:
     UndefinedSMState,
     WaitConnect,
     RetryConnect,
+    FailConnect,
     WaitAddress,
     RetryAddress,
   } _sm_state = UndefinedSMState;
