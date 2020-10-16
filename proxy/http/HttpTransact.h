@@ -944,7 +944,6 @@ public:
 
   static void CallOSDNSLookup(State *s);
   static void OSDNSLookup(State *s);
-  static void ReDNSRoundRobin(State *s);
   static void PPDNSLookup(State *s);
   static void OriginServerRawOpen(State *s);
   static void HandleCacheOpenRead(State *s);

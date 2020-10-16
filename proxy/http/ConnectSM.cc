@@ -814,6 +814,7 @@ ConnectSM::state_http_server_open(int event, void *data)
   case VC_EVENT_ACTIVE_TIMEOUT:
   case VC_EVENT_ERROR:
   case NET_EVENT_OPEN_FAILED:
+    this->_sm_state = FailConnect;
     s.current.state = HttpTransact::CONNECTION_ERROR;
     // save the errno from the connect fail for future use (passed as negative value, flip back)
     s.current.server->set_connect_fail(event == NET_EVENT_OPEN_FAILED ? -reinterpret_cast<intptr_t>(data) : ECONNABORTED);
@@ -864,6 +865,7 @@ ConnectSM::retry_connection(HttpSM *sm)
 {
   ink_release_assert(_pending_action == nullptr);
   this->init(sm);
+  this->_sm_state = FailConnect;
   if (do_retry_request()) {
     return &_captive_action;
   }
@@ -949,15 +951,15 @@ ConnectSM::do_retry_request()
           this->delete_server_rr_entry(max_connect_retries);
           SET_HANDLER(&ConnectSM::state_mark_os_down);
           do_hostdb_update_if_necessary();
-          Action *action_handle = this->do_dns_lookup();
           _sm_state             = RetryAddress;
+          Action *action_handle = this->do_dns_lookup();
           if (action_handle != ACTION_RESULT_DONE) {
             _pending_action = action_handle;
           } else {
+            _sm_state = RetryConnect;
             ReDNSRoundRobin();
             // Invoke Connect logic
             Action *action_handle = this->acquire_txn();
-            _sm_state             = RetryConnect;
             if (action_handle != ACTION_RESULT_DONE) {
               _pending_action = action_handle;
             } else {
@@ -979,27 +981,25 @@ ConnectSM::do_retry_request()
             s.dns_info.os_addr_style = HttpTransact::DNSLookupInfo::OS_Addr::OS_ADDR_USE_CLIENT;
             // TRANSACT_RETURN(SM_ACTION_API_OS_DNS, OSDNSLookup);
             // Invoke DNS.  Set state to Connect next
-            Action *action_handle = this->do_dns_lookup();
             _sm_state             = RetryAddress;
+            Action *action_handle = this->do_dns_lookup();
             if (action_handle != ACTION_RESULT_DONE) {
               _pending_action = action_handle;
             } else {
               // Invoke Connect logic
-              Action *action_handle = this->acquire_txn();
               _sm_state             = RetryConnect;
+              Action *action_handle = this->acquire_txn();
               if (action_handle != ACTION_RESULT_DONE) {
                 _pending_action = action_handle;
-              } else {
               }
             }
             // Invoke DNS.  Set state to Connect next
           } else {
             // Invoke Connect logic
-            Action *action_handle = this->acquire_txn();
             _sm_state             = RetryConnect;
+            Action *action_handle = this->acquire_txn();
             if (action_handle != ACTION_RESULT_DONE) {
               _pending_action = action_handle;
-            } else {
             }
           }
         }
