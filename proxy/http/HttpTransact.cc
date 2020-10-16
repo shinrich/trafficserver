@@ -1705,61 +1705,6 @@ HttpTransact::PPDNSLookup(State *s)
 }
 
 ///////////////////////////////////////////////////////////////////////////////
-//
-// Name       : ReDNSRoundRobin
-// Description: Called after we fail to contact part of a round-robin
-//              robin server set and we found a another ip address.
-//
-// Details    :
-//
-//
-//
-// Possible Next States From Here:
-// - HttpTransact::ORIGIN_SERVER_RAW_OPEN;
-// - HttpTransact::ORIGIN_SERVER_OPEN;
-// - HttpTransact::PROXY_INTERNAL_CACHE_NOOP;
-//
-///////////////////////////////////////////////////////////////////////////////
-void
-HttpTransact::ReDNSRoundRobin(State *s)
-{
-  ink_assert(s->current.server == &s->server_info);
-  ink_assert(s->current.server->had_connect_fail());
-
-  if (s->dns_info.lookup_success) {
-    // We using a new server now so clear the connection
-    //  failure mark
-    s->current.server->clear_connect_fail();
-
-    // Our ReDNS of the server succeeded so update the necessary
-    //  information and try again. Need to preserve the current port value if possible.
-    in_port_t server_port = s->current.server->dst_addr.host_order_port();
-    // Temporary check to make sure the port preservation can be depended upon. That should be the case
-    // because we get here only after trying a connection. Remove for 6.2.
-    ink_assert(s->current.server->dst_addr.isValid() && 0 != server_port);
-
-    ats_ip_copy(&s->server_info.dst_addr, s->host_db_info.ip());
-    s->server_info.dst_addr.port() = htons(server_port);
-    ats_ip_copy(&s->request_data.dest_ip, &s->server_info.dst_addr);
-    get_ka_info_from_host_db(s, &s->server_info, &s->client_info, &s->host_db_info);
-
-    char addrbuf[INET6_ADDRSTRLEN];
-    TxnDebug("http_trans", "[ReDNSRoundRobin] DNS lookup for O.S. successful IP: %s",
-             ats_ip_ntop(&s->server_info.dst_addr.sa, addrbuf, sizeof(addrbuf)));
-
-    s->next_action = how_to_open_connection(s);
-  } else {
-    // Our ReDNS failed so output the DNS failure error message
-    build_error_response(s, HTTP_STATUS_BAD_GATEWAY, "Cannot find server.", "connect#dns_failed");
-    s->cache_info.action = CACHE_DO_NO_ACTION;
-    s->next_action       = SM_ACTION_SEND_ERROR_CACHE_NOOP;
-    //  s->next_action = PROXY_INTERNAL_CACHE_NOOP;
-  }
-
-  return;
-}
-
-///////////////////////////////////////////////////////////////////////////////
 // Name       : OSDNSLookup
 // Description: called after the DNS lookup of origin server name
 //
