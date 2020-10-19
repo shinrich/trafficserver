@@ -677,8 +677,8 @@ does_method_effect_cache(int method)
            method == HTTP_WKSIDX_POST));
 }
 
-inline static HttpTransact::StateMachineAction_t
-how_to_open_connection(HttpTransact::State *s)
+HttpTransact::StateMachineAction_t
+HttpTransact::how_to_open_connection(HttpTransact::State *s)
 {
   ink_assert((s->pending_work == nullptr) || (s->current.request_to == HttpTransact::PARENT_PROXY));
 
