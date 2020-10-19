@@ -35,49 +35,6 @@
 
 using lbw = ts::LocalBufferWriter<256>;
 
-inline static HttpTransact::StateMachineAction_t
-how_to_open_connection(HttpTransact::State &s)
-{
-  ink_assert((s.pending_work == nullptr) || (s.current.request_to == HttpTransact::PARENT_PROXY));
-
-  // Originally we returned which type of server to open
-  // Now, however, we may want to issue a cache
-  // operation first in order to lock the cache
-  // entry to prevent multiple origin server requests
-  // for the same document.
-  // The cache operation that we actually issue, of
-  // course, depends on the specified "cache_action".
-  // If there is no cache-action to be issued, just
-  // connect to the server.
-  switch (s.cache_info.action) {
-  case HttpTransact::CACHE_PREPARE_TO_DELETE:
-  case HttpTransact::CACHE_PREPARE_TO_UPDATE:
-  case HttpTransact::CACHE_PREPARE_TO_WRITE:
-    s.transact_return_point = HttpTransact::handle_cache_write_lock;
-    ink_release_assert(!"Should not get here from the retry logic");
-    return HttpTransact::SM_ACTION_CACHE_ISSUE_WRITE;
-  default:
-    // This covers:
-    // CACHE_DO_UNDEFINED, CACHE_DO_NO_ACTION, CACHE_DO_DELETE,
-    // CACHE_DO_LOOKUP, CACHE_DO_REPLACE, CACHE_DO_SERVE,
-    // CACHE_DO_SERVE_AND_DELETE, CACHE_DO_SERVE_AND_UPDATE,
-    // CACHE_DO_UPDATE, CACHE_DO_WRITE, TOTAL_CACHE_ACTION_TYPES
-    break;
-  }
-
-  HttpTransact::StateMachineAction_t connect_next_action = HttpTransact::SM_ACTION_ORIGIN_SERVER_OPEN;
-
-  // Setting up a direct CONNECT tunnel enters OriginServerRawOpen. We always do that if we
-  // are not forwarding CONNECT and are not going to a parent proxy.
-  if (s.method == HTTP_WKSIDX_CONNECT) {
-    if (s.txn_conf->forward_connect_method != 1 && s.parent_result.result != PARENT_SPECIFIED) {
-      connect_next_action = HttpTransact::SM_ACTION_ORIGIN_SERVER_RAW_OPEN;
-    }
-  }
-
-  return connect_next_action;
-}
-
 inline static void
 update_dns_info(HttpTransact::DNSLookupInfo *dns, HttpTransact::CurrentInfo *from, int attempts)
 {
@@ -970,7 +927,7 @@ ConnectSM::do_retry_request()
         } else {
           HttpTransact::retry_server_connection_not_open(&s, s.current.state, max_connect_retries);
           Debug("http_trans", "[handle_response_from_server] Error. Retrying...");
-          s.next_action = how_to_open_connection(s);
+          s.next_action = HttpTransact::how_to_open_connection(&s);
 
           if (s.api_server_addr_set) {
             // If the plugin set a server address, back up to the OS_DNS hook

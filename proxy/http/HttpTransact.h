@@ -1047,6 +1047,7 @@ public:
                                    const char *error_body_type);
   static void build_redirect_response(State *s);
   static const char *get_error_string(int erno);
+  static HttpTransact::StateMachineAction_t how_to_open_connection(HttpTransact::State *s);
 
   // the stat functions
   static void update_size_and_time_stats(State *s, ink_hrtime total_time, ink_hrtime user_agent_write_time,
