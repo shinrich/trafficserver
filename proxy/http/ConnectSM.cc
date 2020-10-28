@@ -471,6 +471,9 @@ ConnectSM::acquire_txn(HttpSM *sm, bool raw)
       _root_sm->ua_txn->attach_server_session(nullptr);
     }
   }
+
+  // See if there is already a suitable connection started to the same origin
+
   // Check to see if we have reached the max number of connections.
   // Atomically read the current number of connections and check to see
   // if we have gone above the max allowed.
@@ -692,6 +695,47 @@ ConnectSM::state_http_server_raw_open(int event, void *data)
   return 0;
 }
 
+void
+ConnectSM::create_server_txn()
+{
+  HttpTransact::State &s      = _root_sm->t_state;
+  Http1ServerSession *session = (TS_SERVER_SESSION_SHARING_POOL_THREAD == s.http_config_param->server_session_sharing_pool) ?
+                                  THREAD_ALLOC_INIT(httpServerSessionAllocator, mutex->thread_holding) :
+                                  httpServerSessionAllocator.alloc();
+  session->sharing_pool  = static_cast<TSServerSessionSharingPoolType>(s.http_config_param->server_session_sharing_pool);
+  session->sharing_match = static_cast<TSServerSessionSharingMatchMask>(s.txn_conf->server_session_sharing_match);
+
+  session->attach_hostname(s.current.server->name);
+
+  session->new_connection(_netvc, _netvc_read_buffer, _netvc_reader);
+
+  ATS_PROBE1(new_origin_server_connection, s.current.server->name);
+
+  session->set_active();
+  ats_ip_copy(&s.server_info.src_addr, _netvc->get_local_addr());
+
+  // If origin_max_connections or origin_min_keep_alive_connections is set then we are metering
+  // the max and or min number of connections per host. Transfer responsibility for this to the
+  // session object.
+  if (s.outbound_conn_track_state.is_active()) {
+    Debug("http_connect", "[%" PRId64 "] max number of outbound connections: %d", _root_sm->sm_id,
+          s.txn_conf->outbound_conntrack.max);
+    session->enable_outbound_connection_tracking(s.outbound_conn_track_state.drop());
+  }
+  _server_txn = session->new_transaction();
+  if (s.current.request_to == HttpTransact::PARENT_PROXY) {
+    session->to_parent_proxy = true;
+    HTTP_INCREMENT_DYN_STAT(http_current_parent_proxy_connections_stat);
+    HTTP_INCREMENT_DYN_STAT(http_total_parent_proxy_connections_stat);
+  } else {
+    session->to_parent_proxy = false;
+  }
+  //_server_txn->do_io_write(this, 1, _server_txn->get_reader());
+  _netvc             = nullptr;
+  _netvc_read_buffer = nullptr;
+  _netvc_reader      = nullptr;
+}
+
 int
 ConnectSM::state_http_server_open(int event, void *data)
 {
@@ -702,56 +746,27 @@ ConnectSM::state_http_server_open(int event, void *data)
     _pending_action = nullptr;
   }
   _root_sm->milestones[TS_MILESTONE_SERVER_CONNECT_END] = Thread::get_hrtime();
-  NetVConnection *netvc                                 = nullptr;
 
   switch (event) {
   case NET_EVENT_OPEN: {
-    Http1ServerSession *session = (TS_SERVER_SESSION_SHARING_POOL_THREAD == s.http_config_param->server_session_sharing_pool) ?
-                                    THREAD_ALLOC_INIT(httpServerSessionAllocator, mutex->thread_holding) :
-                                    httpServerSessionAllocator.alloc();
-    session->sharing_pool  = static_cast<TSServerSessionSharingPoolType>(s.http_config_param->server_session_sharing_pool);
-    session->sharing_match = static_cast<TSServerSessionSharingMatchMask>(s.txn_conf->server_session_sharing_match);
-
-    netvc = static_cast<NetVConnection *>(data);
-    session->attach_hostname(s.current.server->name);
-    UnixNetVConnection *vc = static_cast<UnixNetVConnection *>(data);
     // Since the UnixNetVConnection::action_ or SocksEntry::action_ may be returned from netProcessor.connect_re, and the
     // SocksEntry::action_ will be copied into UnixNetVConnection::action_ before call back NET_EVENT_OPEN from SocksEntry::free(),
     // so we just compare the Continuation between pending_action and VC's action_.
+    _netvc                 = static_cast<NetVConnection *>(data);
+    UnixNetVConnection *vc = static_cast<UnixNetVConnection *>(_netvc);
     ink_release_assert(_pending_action == nullptr || _pending_action->continuation == vc->get_action()->continuation);
     _pending_action = nullptr;
-
-    session->new_connection(vc, nullptr, nullptr);
-
-    ATS_PROBE1(new_origin_server_connection, s.current.server->name);
-
-    session->set_active();
-    ats_ip_copy(&s.server_info.src_addr, netvc->get_local_addr());
-
-    // If origin_max_connections or origin_min_keep_alive_connections is set then we are metering
-    // the max and or min number of connections per host. Transfer responsibility for this to the
-    // session object.
-    if (s.outbound_conn_track_state.is_active()) {
-      Debug("http_connect", "[%" PRId64 "] max number of outbound connections: %d", _root_sm->sm_id,
-            s.txn_conf->outbound_conntrack.max);
-      session->enable_outbound_connection_tracking(s.outbound_conn_track_state.drop());
-    }
-    _server_txn = session->new_transaction();
-    if (s.current.request_to == HttpTransact::PARENT_PROXY) {
-      session->to_parent_proxy = true;
-      HTTP_INCREMENT_DYN_STAT(http_current_parent_proxy_connections_stat);
-      HTTP_INCREMENT_DYN_STAT(http_total_parent_proxy_connections_stat);
-
-    } else {
-      session->to_parent_proxy = false;
-    }
     if (_root_sm->plugin_tunnel_type == HTTP_NO_PLUGIN_TUNNEL) {
       Debug("http_connect", "[%" PRId64 "] setting handler for TCP handshake", _root_sm->sm_id);
       // Just want to get a write-ready event so we know that the TCP handshake is complete.
-      _server_txn->handler = (ContinuationHandler)&ConnectSM::state_http_server_open;
-      _server_txn->do_io_write(this, 1, _server_txn->get_reader());
+      //_server_txn->handler = (ContinuationHandler)&ConnectSM::state_http_server_open;
+      //_netvc->do_io_write(this, 1, _server_txn->get_reader());
+      _netvc_read_buffer = new_MIOBuffer(HTTP_SERVER_RESP_HDR_BUFFER_INDEX);
+      _netvc_reader      = _netvc_read_buffer->alloc_reader();
+      _netvc->do_io_write(this, 1, _netvc_reader);
     } else { // in the case of an intercept plugin don't to the connect timeout change
       Debug("http_connect", "[%" PRId64 "] not setting handler for TCP handshake", _root_sm->sm_id);
+      this->create_server_txn();
       _return_state = ServerTxnCreated;
       _root_sm->handleEvent(event, data);
     }
@@ -763,6 +778,8 @@ ConnectSM::state_http_server_open(int event, void *data)
   case VC_EVENT_WRITE_COMPLETE:
     // Update the time out to the regular connection timeout.
     Debug("http_connect", "[%" PRId64 "] TCP Handshake complete", _root_sm->sm_id);
+    _netvc->do_io_write(nullptr, 0, nullptr);
+    this->create_server_txn();
     _return_state = ServerTxnCreated;
     _root_sm->handleEvent(event, data);
     ink_release_assert(_pending_action == nullptr);
@@ -771,6 +788,7 @@ ConnectSM::state_http_server_open(int event, void *data)
   case VC_EVENT_ACTIVE_TIMEOUT:
   case VC_EVENT_ERROR:
   case NET_EVENT_OPEN_FAILED:
+    _netvc->do_io_write(nullptr, 0, nullptr);
     this->_sm_state = FailConnect;
     s.current.state = HttpTransact::CONNECTION_ERROR;
     // save the errno from the connect fail for future use (passed as negative value, flip back)
@@ -1050,6 +1068,15 @@ ConnectSM::init(HttpSM *sm)
 void
 ConnectSM::cleanup()
 {
+  if (_netvc) {
+    _netvc->do_io_close();
+    _netvc = nullptr;
+  }
+  if (_netvc_read_buffer) {
+    free_MIOBuffer(_netvc_read_buffer);
+    _netvc_read_buffer = nullptr;
+    _netvc_reader      = nullptr;
+  }
   if (_server_txn) {
     _server_txn->do_io_close();
     _server_txn = nullptr;
