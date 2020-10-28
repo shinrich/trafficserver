@@ -730,7 +730,7 @@ ConnectSM::create_server_txn()
   } else {
     session->to_parent_proxy = false;
   }
-  //_server_txn->do_io_write(this, 1, _server_txn->get_reader());
+  _server_txn->do_io_write(this, 0, nullptr);
   _netvc             = nullptr;
   _netvc_read_buffer = nullptr;
   _netvc_reader      = nullptr;
@@ -759,8 +759,7 @@ ConnectSM::state_http_server_open(int event, void *data)
     if (_root_sm->plugin_tunnel_type == HTTP_NO_PLUGIN_TUNNEL) {
       Debug("http_connect", "[%" PRId64 "] setting handler for TCP handshake", _root_sm->sm_id);
       // Just want to get a write-ready event so we know that the TCP handshake is complete.
-      //_server_txn->handler = (ContinuationHandler)&ConnectSM::state_http_server_open;
-      //_netvc->do_io_write(this, 1, _server_txn->get_reader());
+      // The buffer we create will be handed over to the eventually created server session
       _netvc_read_buffer = new_MIOBuffer(HTTP_SERVER_RESP_HDR_BUFFER_INDEX);
       _netvc_reader      = _netvc_read_buffer->alloc_reader();
       _netvc->do_io_write(this, 1, _netvc_reader);
@@ -778,7 +777,6 @@ ConnectSM::state_http_server_open(int event, void *data)
   case VC_EVENT_WRITE_COMPLETE:
     // Update the time out to the regular connection timeout.
     Debug("http_connect", "[%" PRId64 "] TCP Handshake complete", _root_sm->sm_id);
-    _netvc->do_io_write(nullptr, 0, nullptr);
     this->create_server_txn();
     _return_state = ServerTxnCreated;
     _root_sm->handleEvent(event, data);
@@ -788,7 +786,6 @@ ConnectSM::state_http_server_open(int event, void *data)
   case VC_EVENT_ACTIVE_TIMEOUT:
   case VC_EVENT_ERROR:
   case NET_EVENT_OPEN_FAILED:
-    _netvc->do_io_write(nullptr, 0, nullptr);
     this->_sm_state = FailConnect;
     s.current.state = HttpTransact::CONNECTION_ERROR;
     // save the errno from the connect fail for future use (passed as negative value, flip back)
