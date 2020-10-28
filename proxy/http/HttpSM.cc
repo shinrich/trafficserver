@@ -1160,7 +1160,7 @@ HttpSM::state_raw_http_server_opened(int event, void *data)
     // Grab the netvc from the connect_sm
     server_entry          = vc_table.new_entry();
     server_entry->vc_type = HTTP_RAW_SERVER_VC;
-    netvc                 = connect_sm.get_netvc();
+    netvc                 = connect_sm.release_netvc();
     server_entry->vc      = netvc;
     t_state.current.state = HttpTransact::CONNECTION_ALIVE;
     ats_ip_copy(&t_state.server_info.src_addr, netvc->get_local_addr());

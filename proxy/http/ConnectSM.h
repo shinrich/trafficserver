@@ -75,13 +75,19 @@ public:
   {
     return _netvc;
   }
+  NetVConnection *
+  release_netvc()
+  {
+    auto retval = _netvc;
+    _netvc      = nullptr;
+    return retval;
+  }
 
   void cleanup();
 
   Action *acquire_txn(HttpSM *sm = nullptr, bool raw = false);
   Action *retry_connection(HttpSM *sm = nullptr);
 
-  Action *acquire_dns(HttpSM *sm);
   Action *do_dns_lookup(HttpSM *sm = nullptr);
   Action *do_hostdb_lookup(HttpSM *sm = nullptr);
 
@@ -115,6 +121,8 @@ private:
   ProxyTransaction *_server_txn = nullptr;
   NetVConnection *_netvc        = nullptr;
   ConnectAction _captive_action;
+  IOBufferReader *_netvc_reader = nullptr;
+  MIOBuffer *_netvc_read_buffer = nullptr;
 
   enum ConnectSMState {
     UndefinedSMState,
@@ -138,6 +146,7 @@ private:
   void mark_host_failure(HostDBInfo *info, time_t time_down);
   void do_hostdb_update_if_necessary();
   bool ReDNSRoundRobin();
+  void create_server_txn();
 
   /* Because we don't want to take a session from a shared pool if we know that it will be private,
    * but we cannot set it to private until we have an attached server session.
