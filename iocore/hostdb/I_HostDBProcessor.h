@@ -121,6 +121,14 @@ union HostDBApplicationInfo {
     uint8_t fail_count;
   } http_data;
 
+  enum HttpVersion_t {
+    HTTP_VERSION_UNDEFINED = 0,
+    HTTP_VERSION_09        = 1,
+    HTTP_VERSION_10        = 2,
+    HTTP_VERSION_11        = 3,
+    HTTP_VERSION_2         = 4,
+  };
+
   struct application_data_rr {
     unsigned int offset;
   } rr;
