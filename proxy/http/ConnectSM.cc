@@ -32,8 +32,135 @@
 #include "HttpTransactHeaders.h"
 #include "Log.h"
 #include "tscore/bwf_std_format.h"
+#include "PoolableSession.h"
+#include <functional>
+#include <map>
 
 using lbw = ts::LocalBufferWriter<256>;
+
+class ConnectingEntry : public Continuation
+{
+public:
+  std::queue<ConnectSM *> _connect_sms;
+  NetVConnection *_netvc        = nullptr;
+  IOBufferReader *_netvc_reader = nullptr;
+  MIOBuffer *_netvc_read_buffer = nullptr;
+  std::string _sni;
+  std::string _cert_name;
+  IpEndpoint _ipaddr;
+  std::string _hostname;
+  Action *_pending_action = nullptr;
+  NetVCOptions opt;
+
+  int state_http_server_open(int event, void *data);
+  static PoolableSession *create_server_session(HttpSM *root_sm, NetVConnection *netvc, MIOBuffer *netvc_read_buffer,
+                                                IOBufferReader *netvc_reader);
+};
+
+struct IpHelper {
+  size_t
+  operator()(IpEndpoint const &arg) const
+  {
+    return IpAddr{&arg.sa}.hash();
+  }
+  bool
+  operator()(IpEndpoint const &arg1, IpEndpoint const &arg2) const
+  {
+    return ats_ip_addr_port_eq(&arg1.sa, &arg2.sa);
+  }
+};
+using ConnectingIpPool = std::unordered_map<IpEndpoint, ConnectingEntry *, IpHelper>;
+
+using ConnectingHostPool = std::map<std::string, ConnectingEntry *, std::less<>>;
+
+class ConnectingPool
+{
+public:
+  ConnectingPool() {}
+  ConnectingIpPool m_ip_pool;
+  ConnectingHostPool m_host_pool;
+};
+
+void
+initialize_thread_for_connecting_pools(EThread *thread)
+{
+  thread->connecting_pool = new ConnectingPool();
+}
+
+int
+ConnectingEntry::state_http_server_open(int event, void *data)
+{
+  Debug("http_connect", "entered inside ConnectingEntry::state_http_server_open");
+
+  switch (event) {
+  case NET_EVENT_OPEN: {
+    _netvc                 = static_cast<NetVConnection *>(data);
+    UnixNetVConnection *vc = static_cast<UnixNetVConnection *>(_netvc);
+    ink_release_assert(_pending_action == nullptr || _pending_action->continuation == vc->get_action()->continuation);
+    _pending_action = nullptr;
+    Debug("http_connect", "ConnectingEntrysetting handler for TCP handshake");
+    // Just want to get a write-ready event so we know that the TCP handshake is complete.
+    // The buffer we create will be handed over to the eventually created server session
+    _netvc_read_buffer = new_MIOBuffer(HTTP_SERVER_RESP_HDR_BUFFER_INDEX);
+    _netvc_reader      = _netvc_read_buffer->alloc_reader();
+    _netvc->do_io_write(this, 1, _netvc_reader);
+    ink_release_assert(_pending_action == nullptr);
+    return 0;
+  }
+  case VC_EVENT_READ_COMPLETE:
+  case VC_EVENT_WRITE_READY:
+  case VC_EVENT_WRITE_COMPLETE: {
+    if (_connect_sms.size() > 0) {
+      ConnectSM *prime_connect_sm = _connect_sms.front();
+      PoolableSession *new_session =
+        ConnectingEntry::create_server_session(prime_connect_sm->get_root_sm(), _netvc, _netvc_read_buffer, _netvc_reader);
+
+      // Did we end up with a multiplexing session?
+      if (new_session->is_multiplexing()) {
+        // Hand off to all queued up ConnectSM's.
+        while (!_connect_sms.empty()) {
+          auto entry = _connect_sms.front();
+          _connect_sms.pop();
+          entry->handleEvent(CONNECT_EVENT_TXN, new_session);
+        }
+      } else {
+        // Hand off to one and tell all of the others to connect directly
+        auto entry = _connect_sms.front();
+        _connect_sms.pop();
+        entry->handleEvent(CONNECT_EVENT_TXN, new_session);
+        while (!_connect_sms.empty()) {
+          entry = _connect_sms.front();
+          _connect_sms.pop();
+          entry->handleEvent(CONNECT_EVENT_DIRECT, new_session);
+        }
+      }
+    }
+
+    // ConnectingEntry should remove itself from the tables and delete itself
+    return 0;
+  }
+  case VC_EVENT_INACTIVITY_TIMEOUT:
+  case VC_EVENT_ACTIVE_TIMEOUT:
+  case VC_EVENT_ERROR:
+  case NET_EVENT_OPEN_FAILED:
+
+    while (!_connect_sms.empty()) {
+      auto entry = _connect_sms.front();
+      _connect_sms.pop();
+      entry->handleEvent(event, data);
+    }
+    // ConnectingEntry should remove itself from the tables and delete itself
+
+    return 0;
+
+  default:
+    Error("[ConnectingEntry::state_http_server_open] Unknown event: %d", event);
+    ink_release_assert(0);
+    return 0;
+  }
+
+  return 0;
+}
 
 inline static void
 update_dns_info(HttpTransact::DNSLookupInfo *dns, HttpTransact::CurrentInfo *from, int attempts)
@@ -282,6 +409,32 @@ ConnectSM::do_hostdb_lookup(HttpSM *sm)
   }
 }
 
+bool
+ConnectSM::origin_multiplexed() const
+{
+  return false;
+}
+
+// Returns true if there was a matching entry that we
+// queued this request on
+bool
+ConnectSM::add_to_existing_request()
+{
+  HttpTransact::State &s = _root_sm->t_state;
+  bool retval            = false;
+
+  EThread *ethread = this_ethread();
+  IpEndpoint ip;
+  ip.assign(&s.current.server->dst_addr.sa);
+  auto ip_iter   = ethread->connecting_pool->m_ip_pool.find(ip);
+  auto host_iter = ethread->connecting_pool->m_host_pool.find(s.current.server->name);
+  if (ip_iter != ethread->connecting_pool->m_ip_pool.end() && host_iter != ethread->connecting_pool->m_host_pool.end()) {
+    ip_iter->second->_connect_sms.push(this);
+    retval = true;
+  }
+  return retval;
+}
+
 Action *
 ConnectSM::acquire_txn(HttpSM *sm, bool raw)
 {
@@ -473,6 +626,19 @@ ConnectSM::acquire_txn(HttpSM *sm, bool raw)
   }
 
   // See if there is already a suitable connection started to the same origin
+  // See if the likely server protocol supports multiplexing on a single session
+  // Use the same matching criteria as we use for the server session reuse
+  // TBD
+
+  // If the origin may support multiplexed origin, see if there is another connect request in play
+  bool multiplexed_origin = !_direct && !raw && this->origin_multiplexed();
+  if (multiplexed_origin) {
+    if (this->add_to_existing_request()) {
+      // We are queued up behind an existing connect request
+      // Go away and wait.
+      return &_captive_action;
+    }
+  }
 
   // Check to see if we have reached the max number of connections.
   // Atomically read the current number of connections and check to see
@@ -626,6 +792,16 @@ ConnectSM::acquire_txn(HttpSM *sm, bool raw)
     SET_HANDLER(&ConnectSM::state_http_server_open);
   }
 
+  ConnectingEntry *new_entry = nullptr;
+  if (multiplexed_origin) {
+    new_entry        = new ConnectingEntry();
+    EThread *ethread = this_ethread();
+    IpEndpoint ip;
+    ip.assign(&s.current.server->dst_addr.sa);
+    ethread->connecting_pool->m_ip_pool.insert(std::make_pair(ip, new_entry));
+    ethread->connecting_pool->m_host_pool.insert(std::make_pair(s.current.server->name, new_entry));
+  }
+
   if (tls_upstream) {
     Debug("http_connect", "calling sslNetProcessor.connect_re");
 
@@ -644,9 +820,13 @@ ConnectSM::acquire_txn(HttpSM *sm, bool raw)
     if (s.server_info.name) {
       opt.set_ssl_servername(s.server_info.name);
     }
+    if (new_entry) {
+      new_entry->opt = opt;
+    }
 
-    connect_action_handle = sslNetProcessor.connect_re(this,                           // state machine
-                                                       &s.current.server->dst_addr.sa, // addr + port
+    connect_action_handle = sslNetProcessor.connect_re(new_entry != nullptr ? static_cast<Continuation *>(new_entry) :
+                                                                              static_cast<Continuation *>(this), // state machine
+                                                       &s.current.server->dst_addr.sa,                           // addr + port
                                                        &opt);
   } else {
     Debug("http_connect", "calling netProcessor.connect_re");
@@ -695,40 +875,49 @@ ConnectSM::state_http_server_raw_open(int event, void *data)
   return 0;
 }
 
-void
-ConnectSM::create_server_txn()
+PoolableSession *
+ConnectingEntry::create_server_session(HttpSM *root_sm, NetVConnection *netvc, MIOBuffer *netvc_read_buffer,
+                                       IOBufferReader *netvc_reader)
 {
-  HttpTransact::State &s      = _root_sm->t_state;
-  Http1ServerSession *session = (TS_SERVER_SESSION_SHARING_POOL_THREAD == s.http_config_param->server_session_sharing_pool) ?
-                                  THREAD_ALLOC_INIT(httpServerSessionAllocator, mutex->thread_holding) :
-                                  httpServerSessionAllocator.alloc();
-  session->sharing_pool  = static_cast<TSServerSessionSharingPoolType>(s.http_config_param->server_session_sharing_pool);
-  session->sharing_match = static_cast<TSServerSessionSharingMatchMask>(s.txn_conf->server_session_sharing_match);
+  HttpTransact::State &s      = root_sm->t_state;
+  Http1ServerSession *session = httpServerSessionAllocator.alloc();
+  session->sharing_pool       = static_cast<TSServerSessionSharingPoolType>(s.http_config_param->server_session_sharing_pool);
+  session->sharing_match      = static_cast<TSServerSessionSharingMatchMask>(s.txn_conf->server_session_sharing_match);
 
   session->attach_hostname(s.current.server->name);
 
-  session->new_connection(_netvc, _netvc_read_buffer, _netvc_reader);
-
+  session->new_connection(netvc, netvc_read_buffer, netvc_reader);
   ATS_PROBE1(new_origin_server_connection, s.current.server->name);
-
   session->set_active();
-  ats_ip_copy(&s.server_info.src_addr, _netvc->get_local_addr());
+
+  ats_ip_copy(&s.server_info.src_addr, netvc->get_local_addr());
 
   // If origin_max_connections or origin_min_keep_alive_connections is set then we are metering
   // the max and or min number of connections per host. Transfer responsibility for this to the
   // session object.
   if (s.outbound_conn_track_state.is_active()) {
-    Debug("http_connect", "[%" PRId64 "] max number of outbound connections: %d", _root_sm->sm_id,
+    Debug("http_connect", "[%" PRId64 "] max number of outbound connections: %d", root_sm->sm_id,
           s.txn_conf->outbound_conntrack.max);
     session->enable_outbound_connection_tracking(s.outbound_conn_track_state.drop());
   }
-  _server_txn = session->new_transaction();
+  return session;
+}
+
+void
+ConnectSM::create_server_txn(PoolableSession *new_session)
+{
+  HttpTransact::State &s = _root_sm->t_state;
+  if (new_session == nullptr) {
+    new_session = ConnectingEntry::create_server_session(_root_sm, _netvc, _netvc_read_buffer, _netvc_reader);
+  }
+
+  _server_txn = new_session->new_transaction();
   if (s.current.request_to == HttpTransact::PARENT_PROXY) {
-    session->to_parent_proxy = true;
+    new_session->to_parent_proxy = true;
     HTTP_INCREMENT_DYN_STAT(http_current_parent_proxy_connections_stat);
     HTTP_INCREMENT_DYN_STAT(http_total_parent_proxy_connections_stat);
   } else {
-    session->to_parent_proxy = false;
+    new_session->to_parent_proxy = false;
   }
   _server_txn->do_io_write(this, 0, nullptr);
   _netvc             = nullptr;
@@ -771,6 +960,24 @@ ConnectSM::state_http_server_open(int event, void *data)
     }
     ink_release_assert(_pending_action == nullptr);
     return 0;
+  }
+  case CONNECT_EVENT_TXN:
+    Debug("http_connect", "[%" PRId64 "] TCP Handshake complete", _root_sm->sm_id);
+    this->create_server_txn(static_cast<PoolableSession *>(data));
+    _return_state = ServerTxnCreated;
+    _root_sm->handleEvent(event, data);
+    ink_release_assert(_pending_action == nullptr);
+    return 0;
+  case CONNECT_EVENT_DIRECT: {
+    // Go back to acquire_txn, but make sure to not get in the ConnectingPool
+    _direct               = true;
+    Action *action_handle = this->acquire_txn();
+    _sm_state             = RetryConnect;
+    if (action_handle != ACTION_RESULT_DONE) {
+      _pending_action = action_handle;
+      return 0;
+    }
+    break;
   }
   case VC_EVENT_READ_COMPLETE:
   case VC_EVENT_WRITE_READY:

@@ -25,12 +25,18 @@
 
 #include "tscore/ink_platform.h"
 #include "P_EventSystem.h"
+#include <queue>
+#include <unordered_map>
+
+#define CONNECT_EVENT_TXN (HTTP_NET_CONNECTION_EVENT_EVENTS_START) + 0
+#define CONNECT_EVENT_DIRECT (HTTP_NET_CONNECTION_EVENT_EVENTS_START) + 1
 
 class HttpSM; // So we can reach through to access the HttpTranact::state
 class ConnectSM;
 class ProxyTransaction;
 class NetVConnection;
 class HostDBInfo;
+class PoolableSession;
 typedef int (ConnectSM::*ConnectSMHandler)(int event, void *data);
 
 struct ConnectAction : public Action {
@@ -113,6 +119,7 @@ public:
   void init(HttpSM *sm);
 
   bool do_retry_request();
+  bool origin_multiplexed() const;
 
 private:
   int _max_connect_retries      = 0;
@@ -123,6 +130,7 @@ private:
   ConnectAction _captive_action;
   IOBufferReader *_netvc_reader = nullptr;
   MIOBuffer *_netvc_read_buffer = nullptr;
+  bool _direct                  = false; // Forcing ConnectSM to bypass queueing in the ConnectingPool
 
   enum ConnectSMState {
     UndefinedSMState,
@@ -146,7 +154,10 @@ private:
   void mark_host_failure(HostDBInfo *info, time_t time_down);
   void do_hostdb_update_if_necessary();
   bool ReDNSRoundRobin();
-  void create_server_txn();
+  void create_server_txn(PoolableSession *new_session = nullptr);
+  PoolableSession *create_server_session(HttpSM root_sm, NetVConnection *netvc, MIOBuffer *netvc_read_buffer,
+                                         IOBufferReader *netvc_reader);
+  bool add_to_existing_request();
 
   /* Because we don't want to take a session from a shared pool if we know that it will be private,
    * but we cannot set it to private until we have an attached server session.
