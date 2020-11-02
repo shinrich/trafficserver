@@ -93,13 +93,6 @@ public:
 
   int transact_count = 0;
 
-  // Used to determine whether the session is for parent proxy
-  // it is session to origin server
-  // We need to determine whether a closed connection was to
-  // close parent proxy to update the
-  // proxy.process.http.current_parent_proxy_connections
-  bool to_parent_proxy = false;
-
   // The ServerSession owns the following buffer which use
   //   for parsing the headers.  The server session needs to
   //   own the buffer so we can go from a keep-alive state

@@ -82,6 +82,18 @@ public:
   bool is_private() const;
 
   void set_netvc(NetVConnection *newvc);
+  virtual bool
+  is_multiplexing()
+  {
+    return false;
+  }
+
+  // Used to determine whether the session is for parent proxy
+  // it is session to origin server
+  // We need to determine whether a closed connection was to
+  // close parent proxy to update the
+  // proxy.process.http.current_parent_proxy_connections
+  bool to_parent_proxy = false;
 
 private:
   // Sessions become if authentication headers
