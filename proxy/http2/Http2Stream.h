@@ -111,8 +111,8 @@ public:
 
   bool allow_half_open() const override;
   bool is_first_transaction() const override;
-  void increment_client_transactions_stat() override;
-  void decrement_client_transactions_stat() override;
+  void increment_transactions_stat() override;
+  void decrement_transactions_stat() override;
   int get_transaction_id() const override;
   int get_transaction_priority_weight() const override;
   int get_transaction_priority_dependence() const override;
@@ -125,7 +125,7 @@ public:
 
   void clear_io_events();
 
-  bool is_client_state_writeable() const;
+  bool is_state_writeable() const;
   bool is_closed() const;
   IOBufferReader *send_get_data_reader() const;
 
@@ -147,14 +147,14 @@ public:
   //////////////////
   // Variables
   uint8_t *header_blocks        = nullptr;
-  uint32_t header_blocks_length = 0; // total length of header blocks (not include Padding or other fields)
-
+  uint32_t header_blocks_length = 0; // total length of header blocks (not include
+                                     // Padding or other fields)
+  uint32_t recv_header_length = 0;   // total length of payload (include Padding
+                                     // and other fields)
   bool recv_end_stream = false;
   bool send_end_stream = false;
 
-  bool sent_request_header       = false;
   bool parsing_header_done       = false;
-  bool request_sent              = false;
   bool is_first_transaction_flag = false;
 
   HTTPHdr _send_header;
@@ -164,7 +164,6 @@ public:
   Http2ConnectionState &get_connection_state();
 
 private:
-  bool response_is_data_available() const;
   Event *send_tracked_event(Event *event, int send_event, VIO *vio);
   void send_body(bool call_update);
 
@@ -317,10 +316,11 @@ Http2Stream::allow_half_open() const
 }
 
 inline bool
-Http2Stream::is_client_state_writeable() const
+Http2Stream::is_state_writeable() const
 {
   return _state == Http2StreamState::HTTP2_STREAM_STATE_OPEN || _state == Http2StreamState::HTTP2_STREAM_STATE_HALF_CLOSED_REMOTE ||
-         _state == Http2StreamState::HTTP2_STREAM_STATE_RESERVED_LOCAL;
+         _state == Http2StreamState::HTTP2_STREAM_STATE_RESERVED_LOCAL ||
+         (_outbound_flag && _state == Http2StreamState::HTTP2_STREAM_STATE_IDLE);
 }
 
 inline bool
