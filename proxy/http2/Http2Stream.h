@@ -163,6 +163,8 @@ public:
   IOBufferReader *_send_reader             = nullptr;
   Http2DependencyTree::Node *priority_node = nullptr;
 
+  Http2ConnectionState &get_connection_state();
+
 private:
   bool response_is_data_available() const;
   Event *send_tracked_event(Event *event, int send_event, VIO *vio);

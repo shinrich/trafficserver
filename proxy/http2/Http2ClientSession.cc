@@ -24,26 +24,7 @@
 #include "Http2ClientSession.h"
 #include "HttpDebugNames.h"
 #include "tscore/ink_base64.h"
-
-#define REMEMBER(e, r)                          \
-  {                                             \
-    this->remember(MakeSourceLocation(), e, r); \
-  }
-
-#define STATE_ENTER(state_name, event)                                                       \
-  do {                                                                                       \
-    REMEMBER(event, this->recursion)                                                         \
-    SsnDebug(this, "http2_cs", "[%" PRId64 "] [%s, %s]", this->connection_id(), #state_name, \
-             HttpDebugNames::get_event_name(event));                                         \
-  } while (0)
-
-#define Http2SsnDebug(fmt, ...) SsnDebug(this, "http2_cs", "[%" PRId64 "] " fmt, this->connection_id(), ##__VA_ARGS__)
-
-#define HTTP2_SET_SESSION_HANDLER(handler) \
-  do {                                     \
-    REMEMBER(NO_EVENT, this->recursion);   \
-    this->session_handler = (handler);     \
-  } while (0)
+#include "Http2CommonSessionInternal.h"
 
 ClassAllocator<Http2ClientSession> http2ClientSessionAllocator("http2ClientSessionAllocator");
 
@@ -82,88 +63,11 @@ Http2ClientSession::destroy()
 void
 Http2ClientSession::free()
 {
-  if (this->_reenable_event) {
-    this->_reenable_event->cancel();
-    this->_reenable_event = nullptr;
+  if (Http2CommonSession::free(this)) {
+    HTTP2_DECREMENT_THREAD_DYN_STAT(HTTP2_STAT_CURRENT_CLIENT_SESSION_COUNT, this->mutex->thread_holding);
+    super::free();
+    THREAD_FREE(this, http2ClientSessionAllocator, this_ethread());
   }
-
-  if (_vc) {
-    _vc->do_io_close();
-    _vc = nullptr;
-  }
-
-  // Make sure the we are at the bottom of the stack
-  if (connection_state.is_recursing() || this->recursion != 0) {
-    // Note that we are ready to be cleaned up
-    // One of the event handlers will catch it
-    kill_me = true;
-    return;
-  }
-
-  REMEMBER(NO_EVENT, this->recursion)
-  Http2SsnDebug("session free");
-
-  // Don't free active ProxySession
-  ink_release_assert(is_active() == false);
-
-  this->_milestones.mark(Http2SsnMilestone::CLOSE);
-  ink_hrtime total_time = this->_milestones.elapsed(Http2SsnMilestone::OPEN, Http2SsnMilestone::CLOSE);
-
-  // Slow Log
-  if (Http2::con_slow_log_threshold != 0 && ink_hrtime_from_msec(Http2::con_slow_log_threshold) < total_time) {
-    Error("[%" PRIu64 "] Slow H2 Connection: open: %" PRIu64 " close: %.3f", this->con_id,
-          ink_hrtime_to_msec(this->_milestones[Http2SsnMilestone::OPEN]),
-          this->_milestones.difference_sec(Http2SsnMilestone::OPEN, Http2SsnMilestone::CLOSE));
-  }
-
-  HTTP2_DECREMENT_THREAD_DYN_STAT(HTTP2_STAT_CURRENT_CLIENT_SESSION_COUNT, this->mutex->thread_holding);
-
-  // Update stats on how we died.  May want to eliminate this.  Was useful for
-  // tracking down which cases we were having problems cleaning up.  But for general
-  // use probably not worth the effort
-  if (cause_of_death != Http2SessionCod::NOT_PROVIDED) {
-    switch (cause_of_death) {
-    case Http2SessionCod::HIGH_ERROR_RATE:
-      HTTP2_INCREMENT_THREAD_DYN_STAT(HTTP2_STAT_SESSION_DIE_HIGH_ERROR_RATE, this_ethread());
-      break;
-    case Http2SessionCod::NOT_PROVIDED:
-      // Can't happen but this case is here to not have default case.
-      HTTP2_INCREMENT_THREAD_DYN_STAT(HTTP2_STAT_SESSION_DIE_OTHER, this_ethread());
-      break;
-    }
-  } else {
-    switch (dying_event) {
-    case VC_EVENT_NONE:
-      HTTP2_INCREMENT_THREAD_DYN_STAT(HTTP2_STAT_SESSION_DIE_DEFAULT, this_ethread());
-      break;
-    case VC_EVENT_ACTIVE_TIMEOUT:
-      HTTP2_INCREMENT_THREAD_DYN_STAT(HTTP2_STAT_SESSION_DIE_ACTIVE, this_ethread());
-      break;
-    case VC_EVENT_INACTIVITY_TIMEOUT:
-      HTTP2_INCREMENT_THREAD_DYN_STAT(HTTP2_STAT_SESSION_DIE_INACTIVE, this_ethread());
-      break;
-    case VC_EVENT_ERROR:
-      HTTP2_INCREMENT_THREAD_DYN_STAT(HTTP2_STAT_SESSION_DIE_ERROR, this_ethread());
-      break;
-    case VC_EVENT_EOS:
-      HTTP2_INCREMENT_THREAD_DYN_STAT(HTTP2_STAT_SESSION_DIE_EOS, this_ethread());
-      break;
-    default:
-      HTTP2_INCREMENT_THREAD_DYN_STAT(HTTP2_STAT_SESSION_DIE_OTHER, this_ethread());
-      break;
-    }
-  }
-
-  ink_release_assert(this->_vc == nullptr);
-
-  delete _h2_pushed_urls;
-  this->connection_state.destroy();
-
-  super::free();
-
-  free_MIOBuffer(this->read_buffer);
-  free_MIOBuffer(this->write_buffer);
-  THREAD_FREE(this, http2ClientSessionAllocator, this_ethread());
 }
 
 void
@@ -287,28 +191,6 @@ Http2ClientSession::do_io_close(int alerrno)
 
   // Clean up the write VIO in case of inactivity timeout
   this->do_io_write(nullptr, 0, nullptr);
-}
-
-void
-Http2ClientSession::set_half_close_local_flag(bool flag)
-{
-  if (!half_close_local && flag) {
-    Http2SsnDebug("session half-close local");
-  }
-  half_close_local = flag;
-}
-
-int64_t
-Http2ClientSession::xmit(const Http2TxFrame &frame)
-{
-  int64_t len = frame.write_to(this->write_buffer);
-
-  if (len > 0) {
-    total_write_len += len;
-    write_reenable();
-  }
-
-  return len;
 }
 
 int
@@ -634,12 +516,6 @@ Http2ClientSession::decrement_current_active_connections_stat()
   HTTP2_DECREMENT_THREAD_DYN_STAT(HTTP2_STAT_CURRENT_ACTIVE_CLIENT_CONNECTION_COUNT, this_ethread());
 }
 
-void
-Http2ClientSession::remember(const SourceLocation &location, int event, int reentrant)
-{
-  this->_history.push_back(location, event, reentrant);
-}
-
 bool
 Http2ClientSession::_should_do_something_else()
 {
@@ -659,33 +535,21 @@ Http2ClientSession::get_local_addr()
   return _vc ? _vc->get_local_addr() : &cached_local_addr.sa;
 }
 
-int64_t
-Http2ClientSession::write_avail()
-{
-  return this->write_buffer->write_avail();
-}
-
-void
-Http2ClientSession::write_reenable()
-{
-  write_vio->reenable();
-}
-
 int
 Http2ClientSession::get_transact_count() const
 {
   return connection_state.get_stream_requests();
 }
 
-void
-Http2ClientSession::release(ProxyTransaction *trans)
-{
-}
-
 const char *
 Http2ClientSession::get_protocol_string() const
 {
   return "http/2";
+}
+
+void
+Http2ClientSession::release(ProxyTransaction *trans)
+{
 }
 
 int
@@ -714,16 +578,8 @@ Http2ClientSession::protocol_contains(std::string_view prefix) const
   return retval;
 }
 
-void
-Http2ClientSession::add_url_to_pushed_table(const char *url, int url_len)
+ProxySession *
+Http2ClientSession::get_proxy_session()
 {
-  // Delay std::unordered_set allocation until when it used
-  if (_h2_pushed_urls == nullptr) {
-    this->_h2_pushed_urls = new std::unordered_set<std::string>();
-    this->_h2_pushed_urls->reserve(Http2::push_diary_size);
-  }
-
-  if (_h2_pushed_urls->size() < Http2::push_diary_size) {
-    _h2_pushed_urls->emplace(url);
-  }
+  return this;
 }

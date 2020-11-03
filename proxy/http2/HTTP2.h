@@ -84,12 +84,17 @@ const uint8_t HTTP2_PRIORITY_DEFAULT_WEIGHT             = 15;
 
 // Statistics
 enum {
-  HTTP2_STAT_CURRENT_CLIENT_SESSION_COUNT,           // Current # of HTTP2 connections
-  HTTP2_STAT_CURRENT_ACTIVE_CLIENT_CONNECTION_COUNT, // Current # of active HTTP2 connections
-  HTTP2_STAT_CURRENT_CLIENT_STREAM_COUNT,            // Current # of active HTTP2 streams
+  HTTP2_STAT_CURRENT_CLIENT_SESSION_COUNT,           // Current # of inbound HTTP2 connections
+  HTTP2_STAT_CURRENT_SERVER_SESSION_COUNT,           // Current # of outbound HTTP2 connections
+  HTTP2_STAT_CURRENT_ACTIVE_CLIENT_CONNECTION_COUNT, // Current # of active inbound HTTP2 connections
+  HTTP2_STAT_CURRENT_ACTIVE_SERVER_CONNECTION_COUNT, // Current # of active outbound HTTP2 connections
+  HTTP2_STAT_CURRENT_CLIENT_STREAM_COUNT,            // Current # of active inbound HTTP2 streams
+  HTTP2_STAT_CURRENT_SERVER_STREAM_COUNT,            // Current # of active outboundHTTP2 streams
   HTTP2_STAT_TOTAL_CLIENT_STREAM_COUNT,
+  HTTP2_STAT_TOTAL_SERVER_STREAM_COUNT,
   HTTP2_STAT_TOTAL_TRANSACTIONS_TIME,       // Total stream time and streams
-  HTTP2_STAT_TOTAL_CLIENT_CONNECTION_COUNT, // Total connections running http2
+  HTTP2_STAT_TOTAL_CLIENT_CONNECTION_COUNT, // Total inbound connections running http2
+  HTTP2_STAT_TOTAL_SERVER_CONNECTION_COUNT, // Total outbound connections running http2
   HTTP2_STAT_STREAM_ERRORS_COUNT,
   HTTP2_STAT_CONNECTION_ERRORS_COUNT,
   HTTP2_STAT_SESSION_DIE_DEFAULT,

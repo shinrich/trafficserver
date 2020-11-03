@@ -104,10 +104,9 @@ Http1ServerSession::do_io_close(int alerrno)
   HTTP_SUM_DYN_STAT(http_transactions_per_server_con, transact_count);
 
   // Update upstream connection tracking data if present.
-  this->release_outbound_comnection_tracking()
+  this->release_outbound_comnection_tracking();
 
-    if (debug_p)
-  {
+  if (debug_p) {
     Debug("http_ss", "%.*s", static_cast<int>(w.size()), w.data());
   }
 

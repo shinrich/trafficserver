@@ -29,6 +29,7 @@
 #include "PluginVC.h"
 #include "HttpSessionManager.h"
 #include "Http1ServerSession.h"
+#include "Http2ServerSession.h"
 #include "HttpTransactHeaders.h"
 #include "Log.h"
 #include "tscore/bwf_std_format.h"

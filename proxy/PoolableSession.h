@@ -96,11 +96,11 @@ public:
   // proxy.process.http.current_parent_proxy_connections
   bool to_parent_proxy = false;
 
-private:
   // Keep track of connection limiting and a pointer to the
   // singleton that keeps track of the connection counts.
   OutboundConnTrack::Group *conn_track_group = nullptr;
 
+private:
   // Sessions become if authentication headers
   //  are sent over them
   bool private_session = false;
