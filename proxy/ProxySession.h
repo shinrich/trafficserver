@@ -136,7 +136,7 @@ public:
   void clear_session_active();
   bool is_active() const;
   bool is_draining() const;
-  bool is_client_closed() const;
+  bool is_peer_closed() const;
 
   int64_t connection_id() const;
   TSHttpHookID get_hookid() const;
@@ -244,7 +244,7 @@ ProxySession::is_draining() const
 }
 
 inline bool
-ProxySession::is_client_closed() const
+ProxySession::is_peer_closed() const
 {
   return get_netvc() == nullptr;
 }

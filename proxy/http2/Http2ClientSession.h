@@ -33,8 +33,7 @@
 class Http2ClientSession : public ProxySession, public Http2CommonSession
 {
 public:
-  using super          = ProxySession; ///< Parent type.
-  using SessionHandler = int (Http2ClientSession::*)(int, void *);
+  using super = ProxySession; ///< Parent type.
 
   Http2ClientSession();
 
@@ -74,33 +73,11 @@ public:
 private:
   int main_event_handler(int, void *);
 
-  int state_read_connection_preface(int, void *);
-  int state_start_frame_read(int, void *);
-  int do_start_frame_read(Http2ErrorCode &ret_error);
-  int state_complete_frame_read(int, void *);
-  int do_complete_frame_read();
-  // state_start_frame_read and state_complete_frame_read are set up as
-  // event handler.  Both feed into state_process_frame_read which may iterate
-  // if there are multiple frames ready on the wire
-  int state_process_frame_read(int event, VIO *vio, bool inside_frame);
-
-  bool _should_do_something_else();
-
-  SessionHandler session_handler = nullptr;
-  IOBufferReader *_reader        = nullptr;
-  IOBufferReader *sm_writer      = nullptr;
-  Http2FrameHeader current_hdr   = {0, 0, 0, 0};
-
   IpEndpoint cached_client_addr;
   IpEndpoint cached_local_addr;
 
   // For Upgrade: h2c
   Http2UpgradeContext upgrade_context;
-
-  int _n_frame_read = 0;
-
-  int64_t read_from_early_data   = 0;
-  bool cur_frame_from_early_data = false;
 };
 
 extern ClassAllocator<Http2ClientSession> http2ClientSessionAllocator;
