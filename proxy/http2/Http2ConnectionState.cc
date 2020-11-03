@@ -264,6 +264,13 @@ rcv_headers_frame(Http2ConnectionState &cstate, const Http2Frame &frame)
     return Http2Error(Http2ErrorClass::HTTP2_ERROR_CLASS_NONE);
   }
 
+  // keep track of how many bytes we get in the frame
+  stream->recv_header_length += payload_length;
+  if (stream->recv_header_length > Http2::max_header_list_size) {
+    return Http2Error(Http2ErrorClass::HTTP2_ERROR_CLASS_STREAM, Http2ErrorCode::HTTP2_ERROR_PROTOCOL_ERROR,
+                      "recv headers payload for headers greater than header length");
+  }
+
   Http2HeadersParameter params;
   uint32_t header_block_fragment_offset = 0;
   uint32_t header_block_fragment_length = payload_length;
@@ -900,6 +907,13 @@ rcv_continuation_frame(Http2ConnectionState &cstate, const Http2Frame &frame)
       return Http2Error(Http2ErrorClass::HTTP2_ERROR_CLASS_CONNECTION, Http2ErrorCode::HTTP2_ERROR_PROTOCOL_ERROR,
                         "continuation bad state");
     }
+  }
+
+  // keep track of how many bytes we get in the frame
+  stream->recv_header_length += payload_length;
+  if (stream->recv_header_length > Http2::max_header_list_size) {
+    return Http2Error(Http2ErrorClass::HTTP2_ERROR_CLASS_CONNECTION, Http2ErrorCode::HTTP2_ERROR_PROTOCOL_ERROR,
+                      "continuation payload for headers exceeded");
   }
 
   uint32_t header_blocks_offset = stream->header_blocks_length;

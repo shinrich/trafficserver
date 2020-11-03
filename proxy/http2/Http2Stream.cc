@@ -342,9 +342,9 @@ Http2Stream::do_io_write(Continuation *c, int64_t nbytes, IOBufferReader *abuffe
   write_vio.op        = VIO::WRITE;
   _send_reader        = abuffer;
 
-  if (c != nullptr && nbytes > 0 && this->is_client_state_writeable()) {
-    update_write_request(false);
-  } else if (!this->is_client_state_writeable()) {
+  if (c != nullptr && nbytes > 0 && this->is_state_writeable()) {
+    update_write_request(abuffer, nbytes, false);
+  } else if (!this->is_state_writeable()) {
     // Cannot start a write on a closed stream
     return nullptr;
   }
@@ -367,7 +367,7 @@ Http2Stream::do_io_close(int /* flags */)
     // by the time this is called from transaction_done.
     closed = true;
 
-    if (_proxy_ssn && this->is_client_state_writeable()) {
+    if (_proxy_ssn && this->is_state_writeable()) {
       // Make sure any trailing end of stream frames are sent
       // Wee will be removed at send_data_frames or closing connection phase
       Http2ConnectionState &state = this->get_connection_state();
@@ -561,7 +561,7 @@ Http2Stream::restart_sending()
 void
 Http2Stream::update_write_request(bool call_update)
 {
-  if (!this->is_client_state_writeable() || closed || _proxy_ssn == nullptr || write_vio.mutex == nullptr ||
+  if (!this->is_state_writeable() || closed || _proxy_ssn == nullptr || write_vio.mutex == nullptr ||
       (buf_reader == nullptr && write_len == 0) || this->_send_reader == nullptr) {
     return;
   }
@@ -933,16 +933,25 @@ Http2Stream::release()
 }
 
 void
-Http2Stream::increment_client_transactions_stat()
+Http2Stream::increment_transactions_stat()
 {
-  HTTP2_INCREMENT_THREAD_DYN_STAT(HTTP2_STAT_CURRENT_CLIENT_STREAM_COUNT, _thread);
-  HTTP2_INCREMENT_THREAD_DYN_STAT(HTTP2_STAT_TOTAL_CLIENT_STREAM_COUNT, _thread);
+  if (_outbound_flag) {
+    HTTP2_INCREMENT_THREAD_DYN_STAT(HTTP2_STAT_CURRENT_SERVER_STREAM_COUNT, _thread);
+    HTTP2_INCREMENT_THREAD_DYN_STAT(HTTP2_STAT_TOTAL_SERVER_STREAM_COUNT, _thread);
+  } else {
+    HTTP2_INCREMENT_THREAD_DYN_STAT(HTTP2_STAT_CURRENT_CLIENT_STREAM_COUNT, _thread);
+    HTTP2_INCREMENT_THREAD_DYN_STAT(HTTP2_STAT_TOTAL_CLIENT_STREAM_COUNT, _thread);
+  }
 }
 
 void
-Http2Stream::decrement_client_transactions_stat()
+Http2Stream::decrement_transactions_stat()
 {
-  HTTP2_DECREMENT_THREAD_DYN_STAT(HTTP2_STAT_CURRENT_CLIENT_STREAM_COUNT, _thread);
+  if (_outbound_flag) {
+    HTTP2_DECREMENT_THREAD_DYN_STAT(HTTP2_STAT_CURRENT_SERVER_STREAM_COUNT, _thread);
+  } else {
+    HTTP2_DECREMENT_THREAD_DYN_STAT(HTTP2_STAT_CURRENT_CLIENT_STREAM_COUNT, _thread);
+  }
 }
 
 ssize_t

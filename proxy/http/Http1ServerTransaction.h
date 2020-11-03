@@ -38,8 +38,8 @@ public:
   void release() override;
   // void destroy() override; // todo make ~Http1Transaction()
 
-  void increment_server_transactions_stat() override;
-  void decrement_server_transactions_stat() override;
+  void increment_transactions_stat() override;
+  void decrement_transactions_stat() override;
 
   ////////////////////
   // Variables
