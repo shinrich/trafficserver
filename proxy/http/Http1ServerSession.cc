@@ -87,18 +87,6 @@ Http1ServerSession::new_connection(NetVConnection *new_vc, MIOBuffer *iobuf, IOB
 }
 
 void
-Http1ServerSession::enable_outbound_connection_tracking(OutboundConnTrack::Group *group)
-{
-  ink_assert(nullptr == conn_track_group);
-  conn_track_group = group;
-  if (is_debug_tag_set("http_ss")) {
-    ts::LocalBufferWriter<256> w;
-    w.print("[{}] new connection, ip: {}, group ({}), count: {}\0", con_id, get_server_ip(), *group, group->_count);
-    Debug("http_ss", "%s", w.data());
-  }
-}
-
-void
 Http1ServerSession::do_io_close(int alerrno)
 {
   ts::LocalBufferWriter<256> w;
@@ -116,19 +104,10 @@ Http1ServerSession::do_io_close(int alerrno)
   HTTP_SUM_DYN_STAT(http_transactions_per_server_con, transact_count);
 
   // Update upstream connection tracking data if present.
-  if (conn_track_group) {
-    if (conn_track_group->_count >= 0) {
-      auto n = (conn_track_group->_count)--;
-      if (debug_p) {
-        w.print(" conn track group ({}) count {}", conn_track_group->_key, n);
-      }
-    } else {
-      // A bit dubious, as there's no guarantee it's still negative, but even that would be interesting to know.
-      Error("[http_ss] [%" PRId64 "] number of connections should be greater than or equal to zero: %u", con_id,
-            conn_track_group->_count.load());
-    }
-  }
-  if (debug_p) {
+  this->release_outbound_comnection_tracking()
+
+    if (debug_p)
+  {
     Debug("http_ss", "%.*s", static_cast<int>(w.size()), w.data());
   }
 

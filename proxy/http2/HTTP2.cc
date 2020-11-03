@@ -675,7 +675,7 @@ http2_encode_header_blocks(HTTPHdr *in, uint8_t *out, uint32_t out_len, uint32_t
  */
 Http2ErrorCode
 http2_decode_header_blocks(HTTPHdr *hdr, const uint8_t *buf_start, const uint32_t buf_len, uint32_t *len_read, HpackHandle &handle,
-                           bool &trailing_header, uint32_t maximum_table_size)
+                           bool &trailing_header, uint32_t maximum_table_size, bool is_outbound)
 {
   const MIMEField *field;
   const char *value;
@@ -697,7 +697,7 @@ http2_decode_header_blocks(HTTPHdr *hdr, const uint8_t *buf_start, const uint32_
   }
 
   MIMEFieldIter iter;
-  unsigned int expected_pseudo_header_count = 4;
+  unsigned int expected_pseudo_header_count = is_outbound ? 1 : 4;
   unsigned int pseudo_header_count          = 0;
 
   if (is_trailing_header) {
@@ -725,7 +725,7 @@ http2_decode_header_blocks(HTTPHdr *hdr, const uint8_t *buf_start, const uint32_
   if (hdr->field_find(MIME_FIELD_CONNECTION, MIME_LEN_CONNECTION) != nullptr ||
       hdr->field_find(MIME_FIELD_KEEP_ALIVE, MIME_LEN_KEEP_ALIVE) != nullptr ||
       hdr->field_find(MIME_FIELD_PROXY_CONNECTION, MIME_LEN_PROXY_CONNECTION) != nullptr ||
-      hdr->field_find(MIME_FIELD_TRANSFER_ENCODING, MIME_LEN_TRANSFER_ENCODING) != nullptr ||
+      // hdr->field_find(MIME_FIELD_TRANSFER_ENCODING, MIME_LEN_TRANSFER_ENCODING) != nullptr ||
       hdr->field_find(MIME_FIELD_UPGRADE, MIME_LEN_UPGRADE) != nullptr) {
     return Http2ErrorCode::HTTP2_ERROR_PROTOCOL_ERROR;
   }
@@ -758,18 +758,29 @@ http2_decode_header_blocks(HTTPHdr *hdr, const uint8_t *buf_start, const uint32_
 
   if (!is_trailing_header) {
     // Check pseudo headers
-    if (hdr->fields_count() >= 4) {
-      if (hdr->field_find(HTTP2_VALUE_SCHEME, HTTP2_LEN_SCHEME) == nullptr ||
-          hdr->field_find(HTTP2_VALUE_METHOD, HTTP2_LEN_METHOD) == nullptr ||
-          hdr->field_find(HTTP2_VALUE_PATH, HTTP2_LEN_PATH) == nullptr ||
-          hdr->field_find(HTTP2_VALUE_AUTHORITY, HTTP2_LEN_AUTHORITY) == nullptr ||
-          hdr->field_find(HTTP2_VALUE_STATUS, HTTP2_LEN_STATUS) != nullptr) {
-        // Decoded header field is invalid
+    if (is_outbound) {
+      if (hdr->fields_count() >= 1) {
+        if (hdr->field_find(HTTP2_VALUE_STATUS, HTTP2_LEN_STATUS) == nullptr) {
+          return Http2ErrorCode::HTTP2_ERROR_PROTOCOL_ERROR;
+        }
+      } else {
+        // Pseudo headers is insufficient
         return Http2ErrorCode::HTTP2_ERROR_PROTOCOL_ERROR;
       }
     } else {
-      // Pseudo headers is insufficient
-      return Http2ErrorCode::HTTP2_ERROR_PROTOCOL_ERROR;
+      if (hdr->fields_count() >= 4) {
+        if (hdr->field_find(HTTP2_VALUE_SCHEME, HTTP2_LEN_SCHEME) == nullptr ||
+            hdr->field_find(HTTP2_VALUE_METHOD, HTTP2_LEN_METHOD) == nullptr ||
+            hdr->field_find(HTTP2_VALUE_PATH, HTTP2_LEN_PATH) == nullptr ||
+            hdr->field_find(HTTP2_VALUE_AUTHORITY, HTTP2_LEN_AUTHORITY) == nullptr ||
+            hdr->field_find(HTTP2_VALUE_STATUS, HTTP2_LEN_STATUS) != nullptr) {
+          // Decoded header field is invalid
+          return Http2ErrorCode::HTTP2_ERROR_PROTOCOL_ERROR;
+        }
+      } else {
+        // Pseudo headers is insufficient
+        return Http2ErrorCode::HTTP2_ERROR_PROTOCOL_ERROR;
+      }
     }
   }
 

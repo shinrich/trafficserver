@@ -438,6 +438,10 @@ public:
     return SSL_get_servername(this->ssl, TLSEXT_NAMETYPE_host_name);
   }
 
+  // For SSL, we defer notifying the SM that the connection was made until the
+  // TLS handshake completes
+  void notify_open() override;
+
 protected:
   const IpEndpoint &
   _getLocalEndpoint() override

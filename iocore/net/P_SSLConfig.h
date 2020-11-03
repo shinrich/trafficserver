@@ -98,6 +98,9 @@ struct SSLConfigParams : public ConfigInfo {
   long ssl_ctx_options;
   long ssl_client_ctx_options;
 
+  unsigned char *client_alpn_protocols;
+  long client_alpn_protocols_length;
+
   char *server_tls13_cipher_suites;
   char *client_tls13_cipher_suites;
   char *server_groups_list;

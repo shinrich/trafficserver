@@ -41,7 +41,7 @@
 #include "HTTP.h"
 #include "ProxySession.h"
 #include "Http2ClientSession.h"
-#include "Http1ServerSession.h"
+#include "PoolableSession.h"
 #include "HttpSM.h"
 #include "HttpConfig.h"
 #include "P_Net.h"
@@ -4833,7 +4833,7 @@ TSHttpSsnClientVConnGet(TSHttpSsn ssnp)
 TSVConn
 TSHttpSsnServerVConnGet(TSHttpSsn ssnp)
 {
-  Http1ServerSession *ss = reinterpret_cast<Http1ServerSession *>(ssnp);
+  ProxySession *ss = reinterpret_cast<ProxySession *>(ssnp);
   return reinterpret_cast<TSVConn>(ss->get_netvc());
 }
 

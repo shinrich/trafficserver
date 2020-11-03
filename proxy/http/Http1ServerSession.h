@@ -74,9 +74,7 @@ public:
   void new_connection(NetVConnection *new_vc, MIOBuffer *iobuf, IOBufferReader *reader) override;
   void start() override;
 
-  void enable_outbound_connection_tracking(OutboundConnTrack::Group *group);
   IOBufferReader *get_reader();
-  void attach_hostname(const char *hostname);
   IpEndpoint const &get_server_ip() const;
 
   ProxyTransaction *
@@ -114,14 +112,6 @@ extern ClassAllocator<Http1ServerSession> httpServerSessionAllocator;
 
 ////////////////////////////////////////////
 // INLINE
-
-inline void
-Http1ServerSession::attach_hostname(const char *hostname)
-{
-  if (CRYPTO_HASH_ZERO == hostname_hash) {
-    CryptoContext().hash_immediate(hostname_hash, (unsigned char *)hostname, strlen(hostname));
-  }
-}
 
 inline IOBufferReader *
 Http1ServerSession::get_reader()
