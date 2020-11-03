@@ -59,13 +59,13 @@ Http1ClientTransaction::allow_half_open() const
 }
 
 void
-Http1ClientTransaction::increment_client_transactions_stat()
+Http1ClientTransaction::increment_transactions_stat()
 {
   HTTP_INCREMENT_DYN_STAT(http_current_client_transactions_stat);
 }
 
 void
-Http1ClientTransaction::decrement_client_transactions_stat()
+Http1ClientTransaction::decrement_transactions_stat()
 {
   HTTP_DECREMENT_DYN_STAT(http_current_client_transactions_stat);
 }

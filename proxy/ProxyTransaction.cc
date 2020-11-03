@@ -51,7 +51,7 @@ ProxyTransaction::new_transaction(bool from_early_data)
     }
   }
 
-  this->increment_client_transactions_stat();
+  this->increment_transactions_stat();
   _sm->attach_client_session(this);
 }
 
@@ -61,7 +61,7 @@ ProxyTransaction::release()
   HttpTxnDebug("[%" PRId64 "] session released by sm [%" PRId64 "]", _proxy_ssn ? _proxy_ssn->connection_id() : 0,
                _sm ? _sm->sm_id : 0);
 
-  this->decrement_client_transactions_stat();
+  this->decrement_transactions_stat();
 
   // Pass along the release to the session
   if (_proxy_ssn) {

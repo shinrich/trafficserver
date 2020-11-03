@@ -67,19 +67,11 @@ public:
     return false;
   }
   virtual void
-  increment_client_transactions_stat()
+  increment_transactions_stat()
   {
   }
   virtual void
-  decrement_client_transactions_stat()
-  {
-  }
-  virtual void
-  increment_server_transactions_stat()
-  {
-  }
-  virtual void
-  decrement_server_transactions_stat()
+  decrement_transactions_stat()
   {
   }
 

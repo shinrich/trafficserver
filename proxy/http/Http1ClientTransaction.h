@@ -40,8 +40,8 @@ public:
   bool allow_half_open() const override;
   void transaction_done() override;
   // int get_transaction_id() const override;
-  void increment_client_transactions_stat() override;
-  void decrement_client_transactions_stat() override;
+  void increment_transactions_stat() override;
+  void decrement_transactions_stat() override;
 
   ////////////////////
   // Variables
