@@ -879,16 +879,42 @@ PoolableSession *
 ConnectingEntry::create_server_session(HttpSM *root_sm, NetVConnection *netvc, MIOBuffer *netvc_read_buffer,
                                        IOBufferReader *netvc_reader)
 {
-  HttpTransact::State &s      = root_sm->t_state;
-  Http1ServerSession *session = httpServerSessionAllocator.alloc();
-  session->sharing_pool       = static_cast<TSServerSessionSharingPoolType>(s.http_config_param->server_session_sharing_pool);
-  session->sharing_match      = static_cast<TSServerSessionSharingMatchMask>(s.txn_conf->server_session_sharing_match);
+  HttpTransact::State &s  = root_sm->t_state;
+  PoolableSession *retval = nullptr;
 
-  session->attach_hostname(s.current.server->name);
+  // Figure out what protocol was negotiated
+  const unsigned char *proto  = nullptr;
+  unsigned int proto_length   = 0;
+  SSLNetVConnection *sslnetvc = dynamic_cast<SSLNetVConnection *>(netvc);
+  if (sslnetvc) {
+    SSL_get0_alpn_selected(sslnetvc->ssl, &proto, &proto_length);
+    if (proto) {
+      Debug("http_ss", "[create_server_session] SSL negotiated protocol %.*s", proto_length, proto);
+    } else {
+      Debug("http_ss", "[create_server_session] SSL default protocol");
+    }
+  } else {
+    Debug("http_ss", "[create_server_session] negotiated protocol HTTP not over SSL");
+  }
 
-  session->new_connection(netvc, netvc_read_buffer, netvc_reader);
+  if (proto_length == 2 && memcmp(proto, "h2", 2) == 0) {
+    Http2ServerSession *session = http2ServerSessionAllocator.alloc();
+    retval                      = session;
+  } else {
+    Http1ServerSession *session = httpServerSessionAllocator.alloc();
+    retval                      = session;
+  }
+  retval->sharing_pool  = static_cast<TSServerSessionSharingPoolType>(s.http_config_param->server_session_sharing_pool);
+  retval->sharing_match = static_cast<TSServerSessionSharingMatchMask>(s.txn_conf->server_session_sharing_match);
+  retval->new_connection(netvc, netvc_read_buffer, netvc_reader);
+
+  retval->attach_hostname(s.current.server->name);
+
+  retval->new_connection(netvc, netvc_read_buffer, netvc_reader);
   ATS_PROBE1(new_origin_server_connection, s.current.server->name);
-  session->set_active();
+  retval->set_active();
+
+  // TODO Maybe add_session to put the HTTP/2 session in the pool
 
   ats_ip_copy(&s.server_info.src_addr, netvc->get_local_addr());
 
@@ -898,9 +924,9 @@ ConnectingEntry::create_server_session(HttpSM *root_sm, NetVConnection *netvc, M
   if (s.outbound_conn_track_state.is_active()) {
     Debug("http_connect", "[%" PRId64 "] max number of outbound connections: %d", root_sm->sm_id,
           s.txn_conf->outbound_conntrack.max);
-    session->enable_outbound_connection_tracking(s.outbound_conn_track_state.drop());
+    retval->enable_outbound_connection_tracking(s.outbound_conn_track_state.drop());
   }
-  return session;
+  return retval;
 }
 
 void

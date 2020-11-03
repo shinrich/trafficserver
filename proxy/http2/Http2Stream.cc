@@ -45,22 +45,29 @@ Http2Stream::Http2Stream(Http2StreamId sid, ssize_t initial_rwnd) : _id(sid), _c
 }
 
 void
-Http2Stream::init(Http2StreamId sid, ssize_t initial_rwnd)
+Http2Stream::init(Http2StreamId sid, ssize_t initial_rwnd, bool outbound_connection)
 {
   this->mark_milestone(Http2StreamMilestone::OPEN);
 
   this->_sm          = nullptr;
-  this->_id          = sid;
-  this->_thread      = this_ethread();
-  this->_client_rwnd = initial_rwnd;
-  this->_server_rwnd = Http2::initial_window_size;
+  this->_id            = sid;
+  this->_thread        = this_ethread();
+  this->_state         = Http2StreamState::HTTP2_STREAM_STATE_IDLE;
+  this->_outbound_flag = outbound_connection;
+  this->_client_rwnd   = initial_rwnd;
+  this->_server_rwnd   = Http2::initial_window_size;
 
-  this->_reader = this->_request_buffer.alloc_reader();
+  this->_reader = this->_recv_buffer.alloc_reader();
 
-  _req_header.create(HTTP_TYPE_REQUEST);
-  response_header.create(HTTP_TYPE_RESPONSE);
-  // TODO: init _req_header instead of response_header if this Http2Stream is outgoing
-  http2_init_pseudo_headers(response_header);
+  if (this->is_outbound_connection()) { // Flip the sense of the expected headers.  Fix naming later
+    _recv_header.create(HTTP_TYPE_RESPONSE);
+    _send_header.create(HTTP_TYPE_REQUEST);
+  } else {
+    _recv_header.create(HTTP_TYPE_REQUEST);
+    _send_header.create(HTTP_TYPE_RESPONSE);
+  }
+
+  http2_init_pseudo_headers(_send_header);
 
   http_parser_init(&http_parser);
 }
@@ -148,8 +155,8 @@ Http2Stream::main_event_handler(int event, void *edata)
 Http2ErrorCode
 Http2Stream::decode_header_blocks(HpackHandle &hpack_handle, uint32_t maximum_table_size)
 {
-  return http2_decode_header_blocks(&_req_header, (const uint8_t *)header_blocks, header_blocks_length, nullptr, hpack_handle,
-                                    trailing_header, maximum_table_size);
+  return http2_decode_header_blocks(&_recv_header, (const uint8_t *)header_blocks, header_blocks_length, nullptr, hpack_handle,
+                                    trailing_header, maximum_table_size, _outbound_flag);
 }
 
 void
@@ -159,7 +166,7 @@ Http2Stream::send_request(Http2ConnectionState &cstate)
   this->_http_sm_id = this->_sm->sm_id;
 
   // Convert header to HTTP/1.1 format
-  http2_convert_header_from_2_to_1_1(&_req_header);
+  http2_convert_header_from_2_to_1_1(&_recv_header);
 
   // Write header to a buffer.  Borrowing logic from HttpSM::write_header_into_buffer.
   // Seems like a function like this ought to be in HTTPHdr directly
@@ -169,16 +176,16 @@ Http2Stream::send_request(Http2ConnectionState &cstate)
   do {
     bufindex             = 0;
     tmp                  = dumpoffset;
-    IOBufferBlock *block = this->_request_buffer.get_current_block();
+    IOBufferBlock *block = this->_recv_buffer.get_current_block();
     if (!block) {
-      this->_request_buffer.add_block();
-      block = this->_request_buffer.get_current_block();
+      this->_recv_buffer.add_block();
+      block = this->_recv_buffer.get_current_block();
     }
-    done = _req_header.print(block->start(), block->write_avail(), &bufindex, &tmp);
+    done = _recv_header.print(block->start(), block->write_avail(), &bufindex, &tmp);
     dumpoffset += bufindex;
-    this->_request_buffer.fill(bufindex);
+    this->_recv_buffer.fill(bufindex);
     if (!done) {
-      this->_request_buffer.add_block();
+      this->_recv_buffer.add_block();
     }
   } while (!done);
 
@@ -332,6 +339,7 @@ Http2Stream::do_io_write(Continuation *c, int64_t nbytes, IOBufferReader *abuffe
   write_vio.ndone     = 0;
   write_vio.vc_server = this;
   write_vio.op        = VIO::WRITE;
+  _send_reader        = abuffer;
 
   if (c != nullptr && nbytes > 0 && this->is_client_state_writeable()) {
     update_write_request(false);
@@ -532,11 +540,11 @@ Http2Stream::update_read_request(bool call_update)
 void
 Http2Stream::restart_sending()
 {
-  if (!this->response_header_done) {
+  if (!this->parsing_header_done) {
     return;
   }
 
-  IOBufferReader *reader = this->response_get_data_reader();
+  IOBufferReader *reader = this->send_get_data_reader();
   if (reader && !reader->is_read_avail_more_than(0)) {
     return;
   }
@@ -545,14 +553,14 @@ Http2Stream::restart_sending()
     return;
   }
 
-  this->send_response_body(true);
+  this->send_body(true);
 }
 
 void
 Http2Stream::update_write_request(bool call_update)
 {
   if (!this->is_client_state_writeable() || closed || _proxy_ssn == nullptr || write_vio.mutex == nullptr ||
-      write_vio.get_reader() == nullptr) {
+      (buf_reader == nullptr && write_len == 0) || this->_send_reader == nullptr) {
     return;
   }
 
@@ -566,25 +574,44 @@ Http2Stream::update_write_request(bool call_update)
 
   SCOPED_MUTEX_LOCK(lock, write_vio.mutex, this_ethread());
 
-  IOBufferReader *vio_reader = write_vio.get_reader();
-  if (write_vio.ntodo() == 0 || !vio_reader->is_read_avail_more_than(0)) {
+  int64_t bytes_avail = this->_send_reader->read_avail();
+  if (write_vio.nbytes > 0 && write_vio.ntodo() > 0) {
+    int64_t num_to_write = write_vio.ntodo();
+    if (num_to_write > write_len) {
+      num_to_write = write_len;
+    }
+    if (bytes_avail > num_to_write) {
+      bytes_avail = num_to_write;
+    }
+  }
+
+  Http2StreamDebug("write_vio.nbytes=%" PRId64 ", write_vio.ndone=%" PRId64 ", write_vio.write_avail=%" PRId64
+                   ", reader.read_avail=%" PRId64,
+                   write_vio.nbytes, write_vio.ndone, write_vio.get_writer()->write_avail(), bytes_avail);
+
+  if (bytes_avail <= 0) {
     return;
   }
 
   // Process the new data
-  if (!this->response_header_done) {
-    // Still parsing the response_header
+  if (!this->parsing_header_done) {
+    // Still parsing the request or response header
     int bytes_used = 0;
-    int state      = this->response_header.parse_resp(&http_parser, vio_reader, &bytes_used, false);
-    // HTTPHdr::parse_resp() consumed the vio_reader in above (consumed size is `bytes_used`)
+    int state;
+    if (this->is_outbound_connection()) {
+      state = this->_send_header.parse_req(&http_parser, this->_send_reader, &bytes_used, false);
+    } else {
+      state = this->_send_header.parse_resp(&http_parser, this->_send_reader, &bytes_used, false);
+    }
+    // HTTPHdr::parse_resp() consumed the send_reader in above
     write_vio.ndone += bytes_used;
 
     switch (state) {
     case PARSE_RESULT_DONE: {
-      this->response_header_done = true;
+      this->parsing_header_done = true;
 
       // Schedule session shutdown if response header has "Connection: close"
-      MIMEField *field = this->response_header.field_find(MIME_FIELD_CONNECTION, MIME_LEN_CONNECTION);
+      MIMEField *field = this->_send_header.field_find(MIME_FIELD_CONNECTION, MIME_LEN_CONNECTION);
       if (field) {
         int len;
         const char *value = field->value_get(&len);
@@ -603,20 +630,20 @@ Http2Stream::update_write_request(bool call_update)
       }
 
       // Roll back states of response header to read final response
-      if (this->response_header.expect_final_response()) {
-        this->response_header_done = false;
-        response_header.destroy();
-        response_header.create(HTTP_TYPE_RESPONSE);
-        http2_init_pseudo_headers(response_header);
+      if (this->_send_header.expect_final_response()) {
+        this->parsing_header_done = false;
+        _send_header.destroy();
+        _send_header.create(this->is_outbound_connection() ? HTTP_TYPE_REQUEST : HTTP_TYPE_RESPONSE);
+        http2_init_pseudo_headers(_send_header);
         http_parser_clear(&http_parser);
         http_parser_init(&http_parser);
       }
 
       this->signal_write_event(call_update);
 
-      if (vio_reader->is_read_avail_more_than(0)) {
+      if (this->_send_reader->is_read_avail_more_than(0)) {
         this->_milestones.mark(Http2StreamMilestone::START_TX_DATA_FRAMES);
-        this->send_response_body(call_update);
+        this->send_body(call_update);
       }
       break;
     }
@@ -628,7 +655,7 @@ Http2Stream::update_write_request(bool call_update)
     }
   } else {
     this->_milestones.mark(Http2StreamMilestone::START_TX_DATA_FRAMES);
-    this->send_response_body(call_update);
+    this->send_body(call_update);
   }
 
   return;
@@ -707,7 +734,7 @@ Http2Stream::push_promise(URL &url, const MIMEField *accept_encoding)
 }
 
 void
-Http2Stream::send_response_body(bool call_update)
+Http2Stream::send_body(bool call_update)
 {
   Http2ClientSession *h2_proxy_ssn = static_cast<Http2ClientSession *>(this->_proxy_ssn);
   _timeout.update_inactivity();
@@ -804,11 +831,11 @@ Http2Stream::destroy()
           this->_milestones.difference_sec(Http2StreamMilestone::OPEN, Http2StreamMilestone::CLOSE));
   }
 
-  _req_header.destroy();
-  response_header.destroy();
+  _recv_header.destroy();
+  _send_header.destroy();
 
   // Drop references to all buffer data
-  this->_request_buffer.clear();
+  this->_recv_buffer.clear();
 
   // Free the mutexes in the VIO
   read_vio.mutex.clear();
@@ -826,9 +853,9 @@ Http2Stream::destroy()
 }
 
 IOBufferReader *
-Http2Stream::response_get_data_reader() const
+Http2Stream::send_get_data_reader() const
 {
-  return write_vio.get_reader();
+  return this->_send_reader;
 }
 
 void
