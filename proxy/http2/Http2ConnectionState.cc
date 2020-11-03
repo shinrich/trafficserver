@@ -43,10 +43,10 @@
   }
 
 #define Http2ConDebug(ua_session, fmt, ...) \
-  SsnDebug(ua_session, "http2_con", "[%" PRId64 "] " fmt, ua_session->connection_id(), ##__VA_ARGS__);
+  Debug("http2_con", "[%" PRId64 "] " fmt, ua_session->get_connection_id(), ##__VA_ARGS__);
 
 #define Http2StreamDebug(ua_session, stream_id, fmt, ...) \
-  SsnDebug(ua_session, "http2_con", "[%" PRId64 "] [%u] " fmt, ua_session->connection_id(), stream_id, ##__VA_ARGS__);
+  Debug("http2_con", "[%" PRId64 "] [%u] " fmt, ua_session->get_connection_id(), stream_id, ##__VA_ARGS__);
 
 using http2_frame_dispatch = Http2Error (*)(Http2ConnectionState &, const Http2Frame &);
 
@@ -89,7 +89,7 @@ rcv_data_frame(Http2ConnectionState &cstate, const Http2Frame &frame)
   Http2StreamDebug(cstate.ua_session, id, "Received DATA frame");
 
   if (cstate.get_zombie_event()) {
-    Warning("Data frame for zombied session %" PRId64, cstate.ua_session->connection_id());
+    Warning("Data frame for zombied session %" PRId64, cstate.ua_session->get_connection_id());
   }
 
   // If a DATA frame is received whose stream identifier field is 0x0, the
@@ -416,7 +416,7 @@ rcv_priority_frame(Http2ConnectionState &cstate, const Http2Frame &frame)
   Http2StreamDebug(cstate.ua_session, stream_id, "Received PRIORITY frame");
 
   if (cstate.get_zombie_event()) {
-    Warning("Priority frame for zombied session %" PRId64, cstate.ua_session->connection_id());
+    Warning("Priority frame for zombied session %" PRId64, cstate.ua_session->get_connection_id());
   }
 
   // If a PRIORITY frame is received with a stream identifier of 0x0, the
@@ -477,7 +477,7 @@ rcv_priority_frame(Http2ConnectionState &cstate, const Http2Frame &frame)
     if (is_debug_tag_set("http2_priority")) {
       std::stringstream output;
       cstate.dependency_tree->dump_tree(output);
-      Debug("http2_priority", "[%" PRId64 "] reprioritize %s", cstate.ua_session->connection_id(), output.str().c_str());
+      Debug("http2_priority", "[%" PRId64 "] reprioritize %s", cstate.ua_session->get_connection_id(), output.str().c_str());
     }
   } else {
     // PRIORITY frame is received before HEADERS frame.
@@ -563,7 +563,7 @@ rcv_settings_frame(Http2ConnectionState &cstate, const Http2Frame &frame)
   Http2StreamDebug(cstate.ua_session, stream_id, "Received SETTINGS frame");
 
   if (cstate.get_zombie_event()) {
-    Warning("Setting frame for zombied session %" PRId64, cstate.ua_session->connection_id());
+    Warning("Setting frame for zombied session %" PRId64, cstate.ua_session->get_connection_id());
   }
 
   // Update SETTIGNS frame count per minute
@@ -984,7 +984,7 @@ Http2ConnectionState::main_event_handler(int event, void *edata)
   // Initialize HTTP/2 Connection
   case HTTP2_SESSION_EVENT_INIT: {
     ink_assert(this->ua_session == nullptr);
-    this->ua_session = static_cast<Http2ClientSession *>(edata);
+    this->ua_session = static_cast<Http2CommonSession *>(edata);
     REMEMBER(event, this->recursion);
 
     // [RFC 7540] 3.5. HTTP/2 Connection Preface. Upon establishment of a TCP connection and
@@ -1068,11 +1068,11 @@ Http2ConnectionState::main_event_handler(int event, void *edata)
 
     if (error.cls != Http2ErrorClass::HTTP2_ERROR_CLASS_NONE) {
       ip_port_text_buffer ipb;
-      const char *client_ip = ats_ip_ntop(ua_session->get_remote_addr(), ipb, sizeof(ipb));
+      const char *client_ip = ats_ip_ntop(ua_session->get_proxy_session()->get_remote_addr(), ipb, sizeof(ipb));
       if (error.cls == Http2ErrorClass::HTTP2_ERROR_CLASS_CONNECTION) {
         if (error.msg) {
           Error("HTTP/2 connection error code=0x%02x client_ip=%s session_id=%" PRId64 " stream_id=%u %s",
-                static_cast<int>(error.code), client_ip, ua_session->connection_id(), stream_id, error.msg);
+                static_cast<int>(error.code), client_ip, ua_session->get_connection_id(), stream_id, error.msg);
         }
         this->send_goaway_frame(this->latest_streamid_in, error.code);
         this->ua_session->set_half_close_local_flag(true);
@@ -1085,7 +1085,7 @@ Http2ConnectionState::main_event_handler(int event, void *edata)
       } else if (error.cls == Http2ErrorClass::HTTP2_ERROR_CLASS_STREAM) {
         if (error.msg) {
           Error("HTTP/2 stream error code=0x%02x client_ip=%s session_id=%" PRId64 " stream_id=%u %s", static_cast<int>(error.code),
-                client_ip, ua_session->connection_id(), stream_id, error.msg);
+                client_ip, ua_session->get_connection_id(), stream_id, error.msg);
         }
         this->send_rst_stream_frame(stream_id, error.code);
       }
@@ -1120,7 +1120,7 @@ Http2ConnectionState::main_event_handler(int event, void *edata)
     }
     send_goaway_frame(latest_streamid_in, shutdown_reason);
     // Stop creating new streams
-    SCOPED_MUTEX_LOCK(lock, this->ua_session->mutex, this_ethread());
+    SCOPED_MUTEX_LOCK(lock, this->ua_session->get_mutex(), this_ethread());
     this->ua_session->set_half_close_local_flag(true);
   } break;
 
@@ -1133,9 +1133,9 @@ Http2ConnectionState::main_event_handler(int event, void *edata)
   --recursion;
   if (recursion == 0 && ua_session && !ua_session->is_recursing()) {
     if (this->ua_session->ready_to_free()) {
-      MUTEX_TRY_LOCK(lock, this->ua_session->mutex, this_ethread());
+      MUTEX_TRY_LOCK(lock, this->ua_session->get_mutex(), this_ethread());
       if (lock.is_locked()) {
-        this->ua_session->free();
+        this->ua_session->get_proxy_session()->free();
         // After the free, the Http2ConnectionState object is also freed.
         // The Http2ConnectionState object is allocted within the Http2ClientSession object
       }
@@ -1240,7 +1240,7 @@ Http2ConnectionState::create_stream(Http2StreamId new_id, Http2Error &error, boo
     zombie_event = nullptr;
   }
 
-  new_stream->set_proxy_ssn(ua_session);
+  new_stream->set_proxy_ssn(ua_session->get_proxy_session());
   new_stream->mutex                     = new_ProxyMutex();
   new_stream->is_first_transaction_flag = get_stream_requests() == 0;
   increment_stream_requests();
@@ -1346,7 +1346,7 @@ Http2ConnectionState::cleanup_streams()
   }
 
   if (!is_state_closed()) {
-    SCOPED_MUTEX_LOCK(lock, this->ua_session->mutex, this_ethread());
+    SCOPED_MUTEX_LOCK(lock, this->ua_session->get_mutex(), this_ethread());
 
     UnixNetVConnection *vc = static_cast<UnixNetVConnection *>(ua_session->get_netvc());
     if (vc && vc->active_timeout_in == 0) {
@@ -1378,7 +1378,7 @@ Http2ConnectionState::delete_stream(Http2Stream *stream)
       if (is_debug_tag_set("http2_priority")) {
         std::stringstream output;
         dependency_tree->dump_tree(output);
-        Debug("http2_priority", "[%" PRId64 "] %s", ua_session->connection_id(), output.str().c_str());
+        Debug("http2_priority", "[%" PRId64 "] %s", ua_session->get_connection_id(), output.str().c_str());
       }
       dependency_tree->remove(node);
       // ink_release_assert(dependency_tree->find(stream->get_id()) == nullptr);
@@ -1413,24 +1413,27 @@ Http2ConnectionState::release_stream()
 
   SCOPED_MUTEX_LOCK(lock, this->mutex, this_ethread());
   if (this->ua_session) {
-    ink_assert(this->mutex == ua_session->mutex);
+    ink_assert(this->mutex == ua_session->get_mutex());
 
     if (total_client_streams_count == 0) {
       if (fini_received) {
-        ua_session->clear_session_active();
+        ua_session->do_clear_session_active();
 
         // We were shutting down, go ahead and terminate the session
         // this is a member of Http2ConnectionState and will be freed
         // when ua_session is destroyed
-        ua_session->destroy();
+        ua_session->get_proxy_session()->destroy();
 
         // Can't do this because we just destroyed right here ^,
         // or we can use a local variable to do it.
         // ua_session = nullptr;
-      } else if (ua_session->is_active()) {
+      } else if (shutdown_state == HTTP2_SHUTDOWN_IN_PROGRESS && fini_event == nullptr) {
+        ua_session->do_clear_session_active();
+        fini_event = this_ethread()->schedule_imm_local((Continuation *)this, HTTP2_SESSION_EVENT_FINI);
+      } else if (ua_session->get_proxy_session()->is_active()) {
         // If the number of clients is 0, HTTP2_SESSION_EVENT_FINI is not received or sent, and ua_session is active,
         // then mark the connection as inactive
-        ua_session->clear_session_active();
+        ua_session->do_clear_session_active();
         UnixNetVConnection *vc = static_cast<UnixNetVConnection *>(ua_session->get_netvc());
         if (vc && vc->active_timeout_in == 0) {
           // With heavy traffic, ua_session could be destroyed. Do not touch ua_session after this.

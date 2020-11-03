@@ -25,6 +25,7 @@
 
 #include "HTTP2.h"
 #include "Http2ClientSession.h"
+#include "Http2ServerSession.h"
 #include "../http/HttpSM.h"
 
 #include <numeric>
@@ -369,9 +370,9 @@ Http2Stream::do_io_close(int /* flags */)
     if (_proxy_ssn && this->is_client_state_writeable()) {
       // Make sure any trailing end of stream frames are sent
       // Wee will be removed at send_data_frames or closing connection phase
-      Http2ClientSession *h2_proxy_ssn = static_cast<Http2ClientSession *>(this->_proxy_ssn);
-      SCOPED_MUTEX_LOCK(lock, h2_proxy_ssn->connection_state.mutex, this_ethread());
-      h2_proxy_ssn->connection_state.send_data_frames(this);
+      Http2ConnectionState &state = this->get_connection_state();
+      SCOPED_MUTEX_LOCK(lock, state.mutex, this_ethread());
+      state.send_data_frames(this);
     }
 
     _clear_timers();
@@ -397,7 +398,8 @@ Http2Stream::transaction_done()
   if (!closed) {
     do_io_close(); // Make sure we've been closed.  If we didn't close the _proxy_ssn session better still be open
   }
-  ink_release_assert(closed || !static_cast<Http2ClientSession *>(_proxy_ssn)->connection_state.is_state_closed());
+  Http2ConnectionState &state = this->get_connection_state();
+  ink_release_assert(closed || !state.is_state_closed());
   _sm = nullptr;
 
   if (closed) {
@@ -415,8 +417,8 @@ Http2Stream::terminate_if_possible()
   if (terminate_stream && reentrancy_count == 0) {
     REMEMBER(NO_EVENT, this->reentrancy_count);
 
-    Http2ClientSession *h2_proxy_ssn = static_cast<Http2ClientSession *>(this->_proxy_ssn);
-    SCOPED_MUTEX_LOCK(lock, h2_proxy_ssn->connection_state.mutex, this_ethread());
+    Http2ConnectionState &state = this->get_connection_state();
+    SCOPED_MUTEX_LOCK(lock, state.mutex, this_ethread());
     destroy();
   }
 }
@@ -570,7 +572,7 @@ Http2Stream::update_write_request(bool call_update)
   }
   ink_release_assert(this->_thread == this_ethread());
 
-  Http2ClientSession *h2_proxy_ssn = static_cast<Http2ClientSession *>(this->_proxy_ssn);
+  Http2ConnectionState &connection_state = this->get_connection_state();
 
   SCOPED_MUTEX_LOCK(lock, write_vio.mutex, this_ethread());
 
@@ -616,17 +618,17 @@ Http2Stream::update_write_request(bool call_update)
         int len;
         const char *value = field->value_get(&len);
         if (memcmp(HTTP_VALUE_CLOSE, value, HTTP_LEN_CLOSE) == 0) {
-          SCOPED_MUTEX_LOCK(lock, h2_proxy_ssn->connection_state.mutex, this_ethread());
-          if (h2_proxy_ssn->connection_state.get_shutdown_state() == HTTP2_SHUTDOWN_NONE) {
-            h2_proxy_ssn->connection_state.set_shutdown_state(HTTP2_SHUTDOWN_NOT_INITIATED, Http2ErrorCode::HTTP2_ERROR_NO_ERROR);
+          SCOPED_MUTEX_LOCK(lock, connection_state.mutex, this_ethread());
+          if (connection_state.get_shutdown_state() == HTTP2_SHUTDOWN_NONE) {
+            connection_state.set_shutdown_state(HTTP2_SHUTDOWN_NOT_INITIATED, Http2ErrorCode::HTTP2_ERROR_NO_ERROR);
           }
         }
       }
 
       {
-        SCOPED_MUTEX_LOCK(lock, h2_proxy_ssn->connection_state.mutex, this_ethread());
+        SCOPED_MUTEX_LOCK(lock, connection_state.mutex, this_ethread());
         // Send the response header back
-        h2_proxy_ssn->connection_state.send_headers_frame(this);
+        connection_state.send_headers_frame(this);
       }
 
       // Roll back states of response header to read final response
@@ -728,25 +730,24 @@ Http2Stream::signal_write_event(bool call_update)
 bool
 Http2Stream::push_promise(URL &url, const MIMEField *accept_encoding)
 {
-  Http2ClientSession *h2_proxy_ssn = static_cast<Http2ClientSession *>(this->_proxy_ssn);
-  SCOPED_MUTEX_LOCK(lock, h2_proxy_ssn->connection_state.mutex, this_ethread());
-  return h2_proxy_ssn->connection_state.send_push_promise_frame(this, url, accept_encoding);
+  Http2ConnectionState &connection_state = this->get_connection_state();
+  SCOPED_MUTEX_LOCK(lock, connection_state.mutex, this_ethread());
+  return connection_state.send_push_promise_frame(this, url, accept_encoding);
 }
 
 void
 Http2Stream::send_body(bool call_update)
 {
-  Http2ClientSession *h2_proxy_ssn = static_cast<Http2ClientSession *>(this->_proxy_ssn);
+  Http2ConnectionState &connection_state = this->get_connection_state();
   _timeout.update_inactivity();
 
+  SCOPED_MUTEX_LOCK(lock, connection_state.mutex, this_ethread());
   if (Http2::stream_priority_enabled) {
-    SCOPED_MUTEX_LOCK(lock, h2_proxy_ssn->connection_state.mutex, this_ethread());
-    h2_proxy_ssn->connection_state.schedule_stream(this);
+    connection_state.schedule_stream(this);
     // signal_write_event() will be called from `Http2ConnectionState::send_data_frames_depends_on_priority()`
     // when write_vio is consumed
   } else {
-    SCOPED_MUTEX_LOCK(lock, h2_proxy_ssn->connection_state.mutex, this_ethread());
-    h2_proxy_ssn->connection_state.send_data_frames(this);
+    connection_state.send_data_frames(this);
     this->signal_write_event(call_update);
     // XXX The call to signal_write_event can destroy/free the Http2Stream.
     // Don't modify the Http2Stream after calling this method.
@@ -761,10 +762,10 @@ Http2Stream::reenable(VIO *vio)
       SCOPED_MUTEX_LOCK(lock, this->mutex, this_ethread());
       update_write_request(true);
     } else if (vio->op == VIO::READ) {
-      Http2ClientSession *h2_proxy_ssn = static_cast<Http2ClientSession *>(this->_proxy_ssn);
+      Http2ConnectionState &connection_state = this->get_connection_state();
       {
-        SCOPED_MUTEX_LOCK(ssn_lock, h2_proxy_ssn->connection_state.mutex, this_ethread());
-        h2_proxy_ssn->connection_state.restart_receiving(this);
+        SCOPED_MUTEX_LOCK(ssn_lock, connection_state.mutex, this_ethread());
+        connection_state.restart_receiving(this);
       }
 
       SCOPED_MUTEX_LOCK(lock, this->mutex, this_ethread());
@@ -789,16 +790,16 @@ Http2Stream::destroy()
   if (_proxy_ssn) {
     cid = _proxy_ssn->connection_id();
 
-    Http2ClientSession *h2_proxy_ssn = static_cast<Http2ClientSession *>(_proxy_ssn);
-    SCOPED_MUTEX_LOCK(lock, h2_proxy_ssn->connection_state.mutex, this_ethread());
+    Http2ConnectionState &connection_state = this->get_connection_state();
+    SCOPED_MUTEX_LOCK(lock, connection_state.mutex, this_ethread());
     // Make sure the stream is removed from the stream list and priority tree
     // In many cases, this has been called earlier, so this call is a no-op
-    h2_proxy_ssn->connection_state.delete_stream(this);
+    connection_state.delete_stream(this);
 
-    h2_proxy_ssn->connection_state.decrement_stream_count();
+    connection_state.decrement_stream_count();
 
     // Update session's stream counts, so it accurately goes into keep-alive state
-    h2_proxy_ssn->connection_state.release_stream();
+    connection_state.release_stream();
 
     // Do not access `_proxy_ssn` in below. It might be freed by `release_stream`.
   }
@@ -1040,4 +1041,16 @@ Http2Stream::read_vio_read_avail()
   }
 
   return 0;
+}
+
+Http2ConnectionState &
+Http2Stream::get_connection_state()
+{
+  if (_outbound_flag) {
+    Http2ServerSession *session = static_cast<Http2ServerSession *>(_proxy_ssn);
+    return session->connection_state;
+  } else {
+    Http2ClientSession *session = static_cast<Http2ClientSession *>(_proxy_ssn);
+    return session->connection_state;
+  }
 }

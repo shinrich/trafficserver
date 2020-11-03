@@ -126,6 +126,7 @@ public:
 
   // Non-Virtual Methods
   NetVConnection *get_netvc() const;
+  void set_netvc(NetVConnection *netvc);
   int do_api_callout(TSHttpHookID id);
 
   void set_debug(bool flag);
@@ -288,4 +289,10 @@ inline NetVConnection *
 ProxySession::get_netvc() const
 {
   return _vc;
+}
+
+inline void
+ProxySession::set_netvc(NetVConnection *netvc)
+{
+  _vc = netvc;
 }
