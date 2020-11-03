@@ -33,7 +33,7 @@
 #include "Http2DependencyTree.h"
 #include "Http2FrequencyCounter.h"
 
-class Http2ClientSession;
+class Http2CommonSession;
 
 enum class Http2SendDataFrameResult {
   NO_ERROR = 0,
@@ -122,7 +122,7 @@ public:
 
   ProxyError rx_error_code;
   ProxyError tx_error_code;
-  Http2ClientSession *ua_session   = nullptr;
+  Http2CommonSession *ua_session   = nullptr;
   HpackHandle *local_hpack_handle  = nullptr;
   HpackHandle *remote_hpack_handle = nullptr;
   DependencyTree *dependency_tree  = nullptr;
