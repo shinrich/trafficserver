@@ -1162,7 +1162,7 @@ Http2ConnectionState::state_closed(int event, void *edata)
 }
 
 Http2Stream *
-Http2ConnectionState::create_stream(Http2StreamId new_id, Http2Error &error)
+Http2ConnectionState::create_stream(Http2StreamId new_id, Http2Error &error, bool initiating_connection)
 {
   // first check if we've hit the active connection limit
   if (!ua_session->get_netvc()->add_to_active_queue()) {
@@ -1218,7 +1218,7 @@ Http2ConnectionState::create_stream(Http2StreamId new_id, Http2Error &error)
   }
 
   Http2Stream *new_stream = THREAD_ALLOC_INIT(http2StreamAllocator, this_ethread());
-  new_stream->init(new_id, client_settings.get(HTTP2_SETTINGS_INITIAL_WINDOW_SIZE));
+  new_stream->init(new_id, client_settings.get(HTTP2_SETTINGS_INITIAL_WINDOW_SIZE), initiating_connection);
 
   ink_assert(nullptr != new_stream);
   ink_assert(!stream_list.in(new_stream));
@@ -1528,7 +1528,7 @@ Http2ConnectionState::send_a_data_frame(Http2Stream *stream, size_t &payload_len
   payload_length                    = 0;
 
   uint8_t flags               = 0x00;
-  IOBufferReader *resp_reader = stream->response_get_data_reader();
+  IOBufferReader *resp_reader = stream->send_get_data_reader();
 
   SCOPED_MUTEX_LOCK(stream_lock, stream->mutex, this_ethread());
 
@@ -1637,15 +1637,15 @@ Http2ConnectionState::send_headers_frame(Http2Stream *stream)
 
   Http2StreamDebug(ua_session, stream->get_id(), "Send HEADERS frame");
 
-  HTTPHdr *resp_hdr = &stream->response_header;
-  http2_convert_header_from_1_1_to_2(resp_hdr);
+  HTTPHdr *send_hdr = stream->get_send_header();
+  http2_convert_header_from_1_1_to_2(send_hdr);
 
-  uint32_t buf_len = resp_hdr->length_get() * 2; // Make it double just in case
+  uint32_t buf_len = send_hdr->length_get() * 2; // Make it double just in case
   ts::LocalBuffer local_buffer(buf_len);
   uint8_t *buf = local_buffer.data();
 
   stream->mark_milestone(Http2StreamMilestone::START_ENCODE_HEADERS);
-  Http2ErrorCode result = http2_encode_header_blocks(resp_hdr, buf, buf_len, &header_blocks_size, *(this->remote_hpack_handle),
+  Http2ErrorCode result = http2_encode_header_blocks(send_hdr, buf, buf_len, &header_blocks_size, *(this->remote_hpack_handle),
                                                      client_settings.get(HTTP2_SETTINGS_HEADER_TABLE_SIZE));
   if (result != Http2ErrorCode::HTTP2_ERROR_NO_ERROR) {
     return;
@@ -1655,8 +1655,8 @@ Http2ConnectionState::send_headers_frame(Http2Stream *stream)
   if (header_blocks_size <= static_cast<uint32_t>(BUFFER_SIZE_FOR_INDEX(buffer_size_index[HTTP2_FRAME_TYPE_HEADERS]))) {
     payload_length = header_blocks_size;
     flags |= HTTP2_FLAGS_HEADERS_END_HEADERS;
-    if ((resp_hdr->presence(MIME_PRESENCE_CONTENT_LENGTH) && resp_hdr->get_content_length() == 0) ||
-        (!resp_hdr->expect_final_response() && stream->is_write_vio_done())) {
+    if ((send_hdr->presence(MIME_PRESENCE_CONTENT_LENGTH) && send_hdr->get_content_length() == 0) ||
+        (!send_hdr->expect_final_response() && stream->is_write_vio_done())) {
       Http2StreamDebug(ua_session, stream->get_id(), "END_STREAM");
       flags |= HTTP2_FLAGS_HEADERS_END_STREAM;
       stream->send_end_stream = true;
@@ -1796,7 +1796,7 @@ Http2ConnectionState::send_push_promise_frame(Http2Stream *stream, URL &url, con
     }
   }
   stream->change_state(HTTP2_FRAME_TYPE_PUSH_PROMISE, HTTP2_FLAGS_PUSH_PROMISE_END_HEADERS);
-  stream->set_request_headers(hdr);
+  stream->set_recv_headers(hdr);
   stream->new_transaction();
   stream->send_request(*this);
 

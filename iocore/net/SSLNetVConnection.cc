@@ -149,6 +149,16 @@ private:
 };
 } // namespace
 
+MIOBuffer *FakeConnectBuffer      = new MIOBuffer();
+IOBufferReader *FakeConnectReader = FakeConnectBuffer->alloc_reader();
+
+void
+SSLNetVConnection::notify_open()
+{
+  // Kick off a write to make the TLS handshake start
+  this->do_io_write(this, 1, FakeConnectReader);
+}
+
 //
 // Private
 //
@@ -1123,6 +1133,11 @@ SSLNetVConnection::sslStartHandShake(int event, int &err)
         return EVENT_ERROR;
       }
 
+      if (params->client_alpn_protocols) {
+        // Set the ALPN protocols we are requesting.
+        SSL_set_alpn_protos(this->ssl, params->client_alpn_protocols, params->client_alpn_protocols_length);
+      }
+
       SSL_set_verify(this->ssl, SSL_VERIFY_PEER, verify_callback);
 
       ats_scoped_str &tlsext_host_name = this->options.sni_hostname ? this->options.sni_hostname : this->options.sni_servername;
@@ -1442,6 +1457,10 @@ SSLNetVConnection::sslClientHandShakeEvent(int &err)
     }
 
     SSL_INCREMENT_DYN_STAT(ssl_total_success_handshake_count_out_stat);
+
+    // Clear the fake handshake write and let the state machine know we are open
+    this->do_io_write(nullptr, 0, nullptr);
+    action_.continuation->handleEvent(NET_EVENT_OPEN, this);
 
     sslHandshakeStatus = SSL_HANDSHAKE_DONE;
     return EVENT_DONE;
