@@ -251,18 +251,28 @@ SSLConfigParams::initialize()
   // Read in the protocol string for ALPN to origin
   char *clientALPNProtocols;
   REC_ReadConfigStringAlloc(clientALPNProtocols, "proxy.config.ssl.client.alpn_protocols");
-  // Assume the protocols are space delimited
+  // Assume the protocols are comma delimited
   if (clientALPNProtocols) {
-    client_alpn_protocols = static_cast<unsigned char *>(ats_malloc(strlen(clientALPNProtocols)));
-    SimpleTokenizer proto_tok("", ',');
-    proto_tok.setString(clientALPNProtocols);
-    int index = 0;
-    while (proto_tok.getNumTokensRemaining() > 0) {
-      const char *proto              = proto_tok.getNext();
-      client_alpn_protocols[index++] = strlen(proto);
-      memcpy(client_alpn_protocols + index, proto, strlen(proto));
-      index += strlen(proto);
+    // Count up the number of separators
+    std::string_view protocols = clientALPNProtocols;
+    size_t offset = 0, start = 0;
+    client_alpn_protocols = static_cast<unsigned char *>(ats_malloc(strlen(clientALPNProtocols) + 2));
+    start                 = 0;
+    offset                = protocols.find(',', start);
+    int index             = 0;
+    while (offset != protocols.npos) {
+      client_alpn_protocols[index++] = offset - start;
+      memcpy(client_alpn_protocols + index, clientALPNProtocols + start, offset - start);
+      index += offset - start;
+      start  = offset + 1;
+      offset = protocols.find(',', start);
     }
+    // Copy in the last string
+    offset                         = strlen(clientALPNProtocols) + 1;
+    client_alpn_protocols[index++] = offset - start;
+    memcpy(client_alpn_protocols + index, clientALPNProtocols + start, offset - start);
+    index += offset - start;
+
     client_alpn_protocols_length = index;
   } else {
     client_alpn_protocols        = nullptr;
