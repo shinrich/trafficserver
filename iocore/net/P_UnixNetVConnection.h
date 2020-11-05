@@ -337,12 +337,6 @@ public:
   {
     origin_trace_port = port;
   }
-
-  virtual void
-  notify_open()
-  {
-    action_.continuation->handleEvent(NET_EVENT_OPEN, this);
-  }
 };
 
 extern ClassAllocator<UnixNetVConnection> netVCAllocator;

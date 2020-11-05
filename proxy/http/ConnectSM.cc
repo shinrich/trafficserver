@@ -601,6 +601,7 @@ ConnectSM::acquire_txn(HttpSM *sm, bool raw)
         _root_sm->ua_txn->attach_server_session(nullptr);
         existing_ss->set_active();
         _server_txn = existing_ss->new_transaction();
+        _server_txn->attach_transaction(_root_sm);
         ink_release_assert(_server_txn != nullptr);
         _return_state = ServerTxnCreated;
         _root_sm->handleEvent(EVENT_DONE, nullptr);
@@ -911,7 +912,6 @@ ConnectingEntry::create_server_session(HttpSM *root_sm, NetVConnection *netvc, M
 
   retval->attach_hostname(s.current.server->name);
 
-  retval->new_connection(netvc, netvc_read_buffer, netvc_reader);
   ATS_PROBE1(new_origin_server_connection, s.current.server->name);
   retval->set_active();
 
@@ -939,6 +939,7 @@ ConnectSM::create_server_txn(PoolableSession *new_session)
   }
 
   _server_txn = new_session->new_transaction();
+  _server_txn->attach_transaction(_root_sm);
   if (s.current.request_to == HttpTransact::PARENT_PROXY) {
     new_session->to_parent_proxy = true;
     HTTP_INCREMENT_DYN_STAT(http_current_parent_proxy_connections_stat);
