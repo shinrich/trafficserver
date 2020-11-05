@@ -66,6 +66,7 @@ public:
   void destroy() override;
   void release() override;
   void reenable(VIO *vio) override;
+  void reenable_write();
   void transaction_done() override;
 
   void do_io_shutdown(ShutdownHowTo_t) override {}

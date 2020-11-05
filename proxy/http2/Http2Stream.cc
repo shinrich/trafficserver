@@ -211,6 +211,7 @@ Http2Stream::change_state(uint8_t type, uint8_t flags)
       if (recv_end_stream) {
         _state = Http2StreamState::HTTP2_STREAM_STATE_HALF_CLOSED_REMOTE;
       } else if (send_end_stream) {
+        // write_event = send_tracked_event(write_event, VC_EVENT_WRITE_COMPLETE, &write_vio);
         _state = Http2StreamState::HTTP2_STREAM_STATE_HALF_CLOSED_LOCAL;
       } else {
         _state = Http2StreamState::HTTP2_STREAM_STATE_OPEN;
@@ -219,6 +220,7 @@ Http2Stream::change_state(uint8_t type, uint8_t flags)
       if (recv_end_stream) {
         _state = Http2StreamState::HTTP2_STREAM_STATE_HALF_CLOSED_REMOTE;
       } else if (send_end_stream) {
+        // write_event = send_tracked_event(write_event, VC_EVENT_WRITE_COMPLETE, &write_vio);
         _state = Http2StreamState::HTTP2_STREAM_STATE_HALF_CLOSED_LOCAL;
       } else {
         _state = Http2StreamState::HTTP2_STREAM_STATE_OPEN;
@@ -237,6 +239,7 @@ Http2Stream::change_state(uint8_t type, uint8_t flags)
       if (recv_end_stream) {
         _state = Http2StreamState::HTTP2_STREAM_STATE_HALF_CLOSED_REMOTE;
       } else if (send_end_stream) {
+        // write_event = send_tracked_event(write_event, VC_EVENT_WRITE_COMPLETE, &write_vio);
         _state = Http2StreamState::HTTP2_STREAM_STATE_HALF_CLOSED_LOCAL;
       } else {
         // Do not change state
@@ -270,8 +273,8 @@ Http2Stream::change_state(uint8_t type, uint8_t flags)
       _state = Http2StreamState::HTTP2_STREAM_STATE_CLOSED;
     } else {
       // Error, set state closed
-      _state = Http2StreamState::HTTP2_STREAM_STATE_CLOSED;
-      return false;
+      //_state = Http2StreamState::HTTP2_STREAM_STATE_CLOSED;
+      // return false;
     }
     break;
 
@@ -286,8 +289,8 @@ Http2Stream::change_state(uint8_t type, uint8_t flags)
       return true;
     } else {
       // Error, set state closed
-      _state = Http2StreamState::HTTP2_STREAM_STATE_CLOSED;
-      return false;
+      //_state = Http2StreamState::HTTP2_STREAM_STATE_CLOSED;
+      // return false;
     }
     break;
 
@@ -342,7 +345,9 @@ Http2Stream::do_io_write(Continuation *c, int64_t nbytes, IOBufferReader *abuffe
   _send_reader        = abuffer;
 
   if (c != nullptr && nbytes > 0 && this->is_state_writeable()) {
-    update_write_request(abuffer, nbytes, false);
+    if (_proxy_ssn->ready_to_write()) {
+      update_write_request(abuffer, nbytes, false);
+    }
   } else if (!this->is_state_writeable()) {
     // Cannot start a write on a closed stream
     return nullptr;
@@ -454,9 +459,9 @@ Http2Stream::initiating_close()
         // Are we done?
         if (write_vio.nbytes == write_vio.ndone) {
           Http2StreamDebug("handle write from destroy (event=%d)", VC_EVENT_WRITE_COMPLETE);
-          write_event = send_tracked_event(write_event, VC_EVENT_WRITE_COMPLETE, &write_vio);
+          // write_event = send_tracked_event(write_event, VC_EVENT_WRITE_COMPLETE, &write_vio);
         } else {
-          write_event = send_tracked_event(write_event, VC_EVENT_EOS, &write_vio);
+          // write_event = send_tracked_event(write_event, VC_EVENT_EOS, &write_vio);
           Http2StreamDebug("handle write from destroy (event=%d)", VC_EVENT_EOS);
         }
         sent_write_complete = true;
@@ -628,7 +633,7 @@ Http2Stream::update_write_request(IOBufferReader *buf_reader, int64_t write_len,
       }
 
       // Roll back states of response header to read final response
-      if (this->_send_header.expect_final_response()) {
+      if (this->is_outbound_connection() || this->_send_header.expect_final_response()) {
         this->parsing_header_done = false;
         _send_header.destroy();
         _send_header.create(this->is_outbound_connection() ? HTTP_TYPE_REQUEST : HTTP_TYPE_RESPONSE);
@@ -745,6 +750,15 @@ Http2Stream::send_body(bool call_update)
     this->signal_write_event(call_update);
     // XXX The call to signal_write_event can destroy/free the Http2Stream.
     // Don't modify the Http2Stream after calling this method.
+  }
+}
+
+void
+Http2Stream::reenable_write()
+{
+  if (this->_proxy_ssn) {
+    SCOPED_MUTEX_LOCK(lock, this->mutex, this_ethread());
+    update_write_request(write_vio.get_reader(), INT64_MAX, true);
   }
 }
 

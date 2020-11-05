@@ -56,6 +56,12 @@ ProxyTransaction::new_transaction(bool from_early_data)
 }
 
 void
+ProxyTransaction::attach_transaction(HttpSM *attach_sm)
+{
+  _sm = attach_sm;
+}
+
+void
 ProxyTransaction::release()
 {
   HttpTxnDebug("[%" PRId64 "] session released by sm [%" PRId64 "]", _proxy_ssn ? _proxy_ssn->connection_id() : 0,

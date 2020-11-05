@@ -71,7 +71,7 @@ Http2ClientSession::start()
   write_vio     = this->do_io_write(this, INT64_MAX, this->sm_writer);
 
   this->connection_state.init();
-  send_connection_event(&this->connection_state, HTTP2_SESSION_EVENT_INIT, this);
+  send_connection_event(&this->connection_state, HTTP2_SESSION_EVENT_INIT, static_cast<Http2CommonSession *>(this));
 
   if (this->_reader->is_read_avail_more_than(0)) {
     this->handleEvent(VC_EVENT_READ_READY, read_vio);

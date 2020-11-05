@@ -1272,7 +1272,7 @@ UnixNetVConnection::connectUp(EThread *t, int fd)
   set_inactivity_timeout(0);
   ink_assert(!active_timeout_in);
   this->set_local_addr();
-  this->notify_open();
+  action_.continuation->handleEvent(NET_EVENT_OPEN, this);
   return CONNECT_SUCCESS;
 
 fail:
