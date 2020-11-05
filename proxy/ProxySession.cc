@@ -307,3 +307,9 @@ ProxySession::support_sni() const
 {
   return _vc ? _vc->support_sni() : false;
 }
+
+bool
+ProxySession::ready_to_write() const
+{
+  return true;
+}

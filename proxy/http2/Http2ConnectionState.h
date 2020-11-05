@@ -122,7 +122,7 @@ public:
 
   ProxyError rx_error_code;
   ProxyError tx_error_code;
-  Http2CommonSession *ua_session   = nullptr;
+  Http2CommonSession *session      = nullptr;
   HpackHandle *local_hpack_handle  = nullptr;
   HpackHandle *remote_hpack_handle = nullptr;
   DependencyTree *dependency_tree  = nullptr;
@@ -169,8 +169,8 @@ public:
     delete remote_hpack_handle;
     remote_hpack_handle = nullptr;
     delete dependency_tree;
-    dependency_tree  = nullptr;
-    this->ua_session = nullptr;
+    dependency_tree = nullptr;
+    this->session   = nullptr;
 
     if (fini_event) {
       fini_event->cancel();
@@ -190,6 +190,7 @@ public:
   Http2Stream *create_stream(Http2StreamId new_id, Http2Error &error, bool initiating_connection = false);
   Http2Stream *find_stream(Http2StreamId id) const;
   void restart_streams();
+  void start_streams();
   bool delete_stream(Http2Stream *stream);
   void release_stream();
   void cleanup_streams();
@@ -283,7 +284,7 @@ public:
   bool
   is_state_closed() const
   {
-    return ua_session == nullptr || fini_received;
+    return session == nullptr || fini_received;
   }
 
   bool
