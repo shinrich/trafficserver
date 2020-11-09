@@ -353,6 +353,9 @@ public:
   Http2ErrorCode increment_server_rwnd(size_t amount);
   Http2ErrorCode decrement_server_rwnd(size_t amount);
 
+  bool no_streams() const;
+  bool single_stream() const;
+
 private:
   unsigned _adjust_concurrent_stream();
 
@@ -409,3 +412,14 @@ private:
   Event *fini_event                 = nullptr;
   Event *zombie_event               = nullptr;
 };
+
+inline bool
+Http2ConnectionState::single_stream() const
+{
+  return stream_list.head != nullptr && stream_list.head == stream_list.tail;
+}
+inline bool
+Http2ConnectionState::no_streams() const
+{
+  return stream_list.empty();
+}

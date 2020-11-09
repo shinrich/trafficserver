@@ -1242,6 +1242,9 @@ Http2ConnectionState::create_stream(Http2StreamId new_id, Http2Error &error, boo
   new_stream->is_first_transaction_flag = get_stream_requests() == 0;
   increment_stream_requests();
 
+  // Clear the session timeout.  Let the transaction timeouts reign
+  session->get_proxy_session()->cancel_inactivity_timeout();
+
   return new_stream;
 }
 
@@ -1624,7 +1627,7 @@ Http2ConnectionState::send_data_frames(Http2Stream *stream)
   while (result == Http2SendDataFrameResult::NO_ERROR) {
     result = send_a_data_frame(stream, len);
 
-    if (result == Http2SendDataFrameResult::DONE) {
+    if (result == Http2SendDataFrameResult::DONE && !stream->is_outbound_connection()) {
       // Delete a stream immediately
       // TODO its should not be deleted for a several time to handling
       // RST_STREAM and WINDOW_UPDATE.

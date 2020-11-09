@@ -312,6 +312,11 @@ Http2ClientSession::get_protocol_string() const
 void
 Http2ClientSession::release(ProxyTransaction *trans)
 {
+  // If no streams are active, set the inactivity timeout
+  // to the keep alive timeout
+  if (connection_state.no_streams()) {
+    this->set_inactivity_timeout(HRTIME_SECONDS(Http2::no_activity_timeout_in));
+  }
 }
 
 int

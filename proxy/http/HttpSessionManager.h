@@ -68,6 +68,8 @@ public:
   static bool validate_host_sni(ConnectSM *s, NetVConnection *netvc);
   static bool validate_sni(ConnectSM *s, NetVConnection *netvc);
   static bool validate_cert(ConnectSM *s, NetVConnection *netvc);
+  void removeSession(PoolableSession *ssn);
+  void addSession(PoolableSession *ssn);
 
 protected:
   using IPTable   = IntrusiveHashMap<PoolableSession::IPLinkage>;

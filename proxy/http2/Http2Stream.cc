@@ -381,7 +381,12 @@ Http2Stream::do_io_close(int /* flags */)
 
     clear_io_events();
 
-    // Wait until transaction_done is called from HttpSM to signal that the TXN_CLOSE hook has been executed
+    // If this is a server transaction, just take it down.
+    if (this->is_outbound_connection()) {
+      this->transaction_done();
+    }
+
+    // Otherwise, Wait until transaction_done is called from HttpSM to signal that the TXN_CLOSE hook has been executed
   }
 }
 

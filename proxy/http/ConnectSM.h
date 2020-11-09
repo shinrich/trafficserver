@@ -105,11 +105,7 @@ public:
     }
   }
 
-  void
-  set_server_txn(ProxyTransaction *txn)
-  {
-    _server_txn = txn;
-  }
+  void set_server_txn(ProxyTransaction *txn);
 
   HttpSM *
   get_root_sm() const

@@ -899,8 +899,10 @@ ConnectingEntry::create_server_session(HttpSM *root_sm, NetVConnection *netvc, M
     Debug("http_ss", "[create_server_session] negotiated protocol HTTP not over SSL");
   }
 
+  bool add_session = false;
   if (proto_length == 2 && memcmp(proto, "h2", 2) == 0) {
     Http2ServerSession *session = http2ServerSessionAllocator.alloc();
+    add_session                 = true;
     retval                      = session;
   } else {
     Http1ServerSession *session = httpServerSessionAllocator.alloc();
@@ -911,6 +913,11 @@ ConnectingEntry::create_server_session(HttpSM *root_sm, NetVConnection *netvc, M
   retval->new_connection(netvc, netvc_read_buffer, netvc_reader);
 
   retval->attach_hostname(s.current.server->name);
+
+  // Must attach the hostname before adding the session to the pool
+  if (add_session) {
+    static_cast<Http2ServerSession *>(retval)->add_session();
+  }
 
   ATS_PROBE1(new_origin_server_connection, s.current.server->name);
   retval->set_active();
@@ -1635,4 +1642,11 @@ ConnectSM::ReDNSRoundRobin()
     _return_state = ErrorDNS;
     return false;
   }
+}
+
+void
+ConnectSM::set_server_txn(ProxyTransaction *txn)
+{
+  _server_txn = txn;
+  _server_txn->attach_transaction(_root_sm);
 }

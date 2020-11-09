@@ -804,6 +804,7 @@ uint32_t Http2::header_table_size              = 4096;
 uint32_t Http2::max_header_list_size           = 4294967295;
 uint32_t Http2::accept_no_activity_timeout     = 120;
 uint32_t Http2::no_activity_timeout_in         = 120;
+uint32_t Http2::no_activity_timeout_out        = 120;
 uint32_t Http2::active_timeout_in              = 0;
 uint32_t Http2::push_diary_size                = 256;
 uint32_t Http2::zombie_timeout_in              = 0;
@@ -831,6 +832,7 @@ Http2::init()
   REC_EstablishStaticConfigInt32U(max_header_list_size, "proxy.config.http2.max_header_list_size");
   REC_EstablishStaticConfigInt32U(accept_no_activity_timeout, "proxy.config.http2.accept_no_activity_timeout");
   REC_EstablishStaticConfigInt32U(no_activity_timeout_in, "proxy.config.http2.no_activity_timeout_in");
+  REC_EstablishStaticConfigInt32U(no_activity_timeout_out, "proxy.config.http2.no_activity_timeout_out");
   REC_EstablishStaticConfigInt32U(active_timeout_in, "proxy.config.http2.active_timeout_in");
   REC_EstablishStaticConfigInt32U(push_diary_size, "proxy.config.http2.push_diary_size");
   REC_EstablishStaticConfigInt32U(zombie_timeout_in, "proxy.config.http2.zombie_debug_timeout_in");
