@@ -148,19 +148,17 @@ ServerSessionPool::acquireSession(sockaddr const *addr, CryptoHash const &hostna
   to_return        = nullptr;
 
   if ((TS_SERVER_SESSION_SHARING_MATCH_MASK_HOSTONLY & match_style) && !(TS_SERVER_SESSION_SHARING_MATCH_MASK_IP & match_style)) {
+    Debug("http_ss", "Search for host name only not IP.  Pool size %" PRId64, m_fqdn_pool.count());
     // This is broken out because only in this case do we check the host hash first. The range must be checked
     // to verify an upstream that matches port and SNI name is selected. Walk backwards to select oldest.
     in_port_t port = ats_ip_port_cast(addr);
-    FQDNTable::iterator first, last;
-    // FreeBSD/clang++ bug workaround: explicit cast to super type to make overload work. Not needed on Fedora27 nor gcc.
-    // Not fixed on FreeBSD as of llvm 6.0.1.
-    std::tie(first, last) = static_cast<const decltype(m_fqdn_pool)::range::super_type &>(m_fqdn_pool.equal_range(hostname_hash));
-    while (last != first) {
-      --last;
-      if (port == ats_ip_port_cast(last->get_remote_addr()) &&
-          (!(match_style & TS_SERVER_SESSION_SHARING_MATCH_MASK_SNI) || validate_sni(connectSM, last->get_netvc())) &&
-          (!(match_style & TS_SERVER_SESSION_SHARING_MATCH_MASK_HOSTSNISYNC) || validate_host_sni(connectSM, last->get_netvc())) &&
-          (!(match_style & TS_SERVER_SESSION_SHARING_MATCH_MASK_CERT) || validate_cert(connectSM, last->get_netvc()))) {
+    auto first     = m_fqdn_pool.find(hostname_hash);
+    while (first != m_fqdn_pool.end() && first->hostname_hash == hostname_hash) {
+      Debug("http_ss", "Compare port 0x%x against 0x%x", port, ats_ip_port_cast(first->get_remote_addr()));
+      if (port == ats_ip_port_cast(first->get_remote_addr()) &&
+          (!(match_style & TS_SERVER_SESSION_SHARING_MATCH_MASK_SNI) || validate_sni(connectSM, first->get_netvc())) &&
+          (!(match_style & TS_SERVER_SESSION_SHARING_MATCH_MASK_HOSTSNISYNC) || validate_host_sni(connectSM, first->get_netvc())) &&
+          (!(match_style & TS_SERVER_SESSION_SHARING_MATCH_MASK_CERT) || validate_cert(connectSM, first->get_netvc()))) {
         zret = HSM_DONE;
         break;
       }
@@ -168,8 +166,10 @@ ServerSessionPool::acquireSession(sockaddr const *addr, CryptoHash const &hostna
     }
     if (zret == HSM_DONE) {
       to_return = first;
-      m_fqdn_pool.erase(first);
-      m_ip_pool.erase(to_return);
+      if (!to_return->is_multiplexing()) {
+        m_fqdn_pool.erase(first);
+        m_ip_pool.erase(to_return);
+      }
     }
   } else if (TS_SERVER_SESSION_SHARING_MATCH_MASK_IP & match_style) { // matching is not disabled.
     auto first = m_ip_pool.find(addr);
@@ -193,8 +193,10 @@ ServerSessionPool::acquireSession(sockaddr const *addr, CryptoHash const &hostna
     }
     if (zret == HSM_DONE) {
       to_return = first;
-      m_ip_pool.erase(first);
-      m_fqdn_pool.erase(to_return);
+      if (!to_return->is_multiplexing()) {
+        m_ip_pool.erase(first);
+        m_fqdn_pool.erase(to_return);
+      }
     }
   }
   return zret;
@@ -482,4 +484,34 @@ HttpSessionManager::release_session(PoolableSession *to_release)
   }
 
   return released_p ? HSM_DONE : HSM_RETRY;
+}
+
+void
+ServerSessionPool::removeSession(PoolableSession *to_remove)
+{
+  char peer_ip[INET6_ADDRPORTSTRLEN];
+  ats_ip_nptop(to_remove->get_remote_addr(), peer_ip, sizeof(peer_ip));
+
+  EThread *ethread = this_ethread();
+  SCOPED_MUTEX_LOCK(lock, mutex, ethread);
+  Debug("http_ss", "Remove session %p %s m_fqdn_pool size=%" PRId64 " m_ip_pool_size=%" PRId64, to_remove, peer_ip,
+        m_fqdn_pool.count(), m_ip_pool.count());
+  m_fqdn_pool.erase(to_remove);
+  m_ip_pool.erase(to_remove);
+  Debug("http_ss", "After Remove session %p m_fqdn_pool size=%" PRId64 " m_ip_pool_size=%" PRId64, to_remove, m_fqdn_pool.count(),
+        m_ip_pool.count());
+}
+
+void
+ServerSessionPool::addSession(PoolableSession *ss)
+{
+  char peer_ip[INET6_ADDRPORTSTRLEN];
+  ats_ip_nptop(ss->get_remote_addr(), peer_ip, sizeof(peer_ip));
+
+  EThread *ethread = this_ethread();
+  SCOPED_MUTEX_LOCK(lock, mutex, ethread);
+  // put it in the pools.
+  m_ip_pool.insert(ss);
+  m_fqdn_pool.insert(ss);
+  Debug("http_ss", "[%" PRId64 "] [add session] session placed into shared pool under ip %s", ss->connection_id(), peer_ip);
 }

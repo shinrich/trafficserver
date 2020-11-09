@@ -83,11 +83,7 @@ public:
   bool is_private() const;
 
   void set_netvc(NetVConnection *newvc);
-  virtual bool
-  is_multiplexing()
-  {
-    return false;
-  }
+  virtual bool is_multiplexing() const;
 
   // Used to determine whether the session is for parent proxy
   // it is session to origin server
@@ -236,4 +232,10 @@ PoolableSession::attach_hostname(const char *hostname)
   if (CRYPTO_HASH_ZERO == hostname_hash) {
     CryptoContext().hash_immediate(hostname_hash, (unsigned char *)hostname, strlen(hostname));
   }
+}
+
+inline bool
+PoolableSession::is_multiplexing() const
+{
+  return false;
 }
