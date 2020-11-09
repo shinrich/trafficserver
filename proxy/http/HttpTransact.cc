@@ -3819,7 +3819,9 @@ HttpTransact::handle_forward_server_connection_open(State *s)
   TxnDebug("http_seq", "[HttpTransact::handle_server_connection_open] ");
   ink_release_assert(s->current.state == CONNECTION_ALIVE);
 
-  if (s->hdr_info.server_response.version_get() == HTTPVersion(0, 9)) {
+  if (s->state_machine->get_server_txn() && strcmp(s->state_machine->get_server_txn()->get_protocol_string(), "http/2") == 0) {
+    s->updated_server_version = HostDBApplicationInfo::HTTP_VERSION_2;
+  } else if (s->hdr_info.server_response.version_get() == HTTPVersion(0, 9)) {
     TxnDebug("http_trans", "[hfsco] server sent 0.9 response, reading...");
     build_response(s, &s->hdr_info.client_response, s->client_info.http_version, HTTP_STATUS_OK, "Connection Established");
 
