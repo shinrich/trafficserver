@@ -5249,15 +5249,11 @@ HttpSM::write_header_into_buffer(HTTPHdr *h, MIOBuffer *b)
 }
 
 void
-HttpSM::attach_server_session(ProxyTransaction *new_server_txn)
+HttpSM::attach_server_session()
 {
   hsm_release_assert(this->server_txn == nullptr);
   hsm_release_assert(this->server_entry == nullptr);
-  if (new_server_txn == nullptr) {
-    server_txn = connect_sm.release_server_txn();
-  } else {
-    server_txn = new_server_txn;
-  }
+  server_txn            = connect_sm.release_server_txn();
   server_transact_count = server_txn->get_proxy_ssn()->get_transact_count();
 
   // Set the mutex so that we have something to update

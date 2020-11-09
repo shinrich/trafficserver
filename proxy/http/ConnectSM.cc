@@ -53,6 +53,7 @@ public:
   Action *_pending_action = nullptr;
   NetVCOptions opt;
 
+  void remove_entry();
   int state_http_server_open(int event, void *data);
   static PoolableSession *create_server_session(HttpSM *root_sm, NetVConnection *netvc, MIOBuffer *netvc_read_buffer,
                                                 IOBufferReader *netvc_reader);
@@ -85,7 +86,9 @@ public:
 void
 initialize_thread_for_connecting_pools(EThread *thread)
 {
-  thread->connecting_pool = new ConnectingPool();
+  if (thread->connecting_pool == nullptr) {
+    thread->connecting_pool = new ConnectingPool();
+  }
 }
 
 int
@@ -111,17 +114,22 @@ ConnectingEntry::state_http_server_open(int event, void *data)
   case VC_EVENT_READ_COMPLETE:
   case VC_EVENT_WRITE_READY:
   case VC_EVENT_WRITE_COMPLETE: {
+    Debug("http_connect", "Kick off %" PRId64 " state machines waiting for origin", _connect_sms.size());
     if (_connect_sms.size() > 0) {
       ConnectSM *prime_connect_sm = _connect_sms.front();
       PoolableSession *new_session =
         ConnectingEntry::create_server_session(prime_connect_sm->get_root_sm(), _netvc, _netvc_read_buffer, _netvc_reader);
 
       // Did we end up with a multiplexing session?
+      int count = 0;
       if (new_session->is_multiplexing()) {
         // Hand off to all queued up ConnectSM's.
         while (!_connect_sms.empty()) {
+          Debug("http_connect", "ConnectingEntry Pass along CONNECT_EVENT_TXN %d", count++);
           auto entry = _connect_sms.front();
           _connect_sms.pop();
+
+          SCOPED_MUTEX_LOCK(lock, entry->mutex, this_ethread());
           entry->handleEvent(CONNECT_EVENT_TXN, new_session);
         }
       } else {
@@ -129,13 +137,17 @@ ConnectingEntry::state_http_server_open(int event, void *data)
         auto entry = _connect_sms.front();
         _connect_sms.pop();
         entry->handleEvent(CONNECT_EVENT_TXN, new_session);
+        Debug("http_connect", "ConnectingEntry send CONNECT_EVENT_TXN to first %d", count++);
         while (!_connect_sms.empty()) {
           entry = _connect_sms.front();
           _connect_sms.pop();
+          Debug("http_connect", "ConnectingEntry Pass long CONNECT_EVENT_DIRECT %d", count++);
+          SCOPED_MUTEX_LOCK(lock, entry->mutex, this_ethread());
           entry->handleEvent(CONNECT_EVENT_DIRECT, new_session);
         }
       }
     }
+    this->remove_entry();
 
     // ConnectingEntry should remove itself from the tables and delete itself
     return 0;
@@ -145,11 +157,13 @@ ConnectingEntry::state_http_server_open(int event, void *data)
   case VC_EVENT_ERROR:
   case NET_EVENT_OPEN_FAILED:
 
+    Debug("http_connect", "Stop %" PRId64 " state machines waiting for failed origin", _connect_sms.size());
     while (!_connect_sms.empty()) {
       auto entry = _connect_sms.front();
       _connect_sms.pop();
       entry->handleEvent(event, data);
     }
+    this->remove_entry();
     // ConnectingEntry should remove itself from the tables and delete itself
 
     return 0;
@@ -413,7 +427,8 @@ ConnectSM::do_hostdb_lookup(HttpSM *sm)
 bool
 ConnectSM::origin_multiplexed() const
 {
-  return false;
+  HttpTransact::State &s = _root_sm->t_state;
+  return (s.host_db_info.app.http_data.http_version == HostDBApplicationInfo::HTTP_VERSION_2);
 }
 
 // Returns true if there was a matching entry that we
@@ -423,17 +438,40 @@ ConnectSM::add_to_existing_request()
 {
   HttpTransact::State &s = _root_sm->t_state;
   bool retval            = false;
+  EThread *ethread       = this_ethread();
 
-  EThread *ethread = this_ethread();
+  if (nullptr == ethread->connecting_pool) {
+    initialize_thread_for_connecting_pools(ethread);
+  }
+
+  SET_HANDLER(&ConnectSM::state_http_server_open);
+
   IpEndpoint ip;
   ip.assign(&s.current.server->dst_addr.sa);
   auto ip_iter   = ethread->connecting_pool->m_ip_pool.find(ip);
   auto host_iter = ethread->connecting_pool->m_host_pool.find(s.current.server->name);
   if (ip_iter != ethread->connecting_pool->m_ip_pool.end() && host_iter != ethread->connecting_pool->m_host_pool.end()) {
     ip_iter->second->_connect_sms.push(this);
+    // host_iter->second->_connect_sms.push(this);
+    Debug("http_connect", "Add entry to connection queue. size=%" PRId64, ip_iter->second->_connect_sms.size());
     retval = true;
   }
   return retval;
+}
+
+void
+ConnectingEntry::remove_entry()
+{
+  EThread *ethread = this_ethread();
+  auto ip_iter     = ethread->connecting_pool->m_ip_pool.find(this->_ipaddr);
+  if (ip_iter != ethread->connecting_pool->m_ip_pool.end()) {
+    ethread->connecting_pool->m_ip_pool.erase(ip_iter);
+  }
+  auto host_iter = ethread->connecting_pool->m_host_pool.find(this->_hostname);
+  if (host_iter != ethread->connecting_pool->m_host_pool.end()) {
+    ethread->connecting_pool->m_host_pool.erase(host_iter);
+  }
+  delete this;
 }
 
 Action *
@@ -636,6 +674,7 @@ ConnectSM::acquire_txn(HttpSM *sm, bool raw)
   bool multiplexed_origin = !_direct && !raw && this->origin_multiplexed();
   if (multiplexed_origin) {
     if (this->add_to_existing_request()) {
+      Debug("http_ss", "Queue behind existing request");
       // We are queued up behind an existing connect request
       // Go away and wait.
       return &_captive_action;
@@ -796,12 +835,18 @@ ConnectSM::acquire_txn(HttpSM *sm, bool raw)
 
   ConnectingEntry *new_entry = nullptr;
   if (multiplexed_origin) {
-    new_entry        = new ConnectingEntry();
     EThread *ethread = this_ethread();
-    IpEndpoint ip;
-    ip.assign(&s.current.server->dst_addr.sa);
-    ethread->connecting_pool->m_ip_pool.insert(std::make_pair(ip, new_entry));
-    ethread->connecting_pool->m_host_pool.insert(std::make_pair(s.current.server->name, new_entry));
+    if (nullptr != ethread->connecting_pool) {
+      Debug("http_ss", "Queue multiplexed request");
+      new_entry          = new ConnectingEntry();
+      new_entry->mutex   = this->mutex;
+      new_entry->handler = (ContinuationHandler)&ConnectingEntry::state_http_server_open;
+      new_entry->_ipaddr.assign(&s.current.server->dst_addr.sa);
+      new_entry->_hostname = s.current.server->name;
+      new_entry->_connect_sms.push(this);
+      ethread->connecting_pool->m_ip_pool.insert(std::make_pair(new_entry->_ipaddr, new_entry));
+      ethread->connecting_pool->m_host_pool.insert(std::make_pair(new_entry->_hostname, new_entry));
+    }
   }
 
   if (tls_upstream) {
