@@ -678,10 +678,12 @@ Http2Stream::update_write_request(bool call_update)
 void
 Http2Stream::signal_read_event(int event)
 {
-  if (this->read_vio.cont == nullptr || this->read_vio.cont->mutex == nullptr || this->read_vio.op == VIO::NONE) {
+  if (this->read_vio.cont == nullptr || this->read_vio.cont->mutex == nullptr || this->read_vio.op == VIO::NONE ||
+      this->terminate_stream) {
     return;
   }
 
+  reentrancy_count++;
   MUTEX_TRY_LOCK(lock, read_vio.cont->mutex, this_ethread());
   if (lock.is_locked()) {
     _timeout.update_inactivity();
@@ -692,6 +694,7 @@ Http2Stream::signal_read_event(int event)
     }
     this->_read_vio_event = this_ethread()->schedule_in(this, retry_delay, event, &read_vio);
   }
+  reentrancy_count--;
 }
 
 void
@@ -699,10 +702,11 @@ Http2Stream::signal_write_event(int event)
 {
   // Don't signal a write event if in fact nothing was written
   if (this->write_vio.cont == nullptr || this->write_vio.cont->mutex == nullptr || this->write_vio.op == VIO::NONE ||
-      this->write_vio.nbytes == 0) {
+      this->terminate_stream) {
     return;
   }
 
+  reentrancy_count++;
   MUTEX_TRY_LOCK(lock, write_vio.cont->mutex, this_ethread());
   if (lock.is_locked()) {
     _timeout.update_inactivity();
@@ -713,18 +717,20 @@ Http2Stream::signal_write_event(int event)
     }
     this->_write_vio_event = this_ethread()->schedule_in(this, retry_delay, event, &write_vio);
   }
+  reentrancy_count--;
 }
 
 void
 Http2Stream::signal_write_event(bool call_update)
 {
-  if (this->write_vio.cont == nullptr || this->write_vio.op == VIO::NONE) {
+  if (this->write_vio.cont == nullptr || this->write_vio.op == VIO::NONE || this->terminate_stream) {
     return;
   }
 
   if (this->write_vio.get_writer()->write_avail() == 0) {
     return;
   }
+  reentrancy_count++;
 
   int send_event = this->write_vio.ntodo() == 0 ? VC_EVENT_WRITE_COMPLETE : VC_EVENT_WRITE_READY;
 
@@ -737,6 +743,7 @@ Http2Stream::signal_write_event(bool call_update)
     // Called from do_io_write. Might still be setting up state. Send an event to let the dust settle
     write_event = send_tracked_event(write_event, send_event, &write_vio);
   }
+  reentrancy_count--;
 }
 
 bool
