@@ -642,8 +642,10 @@ Http2Stream::update_write_request(bool call_update)
       }
 
       // Roll back states of response header to read final response
-      if (this->is_outbound_connection() || this->_send_header.expect_final_response()) {
+      if (!this->is_outbound_connection() && this->_send_header.expect_final_response()) {
         this->parsing_header_done = false;
+      }
+      if (this->is_outbound_connection() || this->_send_header.expect_final_response()) {
         _send_header.destroy();
         _send_header.create(this->is_outbound_connection() ? HTTP_TYPE_REQUEST : HTTP_TYPE_RESPONSE);
         http2_init_pseudo_headers(_send_header);
