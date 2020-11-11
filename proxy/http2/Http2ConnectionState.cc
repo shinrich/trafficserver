@@ -1661,7 +1661,7 @@ Http2ConnectionState::send_data_frames(Http2Stream *stream)
       // See 'closed' state written at [RFC 7540] 5.1.
       Http2StreamDebug(this->session, stream->get_id(), "Shutdown stream");
       stream->initiating_close();
-    } else if (stream->is_write_vio_done()) {
+    } else if (stream->is_outbound_connection() && stream->is_write_vio_done()) {
       stream->signal_write_event(VC_EVENT_WRITE_COMPLETE);
     }
   }
