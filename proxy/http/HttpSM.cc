@@ -4994,6 +4994,7 @@ HttpSM::do_setup_post_tunnel(HttpVC_t to_vc_type)
 {
   bool chunked       = (t_state.client_info.transfer_encoding == HttpTransact::CHUNKED_ENCODING);
   bool post_redirect = false;
+  int64_t post_bytes;
 
   HttpTunnelProducer *p = nullptr;
   // YTS Team, yamsat Plugin
@@ -5007,8 +5008,8 @@ HttpSM::do_setup_post_tunnel(HttpVC_t to_vc_type)
     IOBufferReader *postdata_producer_reader = postdata_producer_buffer->alloc_reader();
 
     postdata_producer_buffer->write(this->_postbuf.postdata_copy_buffer_start);
-    int64_t post_bytes = postdata_producer_reader->read_avail();
-    transfered_bytes   = post_bytes;
+    post_bytes       = postdata_producer_reader->read_avail();
+    transfered_bytes = post_bytes;
     p = tunnel.add_producer(HTTP_TUNNEL_STATIC_PRODUCER, post_bytes, postdata_producer_reader, (HttpProducerHandler) nullptr,
                             HT_STATIC, "redirect static agent post");
   } else {
@@ -5025,7 +5026,7 @@ HttpSM::do_setup_post_tunnel(HttpVC_t to_vc_type)
     }
     MIOBuffer *post_buffer    = new_MIOBuffer(alloc_index);
     IOBufferReader *buf_start = post_buffer->alloc_reader();
-    int64_t post_bytes        = chunked ? INT64_MAX : t_state.hdr_info.request_content_length;
+    post_bytes                = chunked ? INT64_MAX : t_state.hdr_info.request_content_length;
 
     if (enable_redirection) {
       this->_postbuf.init(post_buffer->clone_reader(buf_start));
@@ -5038,8 +5039,11 @@ HttpSM::do_setup_post_tunnel(HttpVC_t to_vc_type)
     // Next order of business if copy the remaining data from the
     //  header buffer into new buffer
     client_request_body_bytes = post_buffer->write(ua_txn->get_reader(), chunked ? ua_txn->get_reader()->read_avail() : post_bytes);
-
     ua_txn->get_reader()->consume(client_request_body_bytes);
+    // The user agent has already sent all it has
+    if (ua_txn->is_read_closed()) {
+      post_bytes = client_request_body_bytes;
+    }
     p = tunnel.add_producer(ua_entry->vc, post_bytes - transfered_bytes, buf_start, &HttpSM::tunnel_handler_post_ua, HT_HTTP_CLIENT,
                             "user agent post");
   }
@@ -5073,14 +5077,22 @@ HttpSM::do_setup_post_tunnel(HttpVC_t to_vc_type)
     break;
   }
 
-  // The user agent may support chunked (HTTP/1.1) or not (HTTP/2)
-  // In either case, the server will support chunked (HTTP/1.1)
+  // The user agent and origin  may support chunked (HTTP/1.1) or not (HTTP/2)
   if (chunked) {
     if (ua_txn->is_chunked_encoding_supported()) {
-      tunnel.set_producer_chunking_action(p, 0, TCA_PASSTHRU_CHUNKED_CONTENT);
+      if (server_txn->is_chunked_encoding_supported()) {
+        tunnel.set_producer_chunking_action(p, 0, TCA_PASSTHRU_CHUNKED_CONTENT);
+      } else {
+        tunnel.set_producer_chunking_action(p, 0, TCA_DECHUNK_CONTENT);
+        tunnel.set_producer_chunking_size(p, 0);
+      }
     } else {
-      tunnel.set_producer_chunking_action(p, 0, TCA_CHUNK_CONTENT);
-      tunnel.set_producer_chunking_size(p, 0);
+      if (server_txn->is_chunked_encoding_supported()) {
+        tunnel.set_producer_chunking_action(p, 0, TCA_CHUNK_CONTENT);
+        tunnel.set_producer_chunking_size(p, 0);
+      } else {
+        tunnel.set_producer_chunking_action(p, 0, TCA_PASSTHRU_DECHUNKED_CONTENT);
+      }
     }
   }
 

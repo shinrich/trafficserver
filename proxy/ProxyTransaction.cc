@@ -215,3 +215,9 @@ ProxyTransaction::reenable(VIO *vio)
 {
   _proxy_ssn->reenable(vio);
 }
+
+bool
+ProxyTransaction::is_read_closed() const
+{
+  return false;
+}

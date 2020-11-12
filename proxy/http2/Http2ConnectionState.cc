@@ -1697,8 +1697,9 @@ Http2ConnectionState::send_headers_frame(Http2Stream *stream)
     payload_length = header_blocks_size;
     flags |= HTTP2_FLAGS_HEADERS_END_HEADERS;
     if (stream->is_outbound_connection()) { // Will be sending a request_header
-      if ((send_hdr->presence(MIME_PRESENCE_CONTENT_LENGTH) && send_hdr->get_content_length() == 0) ||
-          !send_hdr->presence(MIME_PRESENCE_CONTENT_LENGTH)) {
+      if (!send_hdr->presence(MIME_PRESENCE_TRANSFER_ENCODING) &&
+          ((send_hdr->presence(MIME_PRESENCE_CONTENT_LENGTH) && send_hdr->get_content_length() == 0) ||
+           !send_hdr->presence(MIME_PRESENCE_CONTENT_LENGTH))) {
         // TODO deal with the chunked encoding case
         Http2StreamDebug(session, stream->get_id(), "request END_STREAM");
         flags |= HTTP2_FLAGS_HEADERS_END_STREAM;
