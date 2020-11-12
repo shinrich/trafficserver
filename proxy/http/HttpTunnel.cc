@@ -985,7 +985,7 @@ HttpTunnel::producer_run(HttpTunnelProducer *p)
     for (c = p->consumer_list.head; c; c = c->link.next) {
       if (c->alive && c->write_vio) {
         if (c->write_vio->ndone == p->bytes_read) {
-          c->write_vio->nbytes = p->init_bytes_done;
+          // c->write_vio->nbytes = p->init_bytes_done;
           // consumer_handler(VC_EVENT_WRITE_COMPLETE, c);
           // c->vc->handleEvent(VC_EVENT_WRITE_COMPLETE, c->write_vio);
           c->write_vio->reenable();
