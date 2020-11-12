@@ -985,14 +985,7 @@ HttpTunnel::producer_run(HttpTunnelProducer *p)
     // If the producer is not alive (precomplete) make sure to kick the consumers
     for (c = p->consumer_list.head; c; c = c->link.next) {
       if (c->alive && c->write_vio) {
-        if (c->write_vio->ndone == p->bytes_read) {
-          // c->write_vio->nbytes = p->init_bytes_done;
-          // consumer_handler(VC_EVENT_WRITE_COMPLETE, c);
-          // c->vc->handleEvent(VC_EVENT_WRITE_COMPLETE, c->write_vio);
-          c->write_vio->reenable();
-        } else {
-          c->write_vio->reenable();
-        }
+        c->write_vio->reenable();
       }
     }
   }
@@ -1118,14 +1111,6 @@ HttpTunnel::producer_handler(int event, HttpTunnelProducer *p)
   // Handle chunking/dechunking/chunked-passthrough if necessary.
   if (p->do_chunking) {
     event = producer_handler_dechunked(event, p);
-
-    // If we were in PRECOMPLETE when this function was called
-    // and we are doing chunking, then we just wrote the last
-    // chunk in the the function call above.  We are done with the
-    // tunnel.
-    // if (event == HTTP_TUNNEL_EVENT_PRECOMPLETE) {
-    //  event = VC_EVENT_EOS;
-    //}
   } else if (p->do_dechunking || p->do_chunked_passthru) {
     event = producer_handler_chunked(event, p);
   } else {
@@ -1206,23 +1191,9 @@ HttpTunnel::producer_handler(int event, HttpTunnelProducer *p)
     // Kick off the consumers if appropriate
     for (c = p->consumer_list.head; c; c = c->link.next) {
       if (c->alive && c->write_vio) {
-        if (c->write_vio->ndone == p->bytes_read) {
-          // c->write_vio->nbytes = p->bytes_read;
-          // consumer_handler(VC_EVENT_WRITE_COMPLETE, c);
-          // c->vc->handleEvent(VC_EVENT_WRITE_COMPLETE, c->write_vio);
-          c->write_vio->reenable();
-        } else {
-          c->write_vio->reenable();
-        }
+        c->write_vio->reenable();
       }
     }
-
-    /*    // Data read from producer, reenable consumers
-        for (c = p->consumer_list.head; c; c = c->link.next) {
-          if (c->alive && c->write_vio) {
-            c->write_vio->reenable();
-          }
-        } */
     break;
 
   case VC_EVENT_ERROR:
