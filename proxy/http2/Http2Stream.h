@@ -117,6 +117,7 @@ public:
   int get_transaction_id() const override;
   int get_transaction_priority_weight() const override;
   int get_transaction_priority_dependence() const override;
+  bool is_read_closed() const override;
 
   HTTPHdr *
   get_send_header()

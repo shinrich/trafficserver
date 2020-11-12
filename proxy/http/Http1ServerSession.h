@@ -73,6 +73,7 @@ public:
   void decrement_current_active_connections_stat() override;
   void new_connection(NetVConnection *new_vc, MIOBuffer *iobuf, IOBufferReader *reader) override;
   void start() override;
+  bool is_chunked_encoding_supported() const override;
 
   IOBufferReader *get_reader();
   IpEndpoint const &get_server_ip() const;
