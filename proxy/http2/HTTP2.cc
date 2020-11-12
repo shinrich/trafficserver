@@ -940,6 +940,6 @@ http2_init()
   http2_connection_specific_headers[0] = {MIME_FIELD_CONNECTION, MIME_LEN_CONNECTION};
   http2_connection_specific_headers[1] = {MIME_FIELD_KEEP_ALIVE, MIME_LEN_KEEP_ALIVE};
   http2_connection_specific_headers[2] = {MIME_FIELD_PROXY_CONNECTION, MIME_LEN_PROXY_CONNECTION};
-  http2_connection_specific_headers[3] = {MIME_FIELD_TRANSFER_ENCODING, MIME_LEN_TRANSFER_ENCODING};
+  // http2_connection_specific_headers[3] = {MIME_FIELD_TRANSFER_ENCODING, MIME_LEN_TRANSFER_ENCODING};
   http2_connection_specific_headers[4] = {MIME_FIELD_UPGRADE, MIME_LEN_UPGRADE};
 }

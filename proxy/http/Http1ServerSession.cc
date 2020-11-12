@@ -193,3 +193,9 @@ void
 Http1ServerSession::start()
 {
 }
+
+bool
+Http1ServerSession::is_chunked_encoding_supported() const
+{
+  return true;
+}

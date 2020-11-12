@@ -125,6 +125,8 @@ Http2Stream::main_event_handler(int event, void *edata)
     }
     break;
   case VC_EVENT_READ_COMPLETE:
+    read_vio.nbytes = read_vio.ndone;
+    /* fall through */
   case VC_EVENT_READ_READY:
     _timeout.update_inactivity();
     if (e->cookie == &read_vio) {
@@ -597,7 +599,7 @@ Http2Stream::update_write_request(IOBufferReader *buf_reader, int64_t write_len,
                    ", reader.read_avail=%" PRId64,
                    write_vio.nbytes, write_vio.ndone, write_vio.get_writer()->write_avail(), bytes_avail);
 
-  if (bytes_avail <= 0) {
+  if (bytes_avail < 0) {
     return;
   }
 
@@ -722,7 +724,7 @@ Http2Stream::signal_write_event(bool call_update)
     return;
   }
 
-  if (this->write_vio.get_writer()->write_avail() == 0) {
+  if (this->write_vio.ntodo() > 0 && this->write_vio.get_writer()->write_avail() == 0) {
     return;
   }
   reentrancy_count++;
@@ -1083,4 +1085,10 @@ Http2Stream::get_connection_state()
     Http2ClientSession *session = static_cast<Http2ClientSession *>(_proxy_ssn);
     return session->connection_state;
   }
+}
+
+bool
+Http2Stream::is_read_closed() const
+{
+  return this->recv_end_stream;
 }
