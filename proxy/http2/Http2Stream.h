@@ -142,7 +142,9 @@ public:
   bool change_state(uint8_t type, uint8_t flags);
   void update_initial_rwnd(Http2WindowSize new_size);
   bool has_trailing_header() const;
+  void set_trailing_header();
   void set_recv_headers(HTTPHdr &h2_headers);
+  void reset_recv_headers();
   MIOBuffer *read_vio_writer() const;
   int64_t read_vio_read_avail();
 
@@ -292,9 +294,22 @@ Http2Stream::has_trailing_header() const
 }
 
 inline void
+Http2Stream::set_trailing_header()
+{
+  trailing_header = true;
+}
+
+inline void
 Http2Stream::set_recv_headers(HTTPHdr &h2_headers)
 {
   _recv_header.copy(&h2_headers);
+}
+
+inline void
+Http2Stream::reset_recv_headers()
+{
+  this->_recv_header.destroy();
+  this->_recv_header.create(HTTP_TYPE_RESPONSE);
 }
 
 // Check entire DATA payload length if content-length: header is exist

@@ -680,12 +680,11 @@ http2_encode_header_blocks(HTTPHdr *in, uint8_t *out, uint32_t out_len, uint32_t
  */
 Http2ErrorCode
 http2_decode_header_blocks(HTTPHdr *hdr, const uint8_t *buf_start, const uint32_t buf_len, uint32_t *len_read, HpackHandle &handle,
-                           bool &trailing_header, uint32_t maximum_table_size, bool is_outbound)
+                           bool is_trailing_header, uint32_t maximum_table_size, bool is_outbound)
 {
   const MIMEField *field;
   const char *value;
   int len;
-  bool is_trailing_header = trailing_header;
   int64_t result = hpack_decode_header_block(handle, hdr, buf_start, buf_len, Http2::max_header_list_size, maximum_table_size);
 
   if (result < 0) {
@@ -742,13 +741,6 @@ http2_decode_header_blocks(HTTPHdr *hdr, const uint8_t *buf_start, const uint32_
     if (len == 0) {
       return Http2ErrorCode::HTTP2_ERROR_PROTOCOL_ERROR;
     }
-  }
-
-  // turn on that we have a trailer header
-  const char trailer_name[] = "trailer";
-  field                     = hdr->field_find(trailer_name, sizeof(trailer_name) - 1);
-  if (field) {
-    trailing_header = true;
   }
 
   // when The TE header field is received, it MUST NOT contain any

@@ -148,10 +148,13 @@ rcv_data_frame(Http2ConnectionState &cstate, const Http2Frame &frame)
       return Http2Error(Http2ErrorClass::HTTP2_ERROR_CLASS_NONE);
     }
   } else {
-    // If payload length is 0 without END_STREAM flag, do nothing
-    if (payload_length == 0) {
-      return Http2Error(Http2ErrorClass::HTTP2_ERROR_CLASS_NONE);
-    }
+    // Any headers that show up after we received data are by definition trailing headers
+    stream->set_trailing_header();
+  }
+
+  // If payload length is 0 without END_STREAM flag, do nothing
+  if (payload_length == 0 && !stream->recv_end_stream) {
+    return Http2Error(Http2ErrorClass::HTTP2_ERROR_CLASS_NONE);
   }
 
   // Check whether Window Size is acceptable
@@ -346,20 +349,18 @@ rcv_headers_frame(Http2ConnectionState &cstate, const Http2Frame &frame)
                         "recv headers end headers and not trailing header");
     }
 
-    bool empty_request = false;
     if (stream->has_trailing_header()) {
       if (!(frame.header().flags & HTTP2_FLAGS_HEADERS_END_STREAM)) {
         return Http2Error(Http2ErrorClass::HTTP2_ERROR_CLASS_STREAM, Http2ErrorCode::HTTP2_ERROR_PROTOCOL_ERROR,
                           "recv headers tailing header without endstream");
       }
-      // If the flag has already been set before decoding header blocks, this is the trailing header.
-      // Set a flag to avoid initializing fetcher for now.
-      // Decoding header blocks is stil needed to maintain a HPACK dynamic table.
-      // TODO: TS-3812
-      empty_request = true;
     }
 
-    stream->mark_milestone(Http2StreamMilestone::START_DECODE_HEADERS);
+    if (stream->has_trailing_header()) {
+      stream->reset_recv_headers();
+    } else {
+      stream->mark_milestone(Http2StreamMilestone::START_DECODE_HEADERS);
+    }
     Http2ErrorCode result =
       stream->decode_header_blocks(*cstate.local_hpack_handle, cstate.server_settings.get(HTTP2_SETTINGS_HEADER_TABLE_SIZE));
 
@@ -377,17 +378,19 @@ rcv_headers_frame(Http2ConnectionState &cstate, const Http2Frame &frame)
     }
 
     // Set up the State Machine
-    if (!stream->is_outbound_connection() && !empty_request) {
+    if (!stream->is_outbound_connection() && !stream->has_trailing_header()) {
       SCOPED_MUTEX_LOCK(stream_lock, stream->mutex, this_ethread());
       stream->mark_milestone(Http2StreamMilestone::START_TXN);
       stream->new_transaction(frame.is_from_early_data());
       // Send request header to SM
       stream->send_request(cstate);
     } else {
-      // Propagate the response header
+      // If this is a trailer, first signal to the SM that the body is done
+      if (stream->has_trailing_header()) {
+        stream->signal_read_event(VC_EVENT_READ_COMPLETE);
+      }
+      // Propagate the response or trailer header
       stream->send_request(cstate);
-      // Signal VC_EVENT_READ_COMPLETE becasue received trailing header fields with END_STREAM flag
-      // stream->signal_read_event(VC_EVENT_READ_COMPLETE);
     }
   } else {
     // NOTE: Expect CONTINUATION Frame. Do NOT change state of stream or decode

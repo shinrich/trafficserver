@@ -164,11 +164,11 @@ Http2Stream::decode_header_blocks(HpackHandle &hpack_handle, uint32_t maximum_ta
 void
 Http2Stream::send_request(Http2ConnectionState &cstate)
 {
-  ink_release_assert(this->_sm != nullptr);
-  this->_http_sm_id = this->_sm->sm_id;
-
   // Convert header to HTTP/1.1 format
   http2_convert_header_from_2_to_1_1(&_recv_header);
+
+  ink_release_assert(this->_sm != nullptr);
+  this->_http_sm_id = this->_sm->sm_id;
 
   // Write header to a buffer.  Borrowing logic from HttpSM::write_header_into_buffer.
   // Seems like a function like this ought to be in HTTPHdr directly
