@@ -74,6 +74,9 @@ public:
   VIO *do_io_write(Continuation *c, int64_t nbytes, IOBufferReader *abuffer, bool owner = false) override;
   void do_io_close(int lerrno = -1) override;
 
+  bool expect_trailer() const override;
+  void set_expect_trailer() override;
+
   Http2ErrorCode decode_header_blocks(HpackHandle &hpack_handle, uint32_t maximum_table_size);
   void send_request(Http2ConnectionState &cstate);
   void initiating_close();
@@ -125,6 +128,9 @@ public:
     return &_send_header;
   }
 
+  void read_update(int count);
+  void read_done();
+
   void clear_io_events();
 
   bool is_state_writeable() const;
@@ -145,6 +151,7 @@ public:
   void set_trailing_header();
   void set_recv_headers(HTTPHdr &h2_headers);
   void reset_recv_headers();
+  void reset_send_headers();
   MIOBuffer *read_vio_writer() const;
   int64_t read_vio_read_avail();
 
@@ -195,6 +202,7 @@ private:
   Milestones<Http2StreamMilestone, static_cast<size_t>(Http2StreamMilestone::LAST_ENTRY)> _milestones;
 
   bool trailing_header = false;
+  bool _expect_trailer = false;
 
   bool _outbound_flag = false;
 
@@ -312,6 +320,13 @@ Http2Stream::reset_recv_headers()
   this->_recv_header.create(HTTP_TYPE_RESPONSE);
 }
 
+inline void
+Http2Stream::reset_send_headers()
+{
+  this->_send_header.destroy();
+  this->_send_header.create(HTTP_TYPE_RESPONSE);
+}
+
 // Check entire DATA payload length if content-length: header is exist
 inline void
 Http2Stream::increment_data_length(uint64_t length)
@@ -363,4 +378,16 @@ Http2Stream::_clear_timers()
 {
   _timeout.cancel_active_timeout();
   _timeout.cancel_inactive_timeout();
+}
+
+inline void
+Http2Stream::read_update(int count)
+{
+  read_vio.ndone += count;
+}
+
+inline void
+Http2Stream::read_done()
+{
+  read_vio.nbytes = read_vio.ndone;
 }
