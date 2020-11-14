@@ -2538,6 +2538,50 @@ HttpSM::tunnel_handler_post(int event, void *data)
 }
 
 int
+HttpSM::tunnel_handler_trailer(int event, void *data)
+{
+  STATE_ENTER(&HttpSM::tunnel_handler_trailer, event);
+
+  switch (event) {
+  case HTTP_TUNNEL_EVENT_DONE: // Response tunnel done.
+    break;
+
+  default:
+    // If the response tunnel did not succeed, just clean up as in the default case
+    return tunnel_handler(event, data);
+  }
+
+  ink_assert(event == HTTP_TUNNEL_EVENT_DONE);
+
+  // Set up a new tunnel to transport the trailing header to the UA
+  HTTP_SM_SET_DEFAULT_HANDLER(&HttpSM::tunnel_handler);
+
+  MIOBuffer *trailer_buffer = new_MIOBuffer(HTTP_HEADER_BUFFER_SIZE_INDEX);
+  IOBufferReader *buf_start = trailer_buffer->alloc_reader();
+
+  size_t nbytes   = INT64_MAX;
+  int start_bytes = trailer_buffer->write(server_txn->get_reader(), server_txn->get_reader()->read_avail());
+  server_txn->get_reader()->consume(start_bytes);
+  // The server has already sent all it has
+  if (server_txn->is_read_closed()) {
+    nbytes = start_bytes;
+  }
+  // Signal the ua_txn to get ready for a trailer
+  ua_txn->set_expect_trailer();
+  tunnel.reset();
+  HttpTunnelProducer *p = tunnel.add_producer(server_entry->vc, nbytes, buf_start, &HttpSM::tunnel_handler_trailer_server,
+                                              HT_HTTP_SERVER, "http server trailer");
+  tunnel.add_consumer(ua_entry->vc, server_entry->vc, &HttpSM::tunnel_handler_trailer_ua, HT_HTTP_CLIENT, "user agent trailer");
+
+  ua_entry->in_tunnel     = true;
+  server_entry->in_tunnel = true;
+
+  tunnel.tunnel_run(p);
+
+  return 0;
+}
+
+int
 HttpSM::tunnel_handler_cache_fill(int event, void *data)
 {
   STATE_ENTER(&HttpSM::tunnel_handler_cache_fill, event);
@@ -2786,6 +2830,7 @@ HttpSM::tunnel_handler_server(int event, HttpTunnelProducer *p)
 
   case HTTP_TUNNEL_EVENT_PRECOMPLETE:
   case VC_EVENT_READ_COMPLETE:
+
     //
     // The transfer completed successfully
     //    If there is still data in the buffer, the server
@@ -2804,6 +2849,13 @@ HttpSM::tunnel_handler_server(int event, HttpTunnelProducer *p)
       } else {
         tunnel.local_finish_all(p);
       }
+    }
+    if (server_txn->expect_trailer()) {
+      SMDebug("http", "[%" PRId64 "] wait for that trailing header", sm_id);
+      // Swap out the default hander to set up the new tunnel for the trailer exchange.
+      HTTP_SM_SET_DEFAULT_HANDLER(&HttpSM::tunnel_handler_trailer);
+      tunnel.local_finish_all(p);
+      return 0;
     }
     break;
 
@@ -2879,6 +2931,85 @@ HttpSM::tunnel_handler_server(int event, HttpTunnelProducer *p)
       server_txn->release();
     }
   }
+
+  server_txn   = nullptr; // Because p->vc == server_txn
+  server_entry = nullptr;
+
+  return 0;
+}
+
+int
+HttpSM::tunnel_handler_trailer_server(int event, HttpTunnelProducer *p)
+{
+  STATE_ENTER(&HttpSM::tunnel_handler_trailer_server, event);
+
+  switch (event) {
+  case VC_EVENT_INACTIVITY_TIMEOUT:
+  case VC_EVENT_ACTIVE_TIMEOUT:
+  case VC_EVENT_ERROR:
+    t_state.squid_codes.log_code  = SQUID_LOG_ERR_READ_TIMEOUT;
+    t_state.squid_codes.hier_code = SQUID_HIER_TIMEOUT_DIRECT;
+    /* fallthru */
+
+  case VC_EVENT_EOS:
+
+    switch (event) {
+    case VC_EVENT_INACTIVITY_TIMEOUT:
+      t_state.current.server->state = HttpTransact::INACTIVE_TIMEOUT;
+      break;
+    case VC_EVENT_ACTIVE_TIMEOUT:
+      t_state.current.server->state = HttpTransact::ACTIVE_TIMEOUT;
+      break;
+    case VC_EVENT_ERROR:
+      t_state.current.server->state = HttpTransact::CONNECTION_ERROR;
+      break;
+    case VC_EVENT_EOS:
+      t_state.current.server->state = HttpTransact::TRANSACTION_COMPLETE;
+      break;
+    }
+
+    ink_assert(p->vc_type == HT_HTTP_SERVER);
+
+    SMDebug("http", "[%" PRId64 "] [HttpSM::tunnel_handler_server] aborting HTTP tunnel due to server truncation", sm_id);
+    tunnel.chain_abort_all(p);
+
+    t_state.current.server->abort      = HttpTransact::ABORTED;
+    t_state.client_info.keep_alive     = HTTP_NO_KEEPALIVE;
+    t_state.current.server->keep_alive = HTTP_NO_KEEPALIVE;
+    t_state.squid_codes.log_code       = SQUID_LOG_ERR_READ_ERROR;
+    break;
+
+  case HTTP_TUNNEL_EVENT_PRECOMPLETE:
+  case VC_EVENT_READ_COMPLETE:
+    //
+    // The transfer completed successfully
+    p->read_success               = true;
+    t_state.current.server->state = HttpTransact::TRANSACTION_COMPLETE;
+    t_state.current.server->abort = HttpTransact::DIDNOT_ABORT;
+    break;
+
+  case HTTP_TUNNEL_EVENT_CONSUMER_DETACH:
+  case VC_EVENT_READ_READY:
+  case VC_EVENT_WRITE_READY:
+  case VC_EVENT_WRITE_COMPLETE:
+  default:
+    // None of these events should ever come our way
+    ink_assert(0);
+    break;
+  }
+
+  // We handled the event.  Now either shutdown server transaction
+  ink_assert(server_entry->vc == p->vc);
+  ink_assert(p->vc_type == HT_HTTP_SERVER);
+  ink_assert(p->vc == server_txn);
+
+  // The server session has been released. Clean all pointer
+  // Calling remove_entry instead of server_entry because we don't
+  // want to close the server VC at this point
+  vc_table.remove_entry(server_entry);
+
+  p->vc->do_io_close();
+  p->read_vio = nullptr;
 
   server_txn   = nullptr; // Because p->vc == server_txn
   server_entry = nullptr;
@@ -3079,7 +3210,10 @@ HttpSM::tunnel_handler_ua(int event, HttpTunnelConsumer *c)
   }
 
   ink_assert(ua_entry->vc == c->vc);
-  if (close_connection) {
+
+  if (server_txn && server_txn->expect_trailer()) {
+    // Don't shutdown if we are still expecting a trailer
+  } else if (close_connection) {
     // If the client could be pipelining or is doing a POST, we need to
     //   set the ua_txn into half close mode
 
@@ -3097,6 +3231,65 @@ HttpSM::tunnel_handler_ua(int event, HttpTunnelConsumer *c)
     ua_txn->release();
   }
 
+  return 0;
+}
+
+int
+HttpSM::tunnel_handler_trailer_ua(int event, HttpTunnelConsumer *c)
+{
+  HttpTunnelProducer *p     = nullptr;
+  HttpTunnelConsumer *selfc = nullptr;
+
+  STATE_ENTER(&HttpSM::tunnel_handler_trailer_ua, event);
+  ink_assert(c->vc == ua_txn);
+  milestones[TS_MILESTONE_UA_CLOSE] = Thread::get_hrtime();
+
+  switch (event) {
+  case VC_EVENT_EOS:
+    ua_entry->eos = true;
+
+  // FALL-THROUGH
+  case VC_EVENT_INACTIVITY_TIMEOUT:
+  case VC_EVENT_ACTIVE_TIMEOUT:
+  case VC_EVENT_ERROR:
+
+    // The user agent died or aborted.  Check to
+    //  see if we should setup a background fill
+    set_ua_abort(HttpTransact::ABORTED, event);
+
+    // Should not be processing trailer headers in the background fill case
+    ink_assert(!is_bg_fill_necessary(c));
+    p = c->producer;
+    tunnel.chain_abort_all(c->producer);
+    selfc = p->self_consumer;
+    if (selfc) {
+      // This is the case where there is a transformation between ua and os
+      p = selfc->producer;
+      // if producer is the cache or OS, close the producer.
+      // Otherwise in case of large docs, producer iobuffer gets filled up,
+      // waiting for a consumer to consume data and the connection is never closed.
+      if (p->alive && ((p->vc_type == HT_CACHE_READ) || (p->vc_type == HT_HTTP_SERVER))) {
+        tunnel.chain_abort_all(p);
+      }
+    }
+    break;
+
+  case VC_EVENT_WRITE_COMPLETE:
+    c->write_success          = true;
+    t_state.client_info.abort = HttpTransact::DIDNOT_ABORT;
+    break;
+  case VC_EVENT_WRITE_READY:
+  case VC_EVENT_READ_READY:
+  case VC_EVENT_READ_COMPLETE:
+  default:
+    // None of these events should ever come our way
+    ink_assert(0);
+    break;
+  }
+
+  ink_assert(ua_entry->vc == c->vc);
+  vc_table.remove_entry(this->ua_entry);
+  ua_txn->do_io_close();
   return 0;
 }
 

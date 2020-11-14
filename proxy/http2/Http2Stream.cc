@@ -184,7 +184,7 @@ Http2Stream::send_request(Http2ConnectionState &cstate)
       this->_recv_buffer.add_block();
       block = this->_recv_buffer.get_current_block();
     }
-    done = _recv_header.print(block->start(), block->write_avail(), &bufindex, &tmp);
+    done = _recv_header.print(block->end(), block->write_avail(), &bufindex, &tmp);
     dumpoffset += bufindex;
     this->_recv_buffer.fill(bufindex);
     if (!done) {
@@ -773,6 +773,9 @@ Http2Stream::send_body(bool call_update)
     // XXX The call to signal_write_event can destroy/free the Http2Stream.
     // Don't modify the Http2Stream after calling this method.
   }
+  if (write_vio.ntodo() == 0) { // Clear the header processing for possible future trailing header
+    this->parsing_header_done = 0;
+  }
 }
 
 void
@@ -1098,4 +1101,18 @@ bool
 Http2Stream::is_read_closed() const
 {
   return this->recv_end_stream;
+}
+
+bool
+Http2Stream::expect_trailer() const
+{
+  return this->_expect_trailer;
+}
+
+void
+Http2Stream::set_expect_trailer()
+{
+  _expect_trailer     = true;
+  parsing_header_done = false;
+  reset_send_headers();
 }

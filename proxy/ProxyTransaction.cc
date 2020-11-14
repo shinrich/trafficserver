@@ -221,3 +221,14 @@ ProxyTransaction::is_read_closed() const
 {
   return false;
 }
+
+bool
+ProxyTransaction::expect_trailer() const
+{
+  return false;
+}
+
+void
+ProxyTransaction::set_expect_trailer()
+{
+}
