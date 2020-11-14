@@ -203,11 +203,13 @@ rcv_data_frame(Http2ConnectionState &cstate, const Http2Frame &frame)
       return Http2Error(Http2ErrorClass::HTTP2_ERROR_CLASS_STREAM, Http2ErrorCode::HTTP2_ERROR_INTERNAL_ERROR);
     }
     myreader->consume(num_written);
+    stream->read_update(num_written);
   }
   myreader->writer()->dealloc_reader(myreader);
 
   if (frame.header().flags & HTTP2_FLAGS_DATA_END_STREAM) {
     // TODO: set total written size to read_vio.nbytes
+    stream->read_done();
     stream->signal_read_event(VC_EVENT_READ_COMPLETE);
   } else {
     stream->signal_read_event(VC_EVENT_READ_READY);
@@ -387,10 +389,14 @@ rcv_headers_frame(Http2ConnectionState &cstate, const Http2Frame &frame)
     } else {
       // If this is a trailer, first signal to the SM that the body is done
       if (stream->has_trailing_header()) {
+        stream->set_expect_trailer();
+        // Propagate the  trailer header
+        stream->send_request(cstate);
         stream->signal_read_event(VC_EVENT_READ_COMPLETE);
+      } else {
+        // Propagate the response
+        stream->send_request(cstate);
       }
-      // Propagate the response or trailer header
-      stream->send_request(cstate);
     }
   } else {
     // NOTE: Expect CONTINUATION Frame. Do NOT change state of stream or decode
@@ -1657,7 +1663,11 @@ Http2ConnectionState::send_headers_frame(Http2Stream *stream)
   Http2StreamDebug(session, stream->get_id(), "Send HEADERS frame");
 
   HTTPHdr *send_hdr = stream->get_send_header();
-  http2_convert_header_from_1_1_to_2(send_hdr);
+  if (stream->expect_trailer()) {
+    // Which is a no-op conversion
+  } else {
+    http2_convert_header_from_1_1_to_2(send_hdr);
+  }
 
   buf_len = send_hdr->length_get() * 2; // Make it double just in case
   buf     = static_cast<uint8_t *>(ats_malloc(buf_len));
@@ -2039,12 +2049,13 @@ Http2ConnectionState::increment_client_rwnd(size_t amount)
   this->_recent_rwnd_increment[this->_recent_rwnd_increment_index] = amount;
   ++this->_recent_rwnd_increment_index;
   this->_recent_rwnd_increment_index %= this->_recent_rwnd_increment.size();
-  double sum = std::accumulate(this->_recent_rwnd_increment.begin(), this->_recent_rwnd_increment.end(), 0.0);
-  double avg = sum / this->_recent_rwnd_increment.size();
-  if (avg < Http2::min_avg_window_update) {
-    HTTP2_INCREMENT_THREAD_DYN_STAT(HTTP2_STAT_INSUFFICIENT_AVG_WINDOW_UPDATE, this_ethread());
-    return Http2ErrorCode::HTTP2_ERROR_ENHANCE_YOUR_CALM;
-  }
+  // SKH Causing problems with gRPC processing.  Python example resulted in amount 8
+  // double sum = std::accumulate(this->_recent_rwnd_increment.begin(), this->_recent_rwnd_increment.end(), 0.0);
+  // double avg = sum / this->_recent_rwnd_increment.size();
+  // if (avg < Http2::min_avg_window_update) {
+  //  HTTP2_INCREMENT_THREAD_DYN_STAT(HTTP2_STAT_INSUFFICIENT_AVG_WINDOW_UPDATE, this_ethread());
+  //  return Http2ErrorCode::HTTP2_ERROR_ENHANCE_YOUR_CALM;
+  //}
   return Http2ErrorCode::HTTP2_ERROR_NO_ERROR;
 }
 

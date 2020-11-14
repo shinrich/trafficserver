@@ -394,6 +394,7 @@ protected:
   int tunnel_handler(int event, void *data);
   int tunnel_handler_push(int event, void *data);
   int tunnel_handler_post(int event, void *data);
+  int tunnel_handler_trailer(int event, void *data);
 
   // YTS Team, yamsat Plugin
   int tunnel_handler_for_partial_post(int event, void *data);
@@ -442,6 +443,8 @@ protected:
   int tunnel_handler_cache_read(int event, HttpTunnelProducer *p);
   int tunnel_handler_post_ua(int event, HttpTunnelProducer *c);
   int tunnel_handler_post_server(int event, HttpTunnelConsumer *c);
+  int tunnel_handler_trailer_ua(int event, HttpTunnelConsumer *c);
+  int tunnel_handler_trailer_server(int event, HttpTunnelProducer *c);
   int tunnel_handler_ssl_producer(int event, HttpTunnelProducer *p);
   int tunnel_handler_ssl_consumer(int event, HttpTunnelConsumer *p);
   int tunnel_handler_transform_write(int event, HttpTunnelConsumer *c);
