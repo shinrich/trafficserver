@@ -408,10 +408,9 @@ rcv_headers_frame(Http2ConnectionState &cstate, const Http2Frame &frame)
     } else {
       // If this is a trailer, first signal to the SM that the body is done
       if (stream->trailing_header_is_possible()) {
-        stream->set_expect_trailer();
+        stream->set_expect_receive_trailer();
         // Propagate the  trailer header
         stream->send_request(cstate);
-        stream->signal_read_event(VC_EVENT_READ_COMPLETE);
       } else {
         // Propagate the response
         stream->send_request(cstate);
@@ -1688,7 +1687,7 @@ Http2ConnectionState::send_headers_frame(Http2Stream *stream)
   Http2StreamDebug(session, stream->get_id(), "Send HEADERS frame");
 
   HTTPHdr *send_hdr = stream->get_send_header();
-  if (stream->expect_trailer()) {
+  if (stream->expect_send_trailer()) {
     // Which is a no-op conversion
   } else {
     http2_convert_header_from_1_1_to_2(send_hdr);

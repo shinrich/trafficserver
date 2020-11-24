@@ -74,8 +74,10 @@ public:
   VIO *do_io_write(Continuation *c, int64_t nbytes, IOBufferReader *abuffer, bool owner = false) override;
   void do_io_close(int lerrno = -1) override;
 
-  bool expect_trailer() const override;
-  void set_expect_trailer() override;
+  bool expect_send_trailer() const override;
+  void set_expect_send_trailer() override;
+  bool expect_receive_trailer() const override;
+  void set_expect_receive_trailer() override;
 
   Http2ErrorCode decode_header_blocks(HpackHandle &hpack_handle, uint32_t maximum_table_size);
   void send_request(Http2ConnectionState &cstate);
@@ -202,7 +204,8 @@ private:
   Milestones<Http2StreamMilestone, static_cast<size_t>(Http2StreamMilestone::LAST_ENTRY)> _milestones;
 
   bool _possible_trailing_header = false;
-  bool _expect_trailer           = false;
+  bool _expect_send_trailer      = false;
+  bool _expect_receive_trailer   = false;
 
   bool _outbound_flag = false;
 
