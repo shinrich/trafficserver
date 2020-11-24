@@ -697,6 +697,8 @@ Http2Stream::signal_read_event(int event)
     this->_read_vio_event = this_ethread()->schedule_in(this, retry_delay, event, &read_vio);
   }
   reentrancy_count--;
+  // Clean stream up if the terminate flag is set and we are at the bottom of the handler stack
+  terminate_if_possible();
 }
 
 void
@@ -720,6 +722,8 @@ Http2Stream::signal_write_event(int event)
     this->_write_vio_event = this_ethread()->schedule_in(this, retry_delay, event, &write_vio);
   }
   reentrancy_count--;
+  // Clean stream up if the terminate flag is set and we are at the bottom of the handler stack
+  terminate_if_possible();
 }
 
 void
@@ -746,6 +750,8 @@ Http2Stream::signal_write_event(bool call_update)
     write_event = send_tracked_event(write_event, send_event, &write_vio);
   }
   reentrancy_count--;
+  // Clean stream up if the terminate flag is set and we are at the bottom of the handler stack
+  terminate_if_possible();
 }
 
 bool
