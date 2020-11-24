@@ -147,8 +147,8 @@ public:
   Http2StreamState get_state() const;
   bool change_state(uint8_t type, uint8_t flags);
   void update_initial_rwnd(Http2WindowSize new_size);
-  bool has_trailing_header() const;
-  void set_trailing_header();
+  bool trailing_header_is_possible() const;
+  void set_trailing_header_is_possible();
   void set_recv_headers(HTTPHdr &h2_headers);
   void reset_recv_headers();
   void reset_send_headers();
@@ -201,8 +201,8 @@ private:
   History<HISTORY_DEFAULT_SIZE> _history;
   Milestones<Http2StreamMilestone, static_cast<size_t>(Http2StreamMilestone::LAST_ENTRY)> _milestones;
 
-  bool trailing_header = false;
-  bool _expect_trailer = false;
+  bool _possible_trailing_header = false;
+  bool _expect_trailer           = false;
 
   bool _outbound_flag = false;
 
@@ -296,15 +296,15 @@ Http2Stream::update_initial_rwnd(Http2WindowSize new_size)
 }
 
 inline bool
-Http2Stream::has_trailing_header() const
+Http2Stream::trailing_header_is_possible() const
 {
-  return trailing_header;
+  return _possible_trailing_header;
 }
 
 inline void
-Http2Stream::set_trailing_header()
+Http2Stream::set_trailing_header_is_possible()
 {
-  trailing_header = true;
+  _possible_trailing_header = true;
 }
 
 inline void
