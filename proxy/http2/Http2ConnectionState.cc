@@ -149,7 +149,7 @@ rcv_data_frame(Http2ConnectionState &cstate, const Http2Frame &frame)
     }
   } else {
     // Any headers that show up after we received data are by definition trailing headers
-    stream->set_trailing_header();
+    stream->set_trailing_header_is_possible();
   }
 
   // If payload length is 0 without END_STREAM flag, do nothing
@@ -245,7 +245,7 @@ rcv_headers_frame(Http2ConnectionState &cstate, const Http2Frame &frame)
 
   if (cstate.is_valid_streamid(stream_id)) {
     stream = cstate.find_stream(stream_id);
-    if (stream == nullptr || (!stream->is_outbound_connection() && !stream->has_trailing_header())) {
+    if (stream == nullptr || (!stream->is_outbound_connection() && !stream->trailing_header_is_possible())) {
       return Http2Error(Http2ErrorClass::HTTP2_ERROR_CLASS_CONNECTION, Http2ErrorCode::HTTP2_ERROR_STREAM_CLOSED,
                         "recv headers cannot find existing stream_id");
     }
@@ -351,14 +351,14 @@ rcv_headers_frame(Http2ConnectionState &cstate, const Http2Frame &frame)
                         "recv headers end headers and not trailing header");
     }
 
-    if (stream->has_trailing_header()) {
+    if (stream->trailing_header_is_possible()) {
       if (!(frame.header().flags & HTTP2_FLAGS_HEADERS_END_STREAM)) {
         return Http2Error(Http2ErrorClass::HTTP2_ERROR_CLASS_STREAM, Http2ErrorCode::HTTP2_ERROR_PROTOCOL_ERROR,
                           "recv headers tailing header without endstream");
       }
     }
 
-    if (stream->has_trailing_header()) {
+    if (stream->trailing_header_is_possible()) {
       stream->reset_recv_headers();
     } else {
       stream->mark_milestone(Http2StreamMilestone::START_DECODE_HEADERS);
@@ -380,7 +380,7 @@ rcv_headers_frame(Http2ConnectionState &cstate, const Http2Frame &frame)
     }
 
     // Set up the State Machine
-    if (!stream->is_outbound_connection() && !stream->has_trailing_header()) {
+    if (!stream->is_outbound_connection() && !stream->trailing_header_is_possible()) {
       SCOPED_MUTEX_LOCK(stream_lock, stream->mutex, this_ethread());
       stream->mark_milestone(Http2StreamMilestone::START_TXN);
       stream->new_transaction(frame.is_from_early_data());
@@ -388,7 +388,7 @@ rcv_headers_frame(Http2ConnectionState &cstate, const Http2Frame &frame)
       stream->send_request(cstate);
     } else {
       // If this is a trailer, first signal to the SM that the body is done
-      if (stream->has_trailing_header()) {
+      if (stream->trailing_header_is_possible()) {
         stream->set_expect_trailer();
         // Propagate the  trailer header
         stream->send_request(cstate);
