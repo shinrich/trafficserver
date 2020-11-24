@@ -2567,7 +2567,7 @@ HttpSM::tunnel_handler_trailer(int event, void *data)
     nbytes = start_bytes;
   }
   // Signal the ua_txn to get ready for a trailer
-  ua_txn->set_expect_trailer();
+  ua_txn->set_expect_send_trailer();
   tunnel.reset();
   HttpTunnelProducer *p = tunnel.add_producer(server_entry->vc, nbytes, buf_start, &HttpSM::tunnel_handler_trailer_server,
                                               HT_HTTP_SERVER, "http server trailer");
@@ -2850,7 +2850,7 @@ HttpSM::tunnel_handler_server(int event, HttpTunnelProducer *p)
         tunnel.local_finish_all(p);
       }
     }
-    if (server_txn->expect_trailer()) {
+    if (server_txn->expect_receive_trailer()) {
       SMDebug("http", "[%" PRId64 "] wait for that trailing header", sm_id);
       // Swap out the default hander to set up the new tunnel for the trailer exchange.
       HTTP_SM_SET_DEFAULT_HANDLER(&HttpSM::tunnel_handler_trailer);
@@ -3211,7 +3211,7 @@ HttpSM::tunnel_handler_ua(int event, HttpTunnelConsumer *c)
 
   ink_assert(ua_entry->vc == c->vc);
 
-  if (server_txn && server_txn->expect_trailer()) {
+  if (server_txn && server_txn->expect_receive_trailer()) {
     // Don't shutdown if we are still expecting a trailer
   } else if (close_connection) {
     // If the client could be pipelining or is doing a POST, we need to

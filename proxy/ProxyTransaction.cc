@@ -223,12 +223,22 @@ ProxyTransaction::is_read_closed() const
 }
 
 bool
-ProxyTransaction::expect_trailer() const
+ProxyTransaction::expect_send_trailer() const
 {
   return false;
 }
 
 void
-ProxyTransaction::set_expect_trailer()
+ProxyTransaction::set_expect_send_trailer()
+{
+}
+bool
+ProxyTransaction::expect_receive_trailer() const
+{
+  return false;
+}
+
+void
+ProxyTransaction::set_expect_receive_trailer()
 {
 }
