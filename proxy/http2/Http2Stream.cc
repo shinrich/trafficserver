@@ -159,7 +159,7 @@ Http2ErrorCode
 Http2Stream::decode_header_blocks(HpackHandle &hpack_handle, uint32_t maximum_table_size)
 {
   return http2_decode_header_blocks(&_recv_header, (const uint8_t *)header_blocks, header_blocks_length, nullptr, hpack_handle,
-                                    trailing_header, maximum_table_size, _outbound_flag);
+                                    _possible_trailing_header, maximum_table_size, _outbound_flag);
 }
 
 void
