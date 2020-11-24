@@ -167,6 +167,12 @@ Http2Stream::send_request(Http2ConnectionState &cstate)
   // Convert header to HTTP/1.1 format
   http2_convert_header_from_2_to_1_1(&_recv_header);
 
+  if (this->expect_send_trailer()) {
+    // Send read complete to terminate previous data tunnel
+    this->read_vio.nbytes = this->read_vio.ndone;
+    this->signal_read_event(VC_EVENT_READ_COMPLETE);
+  }
+
   ink_release_assert(this->_sm != nullptr);
   this->_http_sm_id = this->_sm->sm_id;
 
@@ -239,7 +245,11 @@ Http2Stream::change_state(uint8_t type, uint8_t flags)
       _state = Http2StreamState::HTTP2_STREAM_STATE_CLOSED;
     } else if (type == HTTP2_FRAME_TYPE_DATA) {
       if (recv_end_stream) {
-        _state = Http2StreamState::HTTP2_STREAM_STATE_HALF_CLOSED_REMOTE;
+        if (send_end_stream) {
+          _state = Http2StreamState::HTTP2_STREAM_STATE_CLOSED;
+        } else {
+          _state = Http2StreamState::HTTP2_STREAM_STATE_HALF_CLOSED_REMOTE;
+        }
       } else if (send_end_stream) {
         // write_event = send_tracked_event(write_event, VC_EVENT_WRITE_COMPLETE, &write_vio);
         _state = Http2StreamState::HTTP2_STREAM_STATE_HALF_CLOSED_LOCAL;
@@ -1103,15 +1113,26 @@ Http2Stream::is_read_closed() const
 }
 
 bool
-Http2Stream::expect_trailer() const
+Http2Stream::expect_send_trailer() const
 {
-  return this->_expect_trailer;
+  return this->_expect_send_trailer;
 }
 
 void
-Http2Stream::set_expect_trailer()
+Http2Stream::set_expect_send_trailer()
 {
-  _expect_trailer     = true;
-  parsing_header_done = false;
+  _expect_send_trailer = true;
+  parsing_header_done  = false;
   reset_send_headers();
+}
+bool
+Http2Stream::expect_receive_trailer() const
+{
+  return this->_expect_receive_trailer;
+}
+
+void
+Http2Stream::set_expect_receive_trailer()
+{
+  _expect_receive_trailer = true;
 }
