@@ -75,11 +75,9 @@ private:
 
   IpEndpoint cached_client_addr;
   IpEndpoint cached_local_addr;
-
 };
 
 extern ClassAllocator<Http2ClientSession> http2ClientSessionAllocator;
 
 ///////////////////////////////////////////////
 // INLINE
-

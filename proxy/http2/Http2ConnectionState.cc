@@ -249,9 +249,6 @@ rcv_headers_frame(Http2ConnectionState &cstate, const Http2Frame &frame)
     if (stream == nullptr || (!stream->is_outbound_connection() && !stream->trailing_header_is_possible())) {
       return Http2Error(Http2ErrorClass::HTTP2_ERROR_CLASS_CONNECTION, Http2ErrorCode::HTTP2_ERROR_STREAM_CLOSED,
                         "recv headers cannot find existing stream_id");
-    } else if (!stream->has_trailing_header()) {
-      return Http2Error(Http2ErrorClass::HTTP2_ERROR_CLASS_CONNECTION, Http2ErrorCode::HTTP2_ERROR_PROTOCOL_ERROR,
-                        "recv headers cannot find existing stream_id");
     }
   }
 

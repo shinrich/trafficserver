@@ -179,6 +179,7 @@ public:
 private:
   Event *send_tracked_event(Event *event, int send_event, VIO *vio);
   void send_body(bool call_update);
+  void _clear_timers();
 
   /**
    * Check if this thread is the right thread to process events for this
