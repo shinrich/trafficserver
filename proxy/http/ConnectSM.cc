@@ -108,6 +108,10 @@ ConnectingEntry::state_http_server_open(int event, void *data)
     _netvc_read_buffer = new_MIOBuffer(HTTP_SERVER_RESP_HDR_BUFFER_INDEX);
     _netvc_reader      = _netvc_read_buffer->alloc_reader();
     _netvc->do_io_write(this, 1, _netvc_reader);
+    if (_connect_sms.size() > 0) {
+      ConnectSM *prime_connect_sm = _connect_sms.front();
+      _netvc->set_inactivity_timeout(prime_connect_sm->get_root_sm()->get_server_connect_timeout());
+    }
     ink_release_assert(_pending_action == nullptr);
     return 0;
   }
@@ -182,7 +186,6 @@ update_dns_info(HttpTransact::DNSLookupInfo *dns, HttpTransact::CurrentInfo *fro
 {
   dns->looking_up  = from->request_to;
   dns->lookup_name = from->server->name;
-  dns->attempts    = attempts;
 }
 
 void
@@ -823,7 +826,7 @@ ConnectSM::acquire_txn(HttpSM *sm, bool raw)
     opt.f_tcp_fastopen = (s.txn_conf->sock_option_flag_out & NetVCOptions::SOCK_OPT_TCP_FAST_OPEN);
   }
 
-  opt.ssl_client_cert_name        = s.txn_conf->ssl_client_cert_filename;
+  opt.set_ssl_client_cert_name(s.txn_conf->ssl_client_cert_filename);
   opt.ssl_client_private_key_name = s.txn_conf->ssl_client_private_key_filename;
   opt.ssl_client_ca_cert_name     = s.txn_conf->ssl_client_ca_cert_filename;
 
@@ -1032,6 +1035,8 @@ ConnectSM::state_http_server_open(int event, void *data)
       _netvc_read_buffer = new_MIOBuffer(HTTP_SERVER_RESP_HDR_BUFFER_INDEX);
       _netvc_reader      = _netvc_read_buffer->alloc_reader();
       _netvc->do_io_write(this, 1, _netvc_reader);
+      _netvc->set_inactivity_timeout(_root_sm->get_server_connect_timeout());
+
     } else { // in the case of an intercept plugin don't to the connect timeout change
       Debug("http_connect", "[%" PRId64 "] not setting handler for TCP handshake", _root_sm->sm_id);
       this->create_server_txn();
@@ -1072,12 +1077,16 @@ ConnectSM::state_http_server_open(int event, void *data)
   case VC_EVENT_INACTIVITY_TIMEOUT:
   case VC_EVENT_ACTIVE_TIMEOUT:
   case VC_EVENT_ERROR:
-  case NET_EVENT_OPEN_FAILED:
-    this->_sm_state = FailConnect;
-    s.current.state = HttpTransact::CONNECTION_ERROR;
+  case NET_EVENT_OPEN_FAILED: {
+    this->_root_sm->server_connection_provided_cert = _netvc->provided_cert();
+    this->_sm_state                                 = FailConnect;
+    s.current.state                                 = HttpTransact::CONNECTION_ERROR;
     // save the errno from the connect fail for future use (passed as negative value, flip back)
     s.current.server->set_connect_fail(event == NET_EVENT_OPEN_FAILED ? -reinterpret_cast<intptr_t>(data) : ECONNABORTED);
     s.outbound_conn_track_state.clear();
+
+    _netvc->do_io_close();
+    _netvc = nullptr;
 
     /* If we get this error in transparent mode, then we simply can't bind to the 4-tuple to make the connection.  There's no hope
        of retries succeeding in the near future. The best option is to just shut down the connection without further comment. The
@@ -1109,7 +1118,7 @@ ConnectSM::state_http_server_open(int event, void *data)
       }
     }
     return 0;
-
+  }
   default:
     Error("[HttpSM::state_http_server_open] Unknown event: %d", event);
     ink_release_assert(0);

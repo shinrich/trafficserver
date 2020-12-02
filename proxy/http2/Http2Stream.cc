@@ -50,7 +50,7 @@ Http2Stream::init(Http2StreamId sid, ssize_t initial_rwnd, bool outbound_connect
 {
   this->mark_milestone(Http2StreamMilestone::OPEN);
 
-  this->_sm          = nullptr;
+  this->_sm            = nullptr;
   this->_id            = sid;
   this->_thread        = this_ethread();
   this->_state         = Http2StreamState::HTTP2_STREAM_STATE_IDLE;
@@ -359,7 +359,7 @@ Http2Stream::do_io_write(Continuation *c, int64_t nbytes, IOBufferReader *abuffe
 
   if (c != nullptr && nbytes > 0 && this->is_state_writeable()) {
     if (_proxy_ssn->ready_to_write()) {
-      update_write_request(abuffer, nbytes, false);
+      update_write_request(false);
     }
   } else if (!this->is_state_writeable()) {
     // Cannot start a write on a closed stream
@@ -584,7 +584,7 @@ void
 Http2Stream::update_write_request(bool call_update)
 {
   if (!this->is_state_writeable() || closed || _proxy_ssn == nullptr || write_vio.mutex == nullptr ||
-      (buf_reader == nullptr && write_len == 0) || this->_send_reader == nullptr) {
+      write_vio.get_reader() == nullptr || this->_send_reader == nullptr) {
     return;
   }
 
@@ -598,22 +598,8 @@ Http2Stream::update_write_request(bool call_update)
 
   SCOPED_MUTEX_LOCK(lock, write_vio.mutex, this_ethread());
 
-  int64_t bytes_avail = this->_send_reader->read_avail();
-  if (write_vio.nbytes > 0 && write_vio.ntodo() > 0) {
-    int64_t num_to_write = write_vio.ntodo();
-    if (num_to_write > write_len) {
-      num_to_write = write_len;
-    }
-    if (bytes_avail > num_to_write) {
-      bytes_avail = num_to_write;
-    }
-  }
-
-  Http2StreamDebug("write_vio.nbytes=%" PRId64 ", write_vio.ndone=%" PRId64 ", write_vio.write_avail=%" PRId64
-                   ", reader.read_avail=%" PRId64,
-                   write_vio.nbytes, write_vio.ndone, write_vio.get_writer()->write_avail(), bytes_avail);
-
-  if (bytes_avail < 0) {
+  IOBufferReader *vio_reader = write_vio.get_reader();
+  if (write_vio.ntodo() == 0 || !vio_reader->is_read_avail_more_than(0)) {
     return;
   }
 
@@ -799,7 +785,7 @@ Http2Stream::reenable_write()
 {
   if (this->_proxy_ssn) {
     SCOPED_MUTEX_LOCK(lock, this->mutex, this_ethread());
-    update_write_request(write_vio.get_reader(), INT64_MAX, true);
+    update_write_request(true);
   }
 }
 

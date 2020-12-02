@@ -37,9 +37,10 @@ public:
   /// Virtual Methods
   //
   virtual void new_transaction(bool from_early_data = false);
+  virtual void attach_transaction(HttpSM *attach_sm);
   virtual bool attach_server_session(PoolableSession *ssession, bool transaction_done = true);
   Action *adjust_thread(Continuation *cont, int event, void *data);
-  virtual void release();
+  virtual void release()          = 0;
   virtual void transaction_done() = 0;
   virtual void destroy();
 

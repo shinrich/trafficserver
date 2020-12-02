@@ -380,23 +380,24 @@ HttpSessionManager::acquire_session(ConnectSM *connectSM, sockaddr const *ip, co
   // Otherwise, check the thread pool first
   if (this->get_pool_type() == TS_SERVER_SESSION_SHARING_POOL_THREAD ||
       this->get_pool_type() == TS_SERVER_SESSION_SHARING_POOL_HYBRID) {
-    retval = _acquire_session(ip, hostname_hash, sm, match_style, TS_SERVER_SESSION_SHARING_POOL_THREAD);
+    retval = _acquire_session(ip, hostname_hash, connectSM, match_style, TS_SERVER_SESSION_SHARING_POOL_THREAD);
   }
 
   //  If you didn't get a match, and the global pool is an option go there.
   if (retval != HSM_DONE && (TS_SERVER_SESSION_SHARING_POOL_GLOBAL == this->get_pool_type() ||
                              TS_SERVER_SESSION_SHARING_POOL_HYBRID == this->get_pool_type())) {
-    retval = _acquire_session(ip, hostname_hash, sm, match_style, TS_SERVER_SESSION_SHARING_POOL_GLOBAL);
+    retval = _acquire_session(ip, hostname_hash, connectSM, match_style, TS_SERVER_SESSION_SHARING_POOL_GLOBAL);
   }
   return retval;
 }
 
 HSMresult_t
-HttpSessionManager::_acquire_session(sockaddr const *ip, CryptoHash const &hostname_hash, HttpSM *sm,
+HttpSessionManager::_acquire_session(sockaddr const *ip, CryptoHash const &hostname_hash, ConnectSM *connectSM,
                                      TSServerSessionSharingMatchMask match_style, TSServerSessionSharingPoolType pool_type)
 {
-  Http1ServerSession *to_return = nullptr;
-  HSMresult_t retval            = HSM_NOT_FOUND;
+  HttpTransact::State *s     = &connectSM->get_root_sm()->t_state;
+  PoolableSession *to_return = nullptr;
+  HSMresult_t retval         = HSM_NOT_FOUND;
 
   // Extend the mutex window until the acquired Server session is attached
   // to the SM. Releasing the mutex before that results in race conditions
@@ -452,7 +453,7 @@ HttpSessionManager::_acquire_session(sockaddr const *ip, CryptoHash const &hostn
 
     if (to_return) {
       Debug("http_ss", "[%" PRId64 "] [acquire session] return session from shared pool", to_return->connection_id());
-      to_return->state = PoolableSession::PS_SSN_IN_USE;
+      to_return->state = PoolableSession::SSN_IN_USE;
       // the attach_server_session will issue the do_io_read under the sm lock
       connectSM->set_server_txn(to_return->new_transaction());
       retval = HSM_DONE;

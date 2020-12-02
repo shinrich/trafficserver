@@ -182,7 +182,7 @@ void
 ProxyTransaction::transaction_done()
 {
   SCOPED_MUTEX_LOCK(lock, this->mutex, this_ethread());
-  this->decrement_client_transactions_stat();
+  this->decrement_transactions_stat();
 }
 
 // Implement VConnection interface.
@@ -241,4 +241,24 @@ ProxyTransaction::expect_receive_trailer() const
 void
 ProxyTransaction::set_expect_receive_trailer()
 {
+}
+
+void
+ProxyTransaction::attach_transaction(HttpSM *attach_sm)
+{
+  _sm = attach_sm;
+}
+
+void
+ProxyTransaction::release()
+{
+  HttpTxnDebug("[%" PRId64 "] session released by sm [%" PRId64 "]", _proxy_ssn ? _proxy_ssn->connection_id() : 0,
+               _sm ? _sm->sm_id : 0);
+
+  this->decrement_transactions_stat();
+
+  // Pass along the release to the session
+  if (_proxy_ssn) {
+    _proxy_ssn->release(this);
+  }
 }

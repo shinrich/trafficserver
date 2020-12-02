@@ -473,10 +473,6 @@ public:
     return _ca_cert_dir.get();
   }
 
-  // For SSL, we defer notifying the SM that the connection was made until the
-  // TLS handshake completes
-  void notify_open() override;
-
 protected:
   const IpEndpoint &
   _getLocalEndpoint() override
