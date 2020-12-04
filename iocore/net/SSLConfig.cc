@@ -175,7 +175,6 @@ set_paths_helper(const char *path, const char *filename, char **final_path, char
     *final_filename = filename ? ats_stringdup(Layout::get()->relative_to(path, filename)) : nullptr;
   }
 }
-
 void
 SSLConfigParams::initialize()
 {
@@ -251,32 +250,11 @@ SSLConfigParams::initialize()
   // Read in the protocol string for ALPN to origin
   char *clientALPNProtocols;
   REC_ReadConfigStringAlloc(clientALPNProtocols, "proxy.config.ssl.client.alpn_protocols");
+
   // Assume the protocols are comma delimited
   if (clientALPNProtocols) {
-    // Count up the number of separators
-    std::string_view protocols = clientALPNProtocols;
-    size_t offset = 0, start = 0;
-    client_alpn_protocols = static_cast<unsigned char *>(ats_malloc(strlen(clientALPNProtocols) + 2));
-    start                 = 0;
-    offset                = protocols.find(',', start);
-    int index             = 0;
-    while (offset != protocols.npos) {
-      client_alpn_protocols[index++] = offset - start;
-      memcpy(client_alpn_protocols + index, clientALPNProtocols + start, offset - start);
-      index += offset - start;
-      start  = offset + 1;
-      offset = protocols.find(',', start);
-    }
-    // Copy in the last string
-    offset                         = strlen(clientALPNProtocols) + 1;
-    client_alpn_protocols[index++] = offset - start;
-    memcpy(client_alpn_protocols + index, clientALPNProtocols + start, offset - start);
-    index += offset - start;
-
-    client_alpn_protocols_length = index;
-  } else {
-    client_alpn_protocols        = nullptr;
-    client_alpn_protocols_length = 0;
+    this->alpn_protocols_array_size = MAX_ALPN_STRING;
+    ALPNSupport::process_alpn_protocols(clientALPNProtocols, this->alpn_protocols_array, this->alpn_protocols_array_size);
   }
 
 #ifdef SSL_OP_CIPHER_SERVER_PREFERENCE
