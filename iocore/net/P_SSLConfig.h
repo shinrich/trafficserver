@@ -41,6 +41,7 @@
 #include "YamlSNIConfig.h"
 
 #include "P_SSLUtils.h"
+#include "P_ALPNSupport.h"
 
 struct SSLCertLookup;
 struct ssl_ticket_key_block;
@@ -98,8 +99,8 @@ struct SSLConfigParams : public ConfigInfo {
   long ssl_ctx_options;
   long ssl_client_ctx_options;
 
-  unsigned char *client_alpn_protocols;
-  long client_alpn_protocols_length;
+  unsigned char alpn_protocols_array[MAX_ALPN_STRING];
+  int alpn_protocols_array_size = 0;
 
   char *server_tls13_cipher_suites;
   char *client_tls13_cipher_suites;

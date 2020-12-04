@@ -1123,9 +1123,11 @@ SSLNetVConnection::sslStartHandShake(int event, int &err)
         return EVENT_ERROR;
       }
 
-      if (params->client_alpn_protocols) {
+      if (options.alpn_protocols_array_size > 0) {
+        SSL_set_alpn_protos(this->ssl, options.alpn_protocols_array, options.alpn_protocols_array_size);
+      } else if (params->alpn_protocols_array_size > 0) {
         // Set the ALPN protocols we are requesting.
-        SSL_set_alpn_protos(this->ssl, params->client_alpn_protocols, params->client_alpn_protocols_length);
+        SSL_set_alpn_protos(this->ssl, params->alpn_protocols_array, params->alpn_protocols_array_size);
       }
 
       SSL_set_verify(this->ssl, SSL_VERIFY_PEER, verify_callback);
