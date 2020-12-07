@@ -116,6 +116,7 @@ union HostDBApplicationInfo {
     HTTP_VERSION_09        = 1,
     HTTP_VERSION_10        = 2,
     HTTP_VERSION_11        = 3,
+    HTTP_VERSION_2         = 4,
   };
 
   struct application_data_rr {

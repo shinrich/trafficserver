@@ -423,9 +423,6 @@ HttpDebugNames::get_action_name(HttpTransact::StateMachineAction_t e)
   case HttpTransact::SM_ACTION_ORIGIN_SERVER_RAW_OPEN:
     return ("SM_ACTION_ORIGIN_SERVER_RAW_OPEN");
 
-  case HttpTransact::SM_ACTION_ORIGIN_SERVER_RR_MARK_DOWN:
-    return ("SM_ACTION_ORIGIN_SERVER_RR_MARK_DOWN");
-
   case HttpTransact::SM_ACTION_READ_PUSH_HDR:
     return ("SM_ACTION_READ_PUSH_HDR");
 

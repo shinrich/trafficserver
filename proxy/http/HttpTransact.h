@@ -394,7 +394,6 @@ public:
 
     SM_ACTION_ORIGIN_SERVER_OPEN,
     SM_ACTION_ORIGIN_SERVER_RAW_OPEN,
-    SM_ACTION_ORIGIN_SERVER_RR_MARK_DOWN,
 
     SM_ACTION_READ_PUSH_HDR,
     SM_ACTION_STORE_PUSH_BODY,
@@ -703,12 +702,6 @@ public:
     //  able to defer some work in building the request
     TransactFunc_t pending_work = nullptr;
 
-    // Sandbox of Variables
-    StateMachineAction_t cdn_saved_next_action        = SM_ACTION_UNDEFINED;
-    void (*cdn_saved_transact_return_point)(State *s) = nullptr;
-    bool cdn_remap_complete                           = false;
-    bool first_dns_lookup                             = true;
-
     HttpRequestData request_data;
     ParentConfigParams *parent_params                           = nullptr;
     std::shared_ptr<NextHopSelectionStrategy> next_hop_strategy = nullptr;
@@ -935,7 +928,6 @@ public:
   static bool handleIfRedirect(State *s);
 
   static void StartAccessControl(State *s);
-  static void HandleRequestAuthorized(State *s);
   static void BadRequest(State *s);
   static void Forbidden(State *s);
   static void TooEarly(State *s);
@@ -946,7 +938,6 @@ public:
 
   static void CallOSDNSLookup(State *s);
   static void OSDNSLookup(State *s);
-  static void ReDNSRoundRobin(State *s);
   static void PPDNSLookup(State *s);
   static void OriginServerRawOpen(State *s);
   static void HandleCacheOpenRead(State *s);
@@ -964,7 +955,6 @@ public:
   static void handle_transform_cache_write(State *s);
   static void handle_response_from_parent(State *s);
   static void handle_response_from_server(State *s);
-  static void delete_server_rr_entry(State *s, int max_retries);
   static void retry_server_connection_not_open(State *s, ServerState_t conn_state, unsigned max_retries);
   static void handle_server_connection_not_open(State *s);
   static void handle_forward_server_connection_open(State *s);
@@ -1051,6 +1041,7 @@ public:
                                    const char *error_body_type);
   static void build_redirect_response(State *s);
   static const char *get_error_string(int erno);
+  static HttpTransact::StateMachineAction_t how_to_open_connection(HttpTransact::State *s);
 
   // the stat functions
   static void update_size_and_time_stats(State *s, ink_hrtime total_time, ink_hrtime user_agent_write_time,

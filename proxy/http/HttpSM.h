@@ -37,6 +37,7 @@
 #include "tscore/ink_platform.h"
 #include "P_EventSystem.h"
 #include "HttpCacheSM.h"
+#include "ConnectSM.h"
 #include "HttpTransact.h"
 #include "UrlRewrite.h"
 #include "HttpTunnel.h"
@@ -59,7 +60,7 @@ static size_t const HTTP_HEADER_BUFFER_SIZE_INDEX = CLIENT_CONNECTION_FIRST_READ
 //   the larger buffer size
 static size_t const HTTP_SERVER_RESP_HDR_BUFFER_INDEX = BUFFER_SIZE_INDEX_8K;
 
-class Http1ServerSession;
+class PoolableSession;
 class AuthHttpAdapter;
 
 class HttpSM;
@@ -211,21 +212,26 @@ public:
 
   static HttpSM *allocate();
   HttpCacheSM &get_cache_sm(); // Added to get the object of CacheSM YTS Team, yamsat
+  ConnectSM &get_connect_sm();
   std::string_view get_outbound_sni() const;
   std::string_view get_outbound_cert() const;
 
   void init(bool from_early_data = false);
 
-  void attach_client_session(ProxyTransaction *client_vc_arg, IOBufferReader *buffer_reader);
+  void attach_client_session(ProxyTransaction *client_vc_arg);
 
-  // Called by httpSessionManager so that we can reset
+  // Called by on return from the connectSM to set
   //  the session timeouts and initiate a read while
   //  holding the lock for the server session
-  void attach_server_session(PoolableSession *s);
+  void attach_server_session();
 
   // Used to read attributes of
   // the current active server session
-  PoolableSession *get_server_session() const;
+  ProxyTransaction *
+  get_server_txn() const
+  {
+    return server_txn;
+  }
 
   ProxyTransaction *
   get_ua_txn()
@@ -250,14 +256,6 @@ public:
   // Called by transact to prevent reset problems
   //  failed PUSH requests
   void set_ua_half_close_flag();
-
-  // Called by either state_hostdb_lookup() or directly
-  //   by the HostDB in the case of inline completion
-  // Handles the setting of all state necessary before
-  //   calling transact to process the hostdb lookup
-  // A NULL 'r' argument indicates the hostdb lookup failed
-  void process_hostdb_info(HostDBInfo *r);
-  void process_srv_info(HostDBInfo *r);
 
   // Called by transact.  Synchronous.
   VConnection *do_transform_open();
@@ -291,7 +289,6 @@ public:
   void txn_hook_add(TSHttpHookID id, INKContInternal *cont);
   APIHook *txn_hook_get(TSHttpHookID id);
 
-  bool is_private();
   bool is_redirect_required();
 
   /// Get the protocol stack for the inbound (client, user agent) connection.
@@ -339,6 +336,17 @@ public:
   // based on sni and host name header values
   void check_sni_host();
 
+  void
+  reset_server()
+  {
+    if (server_entry) {
+      ink_assert(server_entry->vc_type == HTTP_SERVER_VC);
+      vc_table.cleanup_entry(server_entry);
+      server_entry = nullptr;
+      server_txn   = nullptr;
+    }
+  }
+
 protected:
   int reentrancy_count = 0;
 
@@ -357,20 +365,12 @@ public:
   History<HISTORY_DEFAULT_SIZE> history;
 
 protected:
-  IOBufferReader *ua_buffer_reader     = nullptr;
   IOBufferReader *ua_raw_buffer_reader = nullptr;
 
-  HttpVCTableEntry *server_entry     = nullptr;
-  Http1ServerSession *server_session = nullptr;
+  HttpVCTableEntry *server_entry = nullptr;
+  ProxyTransaction *server_txn   = nullptr;
 
-  /* Because we don't want to take a session from a shared pool if we know that it will be private,
-   * but we cannot set it to private until we have an attached server session.
-   * So we use this variable to indicate that
-   * we should create a new connection and then once we attach the session we'll mark it as private.
-   */
-  bool will_be_private_ss              = false;
-  int shared_session_retries           = 0;
-  IOBufferReader *server_buffer_reader = nullptr;
+  int shared_session_retries = 0;
 
   HttpTransformInfo transform_info;
   HttpTransformInfo post_transform_info;
@@ -380,6 +380,8 @@ protected:
 
   HttpCacheSM cache_sm;
   HttpCacheSM transform_cache_sm;
+
+  ConnectSM connect_sm;
 
   HttpSMHandler default_handler = nullptr;
   Action *pending_action        = nullptr;
@@ -392,6 +394,7 @@ protected:
   int tunnel_handler(int event, void *data);
   int tunnel_handler_push(int event, void *data);
   int tunnel_handler_post(int event, void *data);
+  int tunnel_handler_trailer(int event, void *data);
 
   // YTS Team, yamsat Plugin
   int tunnel_handler_for_partial_post(int event, void *data);
@@ -403,7 +406,7 @@ protected:
   int state_read_client_request_header(int event, void *data);
   int state_watch_for_client_abort(int event, void *data);
   int state_read_push_response_header(int event, void *data);
-  int state_hostdb_lookup(int event, void *data);
+  int state_hostdb_lookedup(int event, void *data);
   int state_hostdb_reverse_lookup(int event, void *data);
   int state_mark_os_down(int event, void *data);
   int state_handle_stat_page(int event, void *data);
@@ -420,8 +423,8 @@ protected:
   int state_cache_open_write(int event, void *data);
 
   // Http Server Handlers
-  int state_http_server_open(int event, void *data);
-  int state_raw_http_server_open(int event, void *data);
+  int state_http_server_opened(int event, void *data);
+  int state_raw_http_server_opened(int event, void *data);
   int state_send_server_request_header(int event, void *data);
   int state_acquire_server_read(int event, void *data);
   int state_read_server_response_header(int event, void *data);
@@ -440,16 +443,18 @@ protected:
   int tunnel_handler_cache_read(int event, HttpTunnelProducer *p);
   int tunnel_handler_post_ua(int event, HttpTunnelProducer *c);
   int tunnel_handler_post_server(int event, HttpTunnelConsumer *c);
+  int tunnel_handler_trailer_ua(int event, HttpTunnelConsumer *c);
+  int tunnel_handler_trailer_server(int event, HttpTunnelProducer *c);
   int tunnel_handler_ssl_producer(int event, HttpTunnelProducer *p);
   int tunnel_handler_ssl_consumer(int event, HttpTunnelConsumer *p);
   int tunnel_handler_transform_write(int event, HttpTunnelConsumer *c);
   int tunnel_handler_transform_read(int event, HttpTunnelProducer *p);
   int tunnel_handler_plugin_agent(int event, HttpTunnelConsumer *c);
 
-  void do_hostdb_lookup();
+  // void do_hostdb_lookup();
   void do_hostdb_reverse_lookup();
   void do_cache_lookup_and_read();
-  void do_http_server_open(bool raw = false);
+  // void do_http_server_open(bool raw = false);
   void send_origin_throttled_response();
   void do_setup_post_tunnel(HttpVC_t to_vc_type);
   void do_cache_prepare_write();
@@ -540,6 +545,7 @@ public:
   bool is_using_post_buffer          = false;
   std::optional<bool> mptcp_state; // Don't initialize, that marks it as "not defined".
   const char *client_protocol     = "-";
+  const char *server_protocol     = "-";
   const char *client_sec_protocol = "-";
   const char *client_cipher_suite = "-";
   const char *client_curve        = "-";
@@ -640,6 +646,12 @@ inline HttpCacheSM &
 HttpSM::get_cache_sm()
 {
   return cache_sm;
+}
+
+inline ConnectSM &
+HttpSM::get_connect_sm()
+{
+  return connect_sm;
 }
 
 inline HttpSM *

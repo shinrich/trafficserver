@@ -56,13 +56,17 @@ public:
 
   Http2Stream(Http2StreamId sid = 0, ssize_t initial_rwnd = Http2::initial_window_size);
 
-  void init(Http2StreamId sid, ssize_t initial_rwnd);
+  /**
+   * Initiaiting_connection is true if ATS is sending the request header and receivng the respones
+   */
+  void init(Http2StreamId sid, ssize_t initial_rwnd, bool initializing_connection);
 
   int main_event_handler(int event, void *edata);
 
   void destroy() override;
-  void release(IOBufferReader *r) override;
+  void release() override;
   void reenable(VIO *vio) override;
+  void reenable_write();
   void transaction_done() override;
 
   void do_io_shutdown(ShutdownHowTo_t) override {}
@@ -70,9 +74,19 @@ public:
   VIO *do_io_write(Continuation *c, int64_t nbytes, IOBufferReader *abuffer, bool owner = false) override;
   void do_io_close(int lerrno = -1) override;
 
+  bool expect_send_trailer() const override;
+  void set_expect_send_trailer() override;
+  bool expect_receive_trailer() const override;
+  void set_expect_receive_trailer() override;
+
   Http2ErrorCode decode_header_blocks(HpackHandle &hpack_handle, uint32_t maximum_table_size);
   void send_request(Http2ConnectionState &cstate);
   void initiating_close();
+  bool
+  is_outbound_connection() const
+  {
+    return _outbound_flag;
+  }
   void terminate_if_possible();
   void update_read_request(int64_t read_len, bool send_update, bool check_eos = false);
   void update_write_request(IOBufferReader *buf_reader, int64_t write_len, bool send_update);
@@ -103,17 +117,27 @@ public:
 
   bool allow_half_open() const override;
   bool is_first_transaction() const override;
-  void increment_client_transactions_stat() override;
-  void decrement_client_transactions_stat() override;
+  void increment_transactions_stat() override;
+  void decrement_transactions_stat() override;
   int get_transaction_id() const override;
   int get_transaction_priority_weight() const override;
   int get_transaction_priority_dependence() const override;
+  bool is_read_closed() const override;
+
+  HTTPHdr *
+  get_send_header()
+  {
+    return &_send_header;
+  }
+
+  void read_update(int count);
+  void read_done();
 
   void clear_io_events();
 
-  bool is_client_state_writeable() const;
+  bool is_state_writeable() const;
   bool is_closed() const;
-  IOBufferReader *response_get_data_reader() const;
+  IOBufferReader *send_get_data_reader() const;
 
   void mark_milestone(Http2StreamMilestone type);
 
@@ -125,34 +149,36 @@ public:
   Http2StreamState get_state() const;
   bool change_state(uint8_t type, uint8_t flags);
   void update_initial_rwnd(Http2WindowSize new_size);
-  bool has_trailing_header() const;
-  void set_request_headers(HTTPHdr &h2_headers);
+  bool trailing_header_is_possible() const;
+  void set_trailing_header_is_possible();
+  void set_recv_headers(HTTPHdr &h2_headers);
+  void reset_recv_headers();
+  void reset_send_headers();
   MIOBuffer *read_vio_writer() const;
   int64_t read_vio_read_avail();
 
   //////////////////
   // Variables
   uint8_t *header_blocks        = nullptr;
-  uint32_t header_blocks_length = 0;  // total length of header blocks (not include
-                                      // Padding or other fields)
-  uint32_t request_header_length = 0; // total length of payload (include Padding
-                                      // and other fields)
+  uint32_t header_blocks_length = 0; // total length of header blocks (not include
+                                     // Padding or other fields)
+  uint32_t recv_header_length = 0;   // total length of payload (include Padding
+                                     // and other fields)
   bool recv_end_stream = false;
   bool send_end_stream = false;
 
-  bool sent_request_header       = false;
-  bool response_header_done      = false;
-  bool request_sent              = false;
+  bool parsing_header_done       = false;
   bool is_first_transaction_flag = false;
 
-  HTTPHdr response_header;
-  IOBufferReader *response_reader          = nullptr;
+  HTTPHdr _send_header;
+  IOBufferReader *_send_reader             = nullptr;
   Http2DependencyTree::Node *priority_node = nullptr;
 
+  Http2ConnectionState &get_connection_state();
+
 private:
-  bool response_is_data_available() const;
   Event *send_tracked_event(Event *event, int send_event, VIO *vio);
-  void send_response_body(bool call_update);
+  void send_body(bool call_update);
 
   /**
    * Check if this thread is the right thread to process events for this
@@ -168,8 +194,8 @@ private:
   Http2StreamState _state = Http2StreamState::HTTP2_STREAM_STATE_IDLE;
   int64_t _http_sm_id     = -1;
 
-  HTTPHdr _req_header;
-  MIOBuffer _request_buffer = CLIENT_CONNECTION_FIRST_READ_BUFFER_SIZE_INDEX;
+  HTTPHdr _recv_header;
+  MIOBuffer _recv_buffer = CLIENT_CONNECTION_FIRST_READ_BUFFER_SIZE_INDEX;
   int64_t read_vio_nbytes;
   VIO read_vio;
   VIO write_vio;
@@ -177,7 +203,11 @@ private:
   History<HISTORY_DEFAULT_SIZE> _history;
   Milestones<Http2StreamMilestone, static_cast<size_t>(Http2StreamMilestone::LAST_ENTRY)> _milestones;
 
-  bool trailing_header = false;
+  bool _possible_trailing_header = false;
+  bool _expect_send_trailer      = false;
+  bool _expect_receive_trailer   = false;
+
+  bool _outbound_flag = false;
 
   // A brief discussion of similar flags and state variables:  _state, closed, terminate_stream
   //
@@ -269,15 +299,35 @@ Http2Stream::update_initial_rwnd(Http2WindowSize new_size)
 }
 
 inline bool
-Http2Stream::has_trailing_header() const
+Http2Stream::trailing_header_is_possible() const
 {
-  return trailing_header;
+  return _possible_trailing_header;
 }
 
 inline void
-Http2Stream::set_request_headers(HTTPHdr &h2_headers)
+Http2Stream::set_trailing_header_is_possible()
 {
-  _req_header.copy(&h2_headers);
+  _possible_trailing_header = true;
+}
+
+inline void
+Http2Stream::set_recv_headers(HTTPHdr &h2_headers)
+{
+  _recv_header.copy(&h2_headers);
+}
+
+inline void
+Http2Stream::reset_recv_headers()
+{
+  this->_recv_header.destroy();
+  this->_recv_header.create(HTTP_TYPE_RESPONSE);
+}
+
+inline void
+Http2Stream::reset_send_headers()
+{
+  this->_send_header.destroy();
+  this->_send_header.create(HTTP_TYPE_RESPONSE);
 }
 
 // Check entire DATA payload length if content-length: header is exist
@@ -290,7 +340,7 @@ Http2Stream::increment_data_length(uint64_t length)
 inline bool
 Http2Stream::payload_length_is_valid() const
 {
-  uint32_t content_length = _req_header.get_content_length();
+  uint32_t content_length = _recv_header.get_content_length();
   return content_length == 0 || content_length == data_length;
 }
 
@@ -301,10 +351,11 @@ Http2Stream::allow_half_open() const
 }
 
 inline bool
-Http2Stream::is_client_state_writeable() const
+Http2Stream::is_state_writeable() const
 {
   return _state == Http2StreamState::HTTP2_STREAM_STATE_OPEN || _state == Http2StreamState::HTTP2_STREAM_STATE_HALF_CLOSED_REMOTE ||
-         _state == Http2StreamState::HTTP2_STREAM_STATE_RESERVED_LOCAL;
+         _state == Http2StreamState::HTTP2_STREAM_STATE_RESERVED_LOCAL ||
+         (_outbound_flag && _state == Http2StreamState::HTTP2_STREAM_STATE_IDLE);
 }
 
 inline bool
@@ -323,4 +374,16 @@ inline MIOBuffer *
 Http2Stream::read_vio_writer() const
 {
   return this->read_vio.get_writer();
+}
+
+inline void
+Http2Stream::read_update(int count)
+{
+  read_vio.ndone += count;
+}
+
+inline void
+Http2Stream::read_done()
+{
+  read_vio.nbytes = read_vio.ndone;
 }

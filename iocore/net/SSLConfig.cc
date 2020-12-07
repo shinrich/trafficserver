@@ -246,6 +246,37 @@ SSLConfigParams::initialize()
   }
 #endif
 
+  // Read in the protocol string for ALPN to origin
+  char *clientALPNProtocols;
+  REC_ReadConfigStringAlloc(clientALPNProtocols, "proxy.config.ssl.client.alpn_protocols");
+  // Assume the protocols are comma delimited
+  if (clientALPNProtocols) {
+    // Count up the number of separators
+    std::string_view protocols = clientALPNProtocols;
+    size_t offset = 0, start = 0;
+    client_alpn_protocols = static_cast<unsigned char *>(ats_malloc(strlen(clientALPNProtocols) + 2));
+    start                 = 0;
+    offset                = protocols.find(',', start);
+    int index             = 0;
+    while (offset != protocols.npos) {
+      client_alpn_protocols[index++] = offset - start;
+      memcpy(client_alpn_protocols + index, clientALPNProtocols + start, offset - start);
+      index += offset - start;
+      start  = offset + 1;
+      offset = protocols.find(',', start);
+    }
+    // Copy in the last string
+    offset                         = strlen(clientALPNProtocols) + 1;
+    client_alpn_protocols[index++] = offset - start;
+    memcpy(client_alpn_protocols + index, clientALPNProtocols + start, offset - start);
+    index += offset - start;
+
+    client_alpn_protocols_length = index;
+  } else {
+    client_alpn_protocols        = nullptr;
+    client_alpn_protocols_length = 0;
+  }
+
 #ifdef SSL_OP_CIPHER_SERVER_PREFERENCE
   REC_ReadConfigInteger(option, "proxy.config.ssl.server.honor_cipher_order");
   if (option) {
