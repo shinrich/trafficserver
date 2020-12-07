@@ -829,6 +829,12 @@ ConnectSM::acquire_txn(HttpSM *sm, bool raw)
   opt.set_ssl_client_cert_name(s.txn_conf->ssl_client_cert_filename);
   opt.ssl_client_private_key_name = s.txn_conf->ssl_client_private_key_filename;
   opt.ssl_client_ca_cert_name     = s.txn_conf->ssl_client_ca_cert_filename;
+  if (s.txn_conf->ssl_client_alpn_protocols != nullptr) {
+    opt.alpn_protocols_array_size = MAX_ALPN_STRING;
+    Debug("connect", "Override alpn %s", s.txn_conf->ssl_client_alpn_protocols);
+    ALPNSupport::process_alpn_protocols(s.txn_conf->ssl_client_alpn_protocols, opt.alpn_protocols_array,
+                                        opt.alpn_protocols_array_size);
+  }
 
   if (raw) {
     SET_HANDLER(&ConnectSM::state_http_server_raw_open);
