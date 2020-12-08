@@ -39,25 +39,6 @@
 
 using lbw = ts::LocalBufferWriter<256>;
 
-class ConnectingEntry : public Continuation
-{
-public:
-  std::queue<ConnectSM *> _connect_sms;
-  NetVConnection *_netvc        = nullptr;
-  IOBufferReader *_netvc_reader = nullptr;
-  MIOBuffer *_netvc_read_buffer = nullptr;
-  std::string _sni;
-  std::string _cert_name;
-  IpEndpoint _ipaddr;
-  std::string _hostname;
-  Action *_pending_action = nullptr;
-  NetVCOptions opt;
-
-  void remove_entry();
-  int state_http_server_open(int event, void *data);
-  static PoolableSession *create_server_session(HttpSM *root_sm, NetVConnection *netvc, MIOBuffer *netvc_read_buffer,
-                                                IOBufferReader *netvc_reader);
-};
 
 struct IpHelper {
   size_t

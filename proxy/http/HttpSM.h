@@ -37,7 +37,6 @@
 #include "tscore/ink_platform.h"
 #include "P_EventSystem.h"
 #include "HttpCacheSM.h"
-#include "ConnectSM.h"
 #include "HttpTransact.h"
 #include "UrlRewrite.h"
 #include "HttpTunnel.h"
@@ -48,6 +47,9 @@
 
 #define HTTP_API_CONTINUE (INK_API_EVENT_EVENTS_START + 0)
 #define HTTP_API_ERROR (INK_API_EVENT_EVENTS_START + 1)
+
+#define CONNECT_EVENT_TXN (HTTP_NET_CONNECTION_EVENT_EVENTS_START) + 0
+#define CONNECT_EVENT_DIRECT (HTTP_NET_CONNECTION_EVENT_EVENTS_START) + 1
 
 // The default size for http header buffers when we don't
 //   need to include extra space for the document
@@ -212,7 +214,6 @@ public:
 
   static HttpSM *allocate();
   HttpCacheSM &get_cache_sm(); // Added to get the object of CacheSM YTS Team, yamsat
-  ConnectSM &get_connect_sm();
   std::string_view get_outbound_sni() const;
   std::string_view get_outbound_cert() const;
 
@@ -238,6 +239,10 @@ public:
   {
     return ua_txn;
   }
+
+  void set_server_txn(ProxyTransaction *txn);
+  PoolableSession *create_server_session(NetVConnection *netvc, MIOBuffer *netvc_read_buffer, IOBufferReader *netvc_reader);
+  void create_server_txn(PoolableSession *new_session = nullptr);
 
   // Called by transact.  Updates are fire and forget
   //  so there are no callbacks and are safe to do
@@ -388,8 +393,6 @@ protected:
   HttpCacheSM cache_sm;
   HttpCacheSM transform_cache_sm;
 
-  ConnectSM connect_sm;
-
   HttpSMHandler default_handler = nullptr;
   Action *pending_action        = nullptr;
   Continuation *schedule_cont   = nullptr;
@@ -413,7 +416,7 @@ protected:
   int state_read_client_request_header(int event, void *data);
   int state_watch_for_client_abort(int event, void *data);
   int state_read_push_response_header(int event, void *data);
-  int state_hostdb_lookedup(int event, void *data);
+  int state_hostdb_lookup(int event, void *data);
   int state_hostdb_reverse_lookup(int event, void *data);
   int state_mark_os_down(int event, void *data);
   int state_handle_stat_page(int event, void *data);
@@ -430,8 +433,8 @@ protected:
   int state_cache_open_write(int event, void *data);
 
   // Http Server Handlers
-  int state_http_server_opened(int event, void *data);
-  int state_raw_http_server_opened(int event, void *data);
+  int state_http_server_open(int event, void *data);
+  int state_raw_http_server_open(int event, void *data);
   int state_send_server_request_header(int event, void *data);
   int state_acquire_server_read(int event, void *data);
   int state_read_server_response_header(int event, void *data);
@@ -458,10 +461,10 @@ protected:
   int tunnel_handler_transform_read(int event, HttpTunnelProducer *p);
   int tunnel_handler_plugin_agent(int event, HttpTunnelConsumer *c);
 
-  // void do_hostdb_lookup();
+  void do_hostdb_lookup();
   void do_hostdb_reverse_lookup();
   void do_cache_lookup_and_read();
-  // void do_http_server_open(bool raw = false);
+  void do_http_server_open(bool raw = false);
   void send_origin_throttled_response();
   void do_setup_post_tunnel(HttpVC_t to_vc_type);
   void do_cache_prepare_write();
@@ -646,6 +649,9 @@ private:
   int _client_connection_id = -1, _client_transaction_id = -1;
   int _client_transaction_priority_weight = -1, _client_transaction_priority_dependence = -1;
   bool _from_early_data = false;
+  NetVConnection *_netvc        = nullptr;
+  IOBufferReader *_netvc_reader = nullptr;
+  MIOBuffer *_netvc_read_buffer = nullptr;
 };
 
 // Function to get the cache_sm object - YTS Team, yamsat
@@ -653,12 +659,6 @@ inline HttpCacheSM &
 HttpSM::get_cache_sm()
 {
   return cache_sm;
-}
-
-inline ConnectSM &
-HttpSM::get_connect_sm()
-{
-  return connect_sm;
 }
 
 inline HttpSM *

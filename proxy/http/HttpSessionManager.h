@@ -38,7 +38,6 @@
 
 class ProxyTransaction;
 class HttpSM;
-class ConnectSM;
 
 void initialize_thread_for_http_sessions(EThread *thread, int thread_index);
 
@@ -70,9 +69,9 @@ public:
   {
     return m_ip_pool.count();
   }
-  static bool validate_host_sni(ConnectSM *s, NetVConnection *netvc);
-  static bool validate_sni(ConnectSM *s, NetVConnection *netvc);
-  static bool validate_cert(ConnectSM *s, NetVConnection *netvc);
+  static bool validate_host_sni(HttpSM *sm, NetVConnection *netvc);
+  static bool validate_sni(HttpSM *sm, NetVConnection *netvc);
+  static bool validate_cert(HttpSM *sm, NetVConnection *netvc);
   void removeSession(PoolableSession *ssn);
   void addSession(PoolableSession *ssn);
 
@@ -94,7 +93,7 @@ public:
       @return A pointer to the session or @c NULL if not matching session was found.
   */
   HSMresult_t acquireSession(sockaddr const *addr, CryptoHash const &host_hash, TSServerSessionSharingMatchMask match_style,
-                             ConnectSM *s, PoolableSession *&server_session);
+                             HttpSM *sm, PoolableSession *&server_session);
   /** Release a session to to pool.
    */
   void releaseSession(PoolableSession *ss);
@@ -113,7 +112,7 @@ class HttpSessionManager
 public:
   HttpSessionManager() {}
   ~HttpSessionManager() {}
-  HSMresult_t acquire_session(ConnectSM *cont, sockaddr const *addr, const char *hostname, ProxyTransaction *ua_txn);
+  HSMresult_t acquire_session(HttpSM *cont, sockaddr const *addr, const char *hostname, ProxyTransaction *ua_txn);
   HSMresult_t release_session(PoolableSession *to_release);
   void purge_keepalives();
   void init();
@@ -133,7 +132,7 @@ private:
   /// Global pool, used if not per thread pools.
   /// @internal We delay creating this because the session manager is created during global statics init.
   ServerSessionPool *m_g_pool = nullptr;
-  HSMresult_t _acquire_session(sockaddr const *ip, CryptoHash const &hostname_hash, ConnectSM *connectSM,
+  HSMresult_t _acquire_session(sockaddr const *ip, CryptoHash const &hostname_hash, HttpSM *sm,
                                TSServerSessionSharingMatchMask match_style, TSServerSessionSharingPoolType pool_type);
   TSServerSessionSharingPoolType m_pool_type = TS_SERVER_SESSION_SHARING_POOL_THREAD;
 };
