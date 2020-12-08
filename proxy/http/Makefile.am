@@ -65,8 +65,6 @@ libhttp_a_SOURCES = \
 	HttpProxyServerMain.h \
 	HttpSM.cc \
 	HttpSM.h \
-        ConnectSM.cc \
-        ConnectSM.h \
 	Http1ServerSession.cc \
 	Http1ServerSession.h \
 	HttpSessionManager.cc \
