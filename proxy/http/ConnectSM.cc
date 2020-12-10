@@ -39,7 +39,6 @@
 
 using lbw = ts::LocalBufferWriter<256>;
 
-
 struct IpHelper {
   size_t
   operator()(IpEndpoint const &arg) const

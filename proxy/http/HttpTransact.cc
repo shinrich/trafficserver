@@ -727,8 +727,8 @@ does_method_effect_cache(int method)
            method == HTTP_WKSIDX_POST));
 }
 
-HttpTransact::StateMachineAction_t
-HttpTransact::how_to_open_connection(HttpTransact::State *s)
+inline static HttpTransact::StateMachineAction_t
+how_to_open_connection(HttpTransact::State *s)
 {
   ink_assert((s->pending_work == nullptr) || (s->current.request_to == HttpTransact::PARENT_PROXY));
 
@@ -1772,6 +1772,61 @@ HttpTransact::PPDNSLookup(State *s)
 }
 
 ///////////////////////////////////////////////////////////////////////////////
+//
+// Name       : ReDNSRoundRobin
+// Description: Called after we fail to contact part of a round-robin
+//              robin server set and we found a another ip address.
+//
+// Details    :
+//
+//
+//
+// Possible Next States From Here:
+// - HttpTransact::ORIGIN_SERVER_RAW_OPEN;
+// - HttpTransact::ORIGIN_SERVER_OPEN;
+// - HttpTransact::PROXY_INTERNAL_CACHE_NOOP;
+//
+///////////////////////////////////////////////////////////////////////////////
+void
+HttpTransact::ReDNSRoundRobin(State *s)
+{
+  ink_assert(s->current.server == &s->server_info);
+  ink_assert(s->current.server->had_connect_fail());
+
+  if (s->dns_info.lookup_success) {
+    // We using a new server now so clear the connection
+    //  failure mark
+    s->current.server->clear_connect_fail();
+
+    // Our ReDNS of the server succeeded so update the necessary
+    //  information and try again. Need to preserve the current port value if possible.
+    in_port_t server_port = s->current.server->dst_addr.host_order_port();
+    // Temporary check to make sure the port preservation can be depended upon. That should be the case
+    // because we get here only after trying a connection. Remove for 6.2.
+    ink_assert(s->current.server->dst_addr.isValid() && 0 != server_port);
+
+    ats_ip_copy(&s->server_info.dst_addr, s->host_db_info.ip());
+    s->server_info.dst_addr.port() = htons(server_port);
+    ats_ip_copy(&s->request_data.dest_ip, &s->server_info.dst_addr);
+    get_ka_info_from_host_db(s, &s->server_info, &s->client_info, &s->host_db_info);
+
+    char addrbuf[INET6_ADDRSTRLEN];
+    TxnDebug("http_trans", "[ReDNSRoundRobin] DNS lookup for O.S. successful IP: %s",
+             ats_ip_ntop(&s->server_info.dst_addr.sa, addrbuf, sizeof(addrbuf)));
+
+    s->next_action = how_to_open_connection(s);
+  } else {
+    // Our ReDNS failed so output the DNS failure error message
+    build_error_response(s, HTTP_STATUS_BAD_GATEWAY, "Cannot find server.", "connect#dns_failed");
+    s->cache_info.action = CACHE_DO_NO_ACTION;
+    s->next_action       = SM_ACTION_SEND_ERROR_CACHE_NOOP;
+    //  s->next_action = PROXY_INTERNAL_CACHE_NOOP;
+  }
+
+  return;
+}
+
+///////////////////////////////////////////////////////////////////////////////
 // Name       : OSDNSLookup
 // Description: called after the DNS lookup of origin server name
 //
@@ -1962,6 +2017,12 @@ HttpTransact::OSDNSLookup(State *s)
 
 void
 HttpTransact::StartAccessControl(State *s)
+{
+  HandleRequestAuthorized(s);
+}
+
+void
+HttpTransact::HandleRequestAuthorized(State *s)
 {
   if (s->force_dns) {
     TRANSACT_RETURN(SM_ACTION_API_OS_DNS, HttpTransact::DecideCacheLookup);
@@ -3614,6 +3675,7 @@ HttpTransact::handle_response_from_server(State *s)
 {
   TxnDebug("http_trans", "[handle_response_from_server] (hrfs)");
   HTTP_RELEASE_ASSERT(s->current.server == &s->server_info);
+  unsigned max_connect_retries = 0;
 
   // plugin call
   s->server_info.state = s->current.state;
@@ -3652,9 +3714,56 @@ HttpTransact::handle_response_from_server(State *s)
       s->current.server->set_connect_fail(EIO);
     }
 
-    TxnDebug("http_trans", "[handle_response_from_server] Error. No more retries.");
-    SET_VIA_STRING(VIA_DETAIL_SERVER_CONNECT, VIA_DETAIL_SERVER_FAILURE);
-    handle_server_connection_not_open(s);
+    if (is_server_negative_cached(s)) {
+      max_connect_retries = s->txn_conf->connect_attempts_max_retries_dead_server - 1;
+    } else {
+      // server not yet negative cached - use default number of retries
+      max_connect_retries = s->txn_conf->connect_attempts_max_retries;
+    }
+
+    TxnDebug("http_trans", "max_connect_retries: %d s->current.attempts: %d", max_connect_retries, s->current.attempts);
+
+    if (is_request_retryable(s) && s->current.attempts < max_connect_retries) {
+      // If this is a round robin DNS entry & we're tried configured
+      //    number of times, we should try another node
+      if (DNSLookupInfo::OS_Addr::OS_ADDR_TRY_CLIENT == s->dns_info.os_addr_style) {
+        // attempt was based on client supplied server address. Try again
+        // using HostDB.
+        // Allow DNS attempt
+        s->dns_info.lookup_success = false;
+        // See if we can get data from HostDB for this.
+        s->dns_info.os_addr_style = DNSLookupInfo::OS_Addr::OS_ADDR_TRY_HOSTDB;
+        // Force host resolution to have the same family as the client.
+        // Because this is a transparent connection, we can't switch address
+        // families - that is locked in by the client source address.
+        ats_force_order_by_family(&s->current.server->dst_addr.sa, s->my_txn_conf().host_res_data.order);
+        return CallOSDNSLookup(s);
+      } else if ((s->dns_info.srv_lookup_success || s->host_db_info.is_rr_elt()) &&
+                 (s->txn_conf->connect_attempts_rr_retries > 0) &&
+                 (s->current.attempts % s->txn_conf->connect_attempts_rr_retries == 0)) {
+        delete_server_rr_entry(s, max_connect_retries);
+        return;
+      } else {
+        retry_server_connection_not_open(s, s->current.state, max_connect_retries);
+        TxnDebug("http_trans", "[handle_response_from_server] Error. Retrying...");
+        s->next_action = how_to_open_connection(s);
+
+        if (s->api_server_addr_set) {
+          // If the plugin set a server address, back up to the OS_DNS hook
+          // to let it try another one. Force OS_ADDR_USE_CLIENT so that
+          // in OSDNSLoopkup, we back up to how_to_open_connections which
+          // will tell HttpSM to connect the origin server.
+
+          s->dns_info.os_addr_style = DNSLookupInfo::OS_Addr::OS_ADDR_USE_CLIENT;
+          TRANSACT_RETURN(SM_ACTION_API_OS_DNS, OSDNSLookup);
+        }
+        return;
+      }
+    } else {
+      TxnDebug("http_trans", "[handle_response_from_server] Error. No more retries.");
+      SET_VIA_STRING(VIA_DETAIL_SERVER_CONNECT, VIA_DETAIL_SERVER_FAILURE);
+      handle_server_connection_not_open(s);
+    }
     break;
   case ACTIVE_TIMEOUT:
     TxnDebug("http_trans", "[hrfs] connection not alive");
@@ -3668,6 +3777,36 @@ HttpTransact::handle_response_from_server(State *s)
   }
 
   return;
+}
+
+///////////////////////////////////////////////////////////////////////////////
+// Name       : delete_server_rr_entry
+// Description:
+//
+// Details    :
+//
+//   connection to server failed mark down the server round robin entry
+//
+//
+// Possible Next States From Here:
+//
+///////////////////////////////////////////////////////////////////////////////
+void
+HttpTransact::delete_server_rr_entry(State *s, int max_retries)
+{
+  char addrbuf[INET6_ADDRSTRLEN];
+
+  TxnDebug("http_trans", "[%d] failed to connect to %s", s->current.attempts,
+           ats_ip_ntop(&s->current.server->dst_addr.sa, addrbuf, sizeof(addrbuf)));
+  TxnDebug("http_trans", "[delete_server_rr_entry] marking rr entry "
+                         "down and finding next one");
+  ink_assert(s->current.server->had_connect_fail());
+  ink_assert(s->current.request_to == ORIGIN_SERVER);
+  ink_assert(s->current.server == &s->server_info);
+  update_dns_info(&s->dns_info, &s->current);
+  s->current.attempts++;
+  TxnDebug("http_trans", "[delete_server_rr_entry] attempts now: %d, max: %d", s->current.attempts, max_retries);
+  TRANSACT_RETURN(SM_ACTION_ORIGIN_SERVER_RR_MARK_DOWN, ReDNSRoundRobin);
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -3819,9 +3958,7 @@ HttpTransact::handle_forward_server_connection_open(State *s)
   TxnDebug("http_seq", "[HttpTransact::handle_server_connection_open] ");
   ink_release_assert(s->current.state == CONNECTION_ALIVE);
 
-  if (s->state_machine->get_server_txn() && strcmp(s->state_machine->get_server_txn()->get_protocol_string(), "http/2") == 0) {
-    s->updated_server_version = HostDBApplicationInfo::HTTP_VERSION_2;
-  } else if (s->hdr_info.server_response.version_get() == HTTPVersion(0, 9)) {
+  if (s->hdr_info.server_response.version_get() == HTTPVersion(0, 9)) {
     TxnDebug("http_trans", "[hfsco] server sent 0.9 response, reading...");
     build_response(s, &s->hdr_info.client_response, s->client_info.http_version, HTTP_STATUS_OK, "Connection Established");
 

@@ -385,6 +385,7 @@ public:
 
     SM_ACTION_ORIGIN_SERVER_OPEN,
     SM_ACTION_ORIGIN_SERVER_RAW_OPEN,
+    SM_ACTION_ORIGIN_SERVER_RR_MARK_DOWN,
 
     SM_ACTION_READ_PUSH_HDR,
     SM_ACTION_STORE_PUSH_BODY,
@@ -932,6 +933,7 @@ public:
   static bool handleIfRedirect(State *s);
 
   static void StartAccessControl(State *s);
+  static void HandleRequestAuthorized(State *s);
   static void BadRequest(State *s);
   static void Forbidden(State *s);
   static void SelfLoop(State *s);
@@ -944,6 +946,7 @@ public:
 
   static void CallOSDNSLookup(State *s);
   static void OSDNSLookup(State *s);
+  static void ReDNSRoundRobin(State *s);
   static void PPDNSLookup(State *s);
   static void OriginServerRawOpen(State *s);
   static void HandleCacheOpenRead(State *s);
@@ -961,6 +964,7 @@ public:
   static void handle_transform_cache_write(State *s);
   static void handle_response_from_parent(State *s);
   static void handle_response_from_server(State *s);
+  static void delete_server_rr_entry(State *s, int max_retries);
   static void retry_server_connection_not_open(State *s, ServerState_t conn_state, unsigned max_retries);
   static void handle_server_connection_not_open(State *s);
   static void handle_forward_server_connection_open(State *s);
@@ -1047,7 +1051,6 @@ public:
                                    const char *error_body_type);
   static void build_redirect_response(State *s);
   static const char *get_error_string(int erno);
-  static HttpTransact::StateMachineAction_t how_to_open_connection(HttpTransact::State *s);
 
   // the stat functions
   static void update_size_and_time_stats(State *s, ink_hrtime total_time, ink_hrtime user_agent_write_time,

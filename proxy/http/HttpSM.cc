@@ -28,6 +28,7 @@
 #include "HttpTransactHeaders.h"
 #include "ProxyConfig.h"
 #include "Http1ServerSession.h"
+#include "Http2ServerSession.h"
 #include "HttpDebugNames.h"
 #include "HttpSessionManager.h"
 #include "P_Cache.h"
@@ -407,13 +408,15 @@ ConnectingEntry::state_http_server_open(int event, void *data)
 ink_hrtime
 HttpSM::get_server_inactivity_timeout()
 {
-  return HRTIME_MSECONDS((t_state.api_txn_no_activity_timeout_value != -1) ? t_state.api_txn_no_activity_timeout_value : t_state.txn_conf->transaction_no_activity_timeout_out);
+  return HRTIME_SECONDS((t_state.api_txn_no_activity_timeout_value != -1) ? t_state.api_txn_no_activity_timeout_value :
+                                                                            t_state.txn_conf->transaction_no_activity_timeout_out);
 }
 
 ink_hrtime
 HttpSM::get_server_active_timeout()
 {
-  return HRTIME_MSECONDS((t_state.api_txn_active_timeout_value != -1) ? t_state.api_txn_active_timeout_value : t_state.txn_conf->transaction_active_timeout_out);
+  return HRTIME_SECONDS((t_state.api_txn_active_timeout_value != -1) ? t_state.api_txn_active_timeout_value :
+                                                                       t_state.txn_conf->transaction_active_timeout_out);
 }
 
 ink_hrtime
@@ -431,7 +434,7 @@ HttpSM::get_server_connect_timeout()
       retval = t_state.txn_conf->connect_attempts_timeout;
     }
   }
-  return HRTIME_MSECONDS(retval);
+  return HRTIME_SECONDS(retval);
 }
 
 HttpSM::HttpSM() : Continuation(nullptr), vc_table(this) {}
@@ -1280,14 +1283,6 @@ HttpSM::state_raw_http_server_open(int event, void *data)
 
   pending_action = nullptr;
   switch (event) {
-  case EVENT_INTERVAL:
-    // If we get EVENT_INTERNAL it means that we moved the transaction
-    // to a different thread in do_http_server_open.  Since we didn't
-    // do any of the actual work in do_http_server_open, we have to
-    // go back and do it now.
-    do_http_server_open(true);
-    return 0;
-
   case NET_EVENT_OPEN:
 
     // Record the VC in our table
@@ -1900,7 +1895,8 @@ HttpSM::state_http_server_open(int event, void *data)
     ink_release_assert(pending_action == nullptr || pending_action->continuation == vc->get_action()->continuation);
     pending_action = nullptr;
     if (this->plugin_tunnel_type == HTTP_NO_PLUGIN_TUNNEL) {
-      Debug("http_connect", "[%" PRId64 "] setting handler for TCP handshake", this->sm_id);
+      Debug("http_connect", "[%" PRId64 "] setting handler for TCP handshake timeout %" PRId64, this->sm_id,
+            this->get_server_connect_timeout());
       // Just want to get a write-ready event so we know that the TCP handshake is complete.
       // The buffer we create will be handed over to the eventually created server session
       _netvc_read_buffer = new_MIOBuffer(HTTP_SERVER_RESP_HDR_BUFFER_INDEX);
@@ -1918,7 +1914,8 @@ HttpSM::state_http_server_open(int event, void *data)
     return 0;
   }
   case CONNECT_EVENT_DIRECT:
-    ink_release_assert(!"To be wired");
+    // Try it again, but direct this time
+    do_http_server_open(false, true);
     break;
   case CONNECT_EVENT_TXN:
     Debug("http", "[%" PRId64 "] TCP Handshake complete", sm_id);
@@ -1939,13 +1936,14 @@ HttpSM::state_http_server_open(int event, void *data)
   case VC_EVENT_ACTIVE_TIMEOUT:
   case VC_EVENT_ERROR:
   case NET_EVENT_OPEN_FAILED: {
-    HttpTransact::State &s = this->t_state;
+    HttpTransact::State &s                = this->t_state;
     this->server_connection_provided_cert = _netvc->provided_cert();
-    s.current.state                                 = HttpTransact::CONNECTION_ERROR;
+    s.current.state                       = HttpTransact::CONNECTION_ERROR;
     // save the errno from the connect fail for future use (passed as negative value, flip back)
     s.current.server->set_connect_fail(event == NET_EVENT_OPEN_FAILED ? -reinterpret_cast<intptr_t>(data) : ECONNABORTED);
     s.outbound_conn_track_state.clear();
 
+    _netvc->do_io_write(nullptr, 0, nullptr);
     _netvc->do_io_close();
     _netvc = nullptr;
 
@@ -2239,11 +2237,195 @@ HttpSM::state_send_server_request_header(int event, void *data)
   return 0;
 }
 
+bool
+HttpSM::origin_multiplexed() const
+{
+  return (t_state.host_db_info.app.http_data.http_version == HostDBApplicationInfo::HTTP_VERSION_2);
+}
+
+void
+ConnectingEntry::remove_entry()
+{
+  EThread *ethread = this_ethread();
+  auto ip_iter     = ethread->connecting_pool->m_ip_pool.find(this->_ipaddr);
+  if (ip_iter != ethread->connecting_pool->m_ip_pool.end()) {
+    ethread->connecting_pool->m_ip_pool.erase(ip_iter);
+  }
+  auto host_iter = ethread->connecting_pool->m_host_pool.find(this->_hostname);
+  if (host_iter != ethread->connecting_pool->m_host_pool.end()) {
+    ethread->connecting_pool->m_host_pool.erase(host_iter);
+  }
+  delete this;
+}
+
+// Returns true if there was a matching entry that we
+// queued this request on
+bool
+HttpSM::add_to_existing_request()
+{
+  HttpTransact::State &s = this->t_state;
+  bool retval            = false;
+  EThread *ethread       = this_ethread();
+
+  if (nullptr == ethread->connecting_pool) {
+    initialize_thread_for_connecting_pools(ethread);
+  }
+
+  SET_HANDLER(&HttpSM::state_http_server_open);
+
+  IpEndpoint ip;
+  ip.assign(&s.current.server->dst_addr.sa);
+  auto ip_iter   = ethread->connecting_pool->m_ip_pool.find(ip);
+  auto host_iter = ethread->connecting_pool->m_host_pool.find(s.current.server->name);
+  if (ip_iter != ethread->connecting_pool->m_ip_pool.end() && host_iter != ethread->connecting_pool->m_host_pool.end()) {
+    ip_iter->second->_connect_sms.push(this);
+    // host_iter->second->_connect_sms.push(this);
+    Debug("http_connect", "Add entry to connection queue. size=%" PRId64, ip_iter->second->_connect_sms.size());
+    retval = true;
+  }
+  return retval;
+}
+
+void
+HttpSM::process_srv_info(HostDBInfo *r)
+{
+  SMDebug("dns_srv", "beginning process_srv_info");
+  t_state.hostdb_entry = Ptr<HostDBInfo>(r);
+
+  /* we didn't get any SRV records, continue w normal lookup */
+  if (!r || !r->is_srv || !r->round_robin) {
+    t_state.dns_info.srv_hostname[0]    = '\0';
+    t_state.dns_info.srv_lookup_success = false;
+    t_state.my_txn_conf().srv_enabled   = false;
+    SMDebug("dns_srv", "No SRV records were available, continuing to lookup %s", t_state.dns_info.lookup_name);
+  } else {
+    HostDBRoundRobin *rr = r->rr();
+    HostDBInfo *srv      = nullptr;
+    if (rr) {
+      srv = rr->select_best_srv(t_state.dns_info.srv_hostname, &mutex->thread_holding->generator, ink_local_time(),
+                                static_cast<int>(t_state.txn_conf->down_server_timeout));
+    }
+    if (!srv) {
+      t_state.dns_info.srv_lookup_success = false;
+      t_state.dns_info.srv_hostname[0]    = '\0';
+      t_state.my_txn_conf().srv_enabled   = false;
+      SMDebug("dns_srv", "SRV records empty for %s", t_state.dns_info.lookup_name);
+    } else {
+      t_state.dns_info.srv_lookup_success = true;
+      t_state.dns_info.srv_port           = srv->data.srv.srv_port;
+      t_state.dns_info.srv_app            = srv->app;
+      // t_state.dns_info.single_srv = (rr->good == 1);
+      ink_assert(srv->data.srv.key == makeHostHash(t_state.dns_info.srv_hostname));
+      SMDebug("dns_srv", "select SRV records %s", t_state.dns_info.srv_hostname);
+    }
+  }
+  return;
+}
+
+void
+HttpSM::process_hostdb_info(HostDBInfo *r)
+{
+  // Increment the refcount to our item, since we are pointing at it
+  t_state.hostdb_entry = Ptr<HostDBInfo>(r);
+
+  sockaddr const *client_addr = nullptr;
+  bool use_client_addr        = t_state.http_config_param->use_client_target_addr == 1 && t_state.client_info.is_transparent &&
+                         t_state.dns_info.os_addr_style == HttpTransact::DNSLookupInfo::OS_Addr::OS_ADDR_TRY_DEFAULT;
+  if (use_client_addr) {
+    NetVConnection *vc = ua_txn ? ua_txn->get_netvc() : nullptr;
+    if (vc) {
+      client_addr = vc->get_local_addr();
+      // Regardless of whether the client address matches the DNS record or not,
+      // we want to use that address.  Therefore, we copy over the client address
+      // info and skip the assignment from the DNS cache
+      ats_ip_copy(t_state.host_db_info.ip(), client_addr);
+      t_state.dns_info.os_addr_style  = HttpTransact::DNSLookupInfo::OS_Addr::OS_ADDR_TRY_CLIENT;
+      t_state.dns_info.lookup_success = true;
+      // Leave ret unassigned, so we don't overwrite the host_db_info
+    } else {
+      use_client_addr = false;
+    }
+  }
+
+  if (r && !r->is_failed()) {
+    ink_time_t now                    = ink_local_time();
+    HostDBInfo *ret                   = nullptr;
+    t_state.dns_info.lookup_success   = true;
+    t_state.dns_info.lookup_validated = true;
+
+    HostDBRoundRobin *rr = r->round_robin ? r->rr() : nullptr;
+    if (rr) {
+      // if use_client_target_addr is set, make sure the client addr is in the results pool
+      if (use_client_addr && rr->find_ip(client_addr) == nullptr) {
+        SMDebug("http", "use_client_target_addr == 1. Client specified address is not in the pool, not validated.");
+        t_state.dns_info.lookup_validated = false;
+      } else {
+        // Since the time elapsed between current time and client_request_time
+        // may be very large, we cannot use client_request_time to approximate
+        // current time when calling select_best_http().
+        ret = rr->select_best_http(&t_state.client_info.src_addr.sa, now, static_cast<int>(t_state.txn_conf->down_server_timeout));
+        // set the srv target`s last_failure
+        if (t_state.dns_info.srv_lookup_success) {
+          uint32_t last_failure = 0xFFFFFFFF;
+          for (int i = 0; i < rr->rrcount && last_failure != 0; ++i) {
+            if (last_failure > rr->info(i).app.http_data.last_failure) {
+              last_failure = rr->info(i).app.http_data.last_failure;
+            }
+          }
+
+          if (last_failure != 0 && static_cast<uint32_t>(now - t_state.txn_conf->down_server_timeout) < last_failure) {
+            HostDBApplicationInfo app;
+            app.allotment.application1 = 0;
+            app.allotment.application2 = 0;
+            app.http_data.last_failure = last_failure;
+            hostDBProcessor.setby_srv(t_state.dns_info.lookup_name, 0, t_state.dns_info.srv_hostname, &app);
+          }
+        }
+      }
+    } else {
+      if (use_client_addr && !ats_ip_addr_eq(client_addr, &r->data.ip.sa)) {
+        SMDebug("http", "use_client_target_addr == 1. Comparing single addresses failed, not validated.");
+        t_state.dns_info.lookup_validated = false;
+      } else {
+        ret = r;
+      }
+    }
+    if (ret) {
+      t_state.host_db_info = *ret;
+      ink_release_assert(!t_state.host_db_info.reverse_dns);
+      ink_release_assert(ats_is_ip(t_state.host_db_info.ip()));
+    }
+  } else {
+    SMDebug("http", "[%" PRId64 "] DNS lookup failed for '%s'", sm_id, t_state.dns_info.lookup_name);
+
+    if (!use_client_addr) {
+      t_state.dns_info.lookup_success = false;
+    }
+    t_state.host_db_info.app.allotment.application1 = 0;
+    t_state.host_db_info.app.allotment.application2 = 0;
+    ink_assert(!t_state.host_db_info.round_robin);
+  }
+
+  milestones[TS_MILESTONE_DNS_LOOKUP_END] = Thread::get_hrtime();
+
+  if (is_debug_tag_set("http_timeout")) {
+    if (t_state.api_txn_dns_timeout_value != -1) {
+      int foo = static_cast<int>(milestones.difference_msec(TS_MILESTONE_DNS_LOOKUP_BEGIN, TS_MILESTONE_DNS_LOOKUP_END));
+      SMDebug("http_timeout", "DNS took: %d msec", foo);
+    }
+  }
+}
+
+//////////////////////////////////////////////////////////////////////////////
+//
+//  HttpSM::state_hostdb_lookup()
+//
+//////////////////////////////////////////////////////////////////////////////
 int
 HttpSM::state_hostdb_lookup(int event, void *data)
 {
+  STATE_ENTER(&HttpSM::state_hostdb_lookup, event);
   HttpTransact::State &s = this->t_state;
-  //    ink_assert (m_origin_server_vc == 0);
   // REQ_FLAVOR_SCHEDULED_UPDATE can be transformed into
   // REQ_FLAVOR_REVPROXY
   // ink_assert(s.req_flavor == HttpTransact::REQ_FLAVOR_SCHEDULED_UPDATE || s.req_flavor == HttpTransact::REQ_FLAVOR_REVPROXY);
@@ -2263,17 +2445,16 @@ HttpSM::state_hostdb_lookup(int event, void *data)
     opt.port  = s.dns_info.srv_lookup_success ? s.dns_info.srv_port : s.server_info.dst_addr.host_order_port();
     opt.flags = (s.cache_info.directives.does_client_permit_dns_storing) ? HostDBProcessor::HOSTDB_DO_NOT_FORCE_DNS :
                                                                            HostDBProcessor::HOSTDB_FORCE_DNS_RELOAD;
-    opt.timeout = (s.api_txn_dns_timeout_value != -1) ? s.api_txn_dns_timeout_value : 0;
-    opt.host_res_style =
-      ats_host_res_from(_root_sm->ua_txn->get_netvc()->get_local_addr()->sa_family, s.txn_conf->host_res_data.order);
+    opt.timeout        = (s.api_txn_dns_timeout_value != -1) ? s.api_txn_dns_timeout_value : 0;
+    opt.host_res_style = ats_host_res_from(ua_txn->get_netvc()->get_local_addr()->sa_family, s.txn_conf->host_res_data.order);
 
     Action *dns_lookup_action_handle =
-      hostDBProcessor.getbyname_imm(this, (cb_process_result_pfn)&ConnectSM::process_hostdb_info, host_name, 0, opt);
+      hostDBProcessor.getbyname_imm(this, (cb_process_result_pfn)&HttpSM::process_hostdb_info, host_name, 0, opt);
     if (dns_lookup_action_handle != ACTION_RESULT_DONE) {
-      ink_assert(!_pending_action);
+      ink_assert(!pending_action);
       pending_action = dns_lookup_action_handle;
     } else {
-       call_transact_and_set_next_state(nullptr);
+      call_transact_and_set_next_state(nullptr);
     }
   } break;
   case EVENT_HOST_DB_IP_REMOVED:
@@ -2344,10 +2525,9 @@ HttpSM::state_mark_os_down(int event, void *data)
       mark_host_failure(mark_down, t_state.request_sent_time);
     }
   }
-  // SKH - Don't think this is right
   // We either found our entry or we did not.  Either way find
   //  the entry we should use now
-  return state_hostdb_lookedup(event, data);
+  return state_hostdb_lookup(event, data);
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -4944,13 +5124,53 @@ HttpSM::get_outbound_sni() const
   return zret;
 }
 
+static void
+set_tls_options(NetVCOptions &opt, const OverridableHttpConfigParams *txn_conf)
+{
+  char *verify_server = nullptr;
+  if (txn_conf->ssl_client_verify_server_policy == nullptr) {
+    opt.verifyServerPolicy = YamlSNIConfig::Policy::UNSET;
+  } else {
+    verify_server = txn_conf->ssl_client_verify_server_policy;
+    if (strcmp(verify_server, "DISABLED") == 0) {
+      opt.verifyServerPolicy = YamlSNIConfig::Policy::DISABLED;
+    } else if (strcmp(verify_server, "PERMISSIVE") == 0) {
+      opt.verifyServerPolicy = YamlSNIConfig::Policy::PERMISSIVE;
+    } else if (strcmp(verify_server, "ENFORCED") == 0) {
+      opt.verifyServerPolicy = YamlSNIConfig::Policy::ENFORCED;
+    } else {
+      Warning("%s is invalid for proxy.config.ssl.client.verify.server.policy.  Should be one of DISABLED, PERMISSIVE, or ENFORCED",
+              verify_server);
+      opt.verifyServerPolicy = YamlSNIConfig::Policy::UNSET;
+    }
+  }
+  if (txn_conf->ssl_client_verify_server_properties == nullptr) {
+    opt.verifyServerProperties = YamlSNIConfig::Property::UNSET;
+  } else {
+    verify_server = txn_conf->ssl_client_verify_server_properties;
+    if (strcmp(verify_server, "SIGNATURE") == 0) {
+      opt.verifyServerProperties = YamlSNIConfig::Property::SIGNATURE_MASK;
+    } else if (strcmp(verify_server, "NAME") == 0) {
+      opt.verifyServerProperties = YamlSNIConfig::Property::NAME_MASK;
+    } else if (strcmp(verify_server, "ALL") == 0) {
+      opt.verifyServerProperties = YamlSNIConfig::Property::ALL_MASK;
+    } else if (strcmp(verify_server, "NONE") == 0) {
+      opt.verifyServerProperties = YamlSNIConfig::Property::NONE;
+    } else {
+      Warning("%s is invalid for proxy.config.ssl.client.verify.server.properties.  Should be one of SIGNATURE, NAME, or ALL",
+              verify_server);
+      opt.verifyServerProperties = YamlSNIConfig::Property::NONE;
+    }
+  }
+}
+
 //////////////////////////////////////////////////////////////////////////
 //
 //  HttpSM::do_http_server_open()
 //
 //////////////////////////////////////////////////////////////////////////
 void
-HttpSM::do_http_server_open(bool raw)
+HttpSM::do_http_server_open(bool raw, bool only_direct)
 {
   int ip_family = t_state.current.server->dst_addr.sa.sa_family;
   auto fam_name = ats_ip_family_name(ip_family);
@@ -5088,11 +5308,6 @@ HttpSM::do_http_server_open(bool raw)
     }
   }
 
-  // If there is already an attached server session mark it as private.
-  if (server_session != nullptr && will_be_private_ss) {
-    set_server_session_private(true);
-  }
-
   if ((raw == false) && TS_SERVER_SESSION_SHARING_MATCH_NONE != t_state.txn_conf->server_session_sharing_match &&
       (t_state.txn_conf->keep_alive_post_out == 1 || t_state.hdr_info.request_content_length == 0) && !is_private() &&
       ua_txn != nullptr) {
@@ -5100,17 +5315,16 @@ HttpSM::do_http_server_open(bool raw)
     shared_result = httpSessionManager.acquire_session(this,                                 // state machine
                                                        &t_state.current.server->dst_addr.sa, // ip + port
                                                        t_state.current.server->name,         // hostname
-                                                       ua_txn,                               // has ptr to bound ua sessions
-                                                       this                                  // sm
+                                                       ua_txn                                // has ptr to bound ua sessions
     );
 
     switch (shared_result) {
     case HSM_DONE:
-      hsm_release_assert(server_session != nullptr);
+      hsm_release_assert(server_txn != nullptr);
       handle_http_server_open();
       return;
     case HSM_NOT_FOUND:
-      hsm_release_assert(server_session == nullptr);
+      hsm_release_assert(server_txn == nullptr);
       break;
     case HSM_RETRY:
       //  Could not get shared pool lock
@@ -5124,25 +5338,26 @@ HttpSM::do_http_server_open(bool raw)
   // session when we already have an attached server session.
   else if ((TS_SERVER_SESSION_SHARING_MATCH_NONE == t_state.txn_conf->server_session_sharing_match || is_private()) &&
            (ua_txn != nullptr)) {
-    Http1ServerSession *existing_ss = ua_txn->get_server_session();
+    PoolableSession *existing_ss = ua_txn->get_server_session();
 
     if (existing_ss) {
       // [amc] Not sure if this is the best option, but we don't get here unless session sharing is disabled
       // so there's no point in further checking on the match or pool values. But why check anything? The
       // client has already exchanged a request with this specific origin server and has sent another one
       // shouldn't we just automatically keep the association?
-      if (ats_ip_addr_port_eq(&existing_ss->get_server_ip().sa, &t_state.current.server->dst_addr.sa)) {
+      if (ats_ip_addr_port_eq(existing_ss->get_remote_addr(), &t_state.current.server->dst_addr.sa)) {
         ua_txn->attach_server_session(nullptr);
-        existing_ss->state = HSS_ACTIVE;
-        this->attach_server_session(existing_ss);
-        hsm_release_assert(server_session != nullptr);
+        existing_ss->set_active();
+        server_txn = existing_ss->new_transaction();
+        server_txn->attach_transaction(this);
+        this->attach_server_session();
         handle_http_server_open();
         return;
       } else {
         // As this is in the non-sharing configuration, we want to close
         // the existing connection and call connect_re to get a new one
         existing_ss->get_netvc()->set_inactivity_timeout(HRTIME_SECONDS(t_state.txn_conf->keep_alive_no_activity_timeout_out));
-        existing_ss->release();
+        existing_ss->release(server_txn);
         ua_txn->attach_server_session(nullptr);
       }
     }
@@ -5151,13 +5366,26 @@ HttpSM::do_http_server_open(bool raw)
   // to get a new one.
   // ua_txn is null when t_state.req_flavor == REQ_FLAVOR_SCHEDULED_UPDATE
   else if (ua_txn != nullptr) {
-    Http1ServerSession *existing_ss = ua_txn->get_server_session();
+    PoolableSession *existing_ss = ua_txn->get_server_session();
     if (existing_ss) {
-      existing_ss->get_netvc()->set_inactivity_timeout(HRTIME_SECONDS(t_state.txn_conf->keep_alive_no_activity_timeout_out));
-      existing_ss->release();
+      existing_ss->set_inactivity_timeout(HRTIME_SECONDS(t_state.txn_conf->keep_alive_no_activity_timeout_out));
+      existing_ss->release(server_txn);
       ua_txn->attach_server_session(nullptr);
     }
   }
+
+  // If the origin may support multiplexed origin, see if there is another connect request in play
+  bool multiplexed_origin = !only_direct && !raw && this->origin_multiplexed();
+  if (multiplexed_origin) {
+    if (this->add_to_existing_request()) {
+      Debug("http_ss", "Queue behind existing request");
+      // We are queued up behind an existing connect request
+      // Go away and wait.
+      // Set an appropriate state? And/or pending_action
+      return;
+    }
+  }
+
   // Check to see if we have reached the max number of connections.
   // Atomically read the current number of connections and check to see
   // if we have gone above the max allowed.
@@ -5297,6 +5525,22 @@ HttpSM::do_http_server_open(bool raw)
   opt.set_ssl_client_cert_name(t_state.txn_conf->ssl_client_cert_filename);
   opt.ssl_client_private_key_name = t_state.txn_conf->ssl_client_private_key_filename;
   opt.ssl_client_ca_cert_name     = t_state.txn_conf->ssl_client_ca_cert_filename;
+
+  ConnectingEntry *new_entry = nullptr;
+  if (multiplexed_origin) {
+    EThread *ethread = this_ethread();
+    if (nullptr != ethread->connecting_pool) {
+      Debug("http_ss", "Queue multiplexed request");
+      new_entry          = new ConnectingEntry();
+      new_entry->mutex   = this->mutex;
+      new_entry->handler = (ContinuationHandler)&ConnectingEntry::state_http_server_open;
+      new_entry->_ipaddr.assign(&t_state.current.server->dst_addr.sa);
+      new_entry->_hostname = t_state.current.server->name;
+      new_entry->_connect_sms.push(this);
+      ethread->connecting_pool->m_ip_pool.insert(std::make_pair(new_entry->_ipaddr, new_entry));
+      ethread->connecting_pool->m_host_pool.insert(std::make_pair(new_entry->_hostname, new_entry));
+    }
+  }
 
   if (tls_upstream) {
     SMDebug("http", "calling sslNetProcessor.connect_re");
@@ -5714,20 +5958,6 @@ HttpSM::handle_server_setup_error(int event, void *data)
   ink_assert(vio != nullptr);
 
   STATE_ENTER(&HttpSM::handle_server_setup_error, event);
-
-  // Should we do a server retry?
-  Action *action_handle = connect_sm.retry_connection(this);
-  if (action_handle != ACTION_RESULT_DONE) {
-    // We need to close the previous attempt
-    if (server_entry) {
-      ink_assert(server_entry->vc_type == HTTP_SERVER_VC);
-      vc_table.cleanup_entry(server_entry);
-      server_entry = nullptr;
-      server_txn   = nullptr;
-    }
-    pending_action = action_handle;
-    return;
-  }
 
   // If there is POST or PUT tunnel wait for the tunnel
   //  to figure out that things have gone to hell
@@ -6180,9 +6410,7 @@ HttpSM::write_header_into_buffer(HTTPHdr *h, MIOBuffer *b)
 void
 HttpSM::attach_server_session()
 {
-  hsm_release_assert(this->server_txn == nullptr);
   hsm_release_assert(this->server_entry == nullptr);
-  server_txn            = connect_sm.release_server_txn();
   server_transact_count = server_txn->get_proxy_ssn()->get_transact_count();
 
   // Set the mutex so that we have something to update
@@ -7065,7 +7293,6 @@ HttpSM::kill_this()
     cache_sm.end_both();
     transform_cache_sm.end_both();
     vc_table.cleanup_all();
-    connect_sm.cleanup();
 
     // Clean up the tunnel resources. Take
     // it down if it is still active
@@ -7485,16 +7712,99 @@ HttpSM::set_next_state()
   }
 
   case HttpTransact::SM_ACTION_DNS_LOOKUP: {
-    HTTP_SM_SET_DEFAULT_HANDLER(&HttpSM::state_hostdb_lookedup);
-    Action *action_return = connect_sm.do_dns_lookup(this);
-    if (action_return == ACTION_RESULT_DONE) {
-      // call_transact_and_set_next_state(nullptr);
-      this->state_hostdb_lookedup(EVENT_DONE, nullptr);
-    } else {
-      ink_release_assert(pending_action == nullptr);
-      pending_action = action_return;
+    sockaddr const *addr;
+    if (t_state.api_server_addr_set) {
+      /* If the API has set the server address before the OS DNS lookup
+       * then we can skip the lookup
+       */
+      ip_text_buffer ipb;
+      Debug("dns", "[HttpTransact::HandleRequest] Skipping DNS lookup for API supplied target %s.",
+            ats_ip_ntop(&t_state.server_info.dst_addr, ipb, sizeof(ipb)));
+      // this seems wasteful as we will just copy it right back
+      ats_ip_copy(t_state.host_db_info.ip(), t_state.server_info.dst_addr);
+      t_state.dns_info.lookup_success = true;
+      call_transact_and_set_next_state(nullptr);
+      break;
+    } else if (0 == ats_ip_pton(t_state.dns_info.lookup_name, t_state.host_db_info.ip()) &&
+               ats_is_ip_loopback(t_state.host_db_info.ip())) {
+      // If it's 127.0.0.1 or ::1 don't bother with hostdb
+      Debug("dns", "[HttpTransact::HandleRequest] Skipping DNS lookup for %s because it's loopback", t_state.dns_info.lookup_name);
+      t_state.dns_info.lookup_success = true;
+      call_transact_and_set_next_state(nullptr);
+      break;
+    } else if (t_state.http_config_param->use_client_target_addr == 2 && !t_state.url_remap_success &&
+               t_state.parent_result.result != PARENT_SPECIFIED && t_state.client_info.is_transparent &&
+               t_state.dns_info.os_addr_style == HttpTransact::DNSLookupInfo::OS_Addr::OS_ADDR_TRY_DEFAULT &&
+               ats_is_ip(addr = ua_txn->get_netvc()->get_local_addr())) {
+      /* If the connection is client side transparent and the URL
+       * was not remapped/directed to parent proxy, we can use the
+       * client destination IP address instead of doing a DNS
+       * lookup. This is controlled by the 'use_client_target_addr'
+       * configuration parameter.
+       */
+      if (is_debug_tag_set("dns")) {
+        ip_text_buffer ipb;
+        Debug("dns", "[HttpTransact::HandleRequest] Skipping DNS lookup for client supplied target %s.",
+              ats_ip_ntop(addr, ipb, sizeof(ipb)));
+      }
+      ats_ip_copy(t_state.host_db_info.ip(), addr);
+      if (t_state.hdr_info.client_request.version_get() == HTTPVersion(0, 9)) {
+        t_state.host_db_info.app.http_data.http_version = HostDBApplicationInfo::HTTP_VERSION_09;
+      } else if (t_state.hdr_info.client_request.version_get() == HTTPVersion(1, 0)) {
+        t_state.host_db_info.app.http_data.http_version = HostDBApplicationInfo::HTTP_VERSION_10;
+      } else {
+        t_state.host_db_info.app.http_data.http_version = HostDBApplicationInfo::HTTP_VERSION_11;
+      }
+
+      t_state.dns_info.lookup_success = true;
+      // cache this result so we don't have to unreliably duplicate the
+      // logic later if the connect fails.
+      t_state.dns_info.os_addr_style = HttpTransact::DNSLookupInfo::OS_Addr::OS_ADDR_TRY_CLIENT;
+      call_transact_and_set_next_state(nullptr);
+      break;
+    } else if (t_state.parent_result.result == PARENT_UNDEFINED && t_state.dns_info.lookup_success) {
+      // Already set, and we don't have a parent proxy to lookup
+      ink_assert(ats_is_ip(t_state.host_db_info.ip()));
+      Debug("dns", "[HttpTransact::HandleRequest] Skipping DNS lookup, provided by plugin");
+      call_transact_and_set_next_state(nullptr);
+      break;
+    } else if (t_state.dns_info.looking_up == HttpTransact::ORIGIN_SERVER && t_state.http_config_param->no_dns_forward_to_parent &&
+               t_state.parent_result.result != PARENT_UNDEFINED) {
+      t_state.dns_info.lookup_success = true;
+      call_transact_and_set_next_state(nullptr);
+      break;
     }
-    break;
+
+    HTTP_SM_SET_DEFAULT_HANDLER(&HttpSM::state_hostdb_lookup);
+
+    // We need to close the previous attempt
+    // Because it could be a server side retry by DNS rr
+    if (server_entry) {
+      ink_assert(server_entry->vc_type == HTTP_SERVER_VC);
+      vc_table.cleanup_entry(server_entry);
+      server_entry = nullptr;
+      server_txn   = nullptr;
+    } else {
+      // Now that we have gotten the user agent request, we can cancel
+      // the inactivity timeout associated with it.  Note, however, that
+      // we must not cancel the inactivity timeout if the message
+      // contains a body (as indicated by the non-zero request_content_length
+      // field).  This indicates that a POST operation is taking place and
+      // that the client is still sending data to the origin server.  The
+      // origin server cannot reply until the entire request is received.  In
+      // light of this dependency, TS must ensure that the client finishes
+      // sending its request and for this reason, the inactivity timeout
+      // cannot be cancelled.
+      if (ua_txn && !t_state.hdr_info.request_content_length) {
+        ua_txn->cancel_inactivity_timeout();
+      } else if (!ua_txn) {
+        terminate_sm = true;
+        return; // Give up if there is no session
+      }
+    }
+
+    ink_assert(t_state.dns_info.looking_up != HttpTransact::UNDEFINED_LOOKUP);
+    return do_hostdb_lookup();
   }
 
   case HttpTransact::SM_ACTION_DNS_REVERSE_LOOKUP: {
@@ -7510,7 +7820,7 @@ HttpSM::set_next_state()
   }
 
   case HttpTransact::SM_ACTION_ORIGIN_SERVER_OPEN: {
-    HTTP_SM_SET_DEFAULT_HANDLER(&HttpSM::state_http_server_opened);
+    HTTP_SM_SET_DEFAULT_HANDLER(&HttpSM::state_http_server_open);
 
     // We need to close the previous attempt
     if (server_entry) {
@@ -7537,10 +7847,7 @@ HttpSM::set_next_state()
       }
     }
 
-    Action *action_handle = connect_sm.acquire_txn(this);
-    if (action_handle != ACTION_RESULT_DONE) {
-      pending_action = action_handle;
-    }
+    do_http_server_open();
     break;
   }
 
@@ -7683,6 +7990,20 @@ HttpSM::set_next_state()
     break;
   }
 
+  case HttpTransact::SM_ACTION_ORIGIN_SERVER_RR_MARK_DOWN: {
+    HTTP_SM_SET_DEFAULT_HANDLER(&HttpSM::state_mark_os_down);
+
+    ink_assert(t_state.dns_info.looking_up == HttpTransact::ORIGIN_SERVER);
+
+    // TODO: This might not be optimal (or perhaps even correct), but it will
+    // effectively mark the host as down. What's odd is that state_mark_os_down
+    // above isn't triggering.
+    HttpSM::do_hostdb_update_if_necessary();
+
+    do_hostdb_lookup();
+    break;
+  }
+
   case HttpTransact::SM_ACTION_SSL_TUNNEL: {
     t_state.api_next_action = HttpTransact::SM_ACTION_API_SEND_RESPONSE_HDR;
     do_api_callout();
@@ -7690,13 +8011,10 @@ HttpSM::set_next_state()
   }
 
   case HttpTransact::SM_ACTION_ORIGIN_SERVER_RAW_OPEN: {
-    HTTP_SM_SET_DEFAULT_HANDLER(&HttpSM::state_raw_http_server_opened);
+    HTTP_SM_SET_DEFAULT_HANDLER(&HttpSM::state_raw_http_server_open);
 
     ink_assert(server_entry == nullptr);
-    Action *action_handle = connect_sm.acquire_txn(this, true);
-    if (action_handle != ACTION_RESULT_DONE) {
-      pending_action = action_handle;
-    }
+    do_http_server_open(true);
     break;
   }
 
@@ -8102,6 +8420,23 @@ HttpSM::set_server_session_private(bool private_session)
   return false;
 }
 
+bool
+HttpSM::is_private() const
+{
+  bool res = false;
+  if (server_txn) {
+    res = static_cast<PoolableSession *>(server_txn->get_proxy_ssn())->is_private();
+  } else if (ua_txn) {
+    Http1ServerSession *ss = dynamic_cast<Http1ServerSession *>(ua_txn->get_server_session());
+    if (ss) {
+      res = ss->is_private();
+    } else if (will_be_private_ss) {
+      res = will_be_private_ss;
+    }
+  }
+  return res;
+}
+
 // check to see if redirection is enabled and less than max redirections tries or if a plugin enabled redirection
 inline bool
 HttpSM::is_redirect_required()
@@ -8219,10 +8554,10 @@ HttpSM::set_server_txn(ProxyTransaction *txn)
 }
 
 PoolableSession *
-HttpSM::create_server_session(NetVConnection *netvc, MIOBuffer *netvc_read_buffer,
+ConnectingEntry::create_server_session(HttpSM *sm, NetVConnection *netvc, MIOBuffer *netvc_read_buffer,
                                        IOBufferReader *netvc_reader)
 {
-  HttpTransact::State &s  = this->t_state;
+  HttpTransact::State &s  = sm->t_state;
   PoolableSession *retval = nullptr;
 
   // Figure out what protocol was negotiated
@@ -8271,8 +8606,7 @@ HttpSM::create_server_session(NetVConnection *netvc, MIOBuffer *netvc_read_buffe
   // the max and or min number of connections per host. Transfer responsibility for this to the
   // session object.
   if (s.outbound_conn_track_state.is_active()) {
-    Debug("http_connect", "[%" PRId64 "] max number of outbound connections: %d", root_sm->sm_id,
-          s.txn_conf->outbound_conntrack.max);
+    Debug("http_connect", "[%" PRId64 "] max number of outbound connections: %d", sm->sm_id, s.txn_conf->outbound_conntrack.max);
     retval->enable_outbound_connection_tracking(s.outbound_conn_track_state.drop());
   }
   return retval;
@@ -8300,8 +8634,6 @@ HttpSM::create_server_txn(PoolableSession *new_session)
   _netvc_read_buffer = nullptr;
   _netvc_reader      = nullptr;
 }
-
-int
 
 std::string_view
 HttpSM::find_proto_string(HTTPVersion version) const

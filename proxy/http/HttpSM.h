@@ -241,7 +241,6 @@ public:
   }
 
   void set_server_txn(ProxyTransaction *txn);
-  PoolableSession *create_server_session(NetVConnection *netvc, MIOBuffer *netvc_read_buffer, IOBufferReader *netvc_reader);
   void create_server_txn(PoolableSession *new_session = nullptr);
 
   // Called by transact.  Updates are fire and forget
@@ -261,6 +260,16 @@ public:
   // Called by transact to prevent reset problems
   //  failed PUSH requests
   void set_ua_half_close_flag();
+
+  // Called by either state_hostdb_lookup() or directly
+  //   by the HostDB in the case of inline completion
+  // Handles the setting of all state necessary before
+  //   calling transact to process the hostdb lookup
+  // A NULL 'r' argument indicates the hostdb lookup failed
+  void process_hostdb_info(HostDBInfo *r);
+  void process_srv_info(HostDBInfo *r);
+  bool origin_multiplexed() const;
+  bool add_to_existing_request();
 
   // Called by transact.  Synchronous.
   VConnection *do_transform_open();
@@ -382,6 +391,12 @@ protected:
   HttpVCTableEntry *server_entry = nullptr;
   ProxyTransaction *server_txn   = nullptr;
 
+  /* Because we don't want to take a session from a shared pool if we know that it will be private,
+   * but we cannot set it to private until we have an attached server session.
+   * So we use this variable to indicate that
+   * we should create a new connection and then once we attach the session we'll mark it as private.
+   */
+  bool will_be_private_ss    = false;
   int shared_session_retries = 0;
 
   HttpTransformInfo transform_info;
@@ -464,7 +479,7 @@ protected:
   void do_hostdb_lookup();
   void do_hostdb_reverse_lookup();
   void do_cache_lookup_and_read();
-  void do_http_server_open(bool raw = false);
+  void do_http_server_open(bool raw = false, bool only_direct = false);
   void send_origin_throttled_response();
   void do_setup_post_tunnel(HttpVC_t to_vc_type);
   void do_cache_prepare_write();
@@ -609,6 +624,7 @@ public:
 
 public:
   bool set_server_session_private(bool private_session);
+  bool is_private() const;
   bool
   is_dying() const
   {
@@ -648,7 +664,7 @@ private:
   PostDataBuffers _postbuf;
   int _client_connection_id = -1, _client_transaction_id = -1;
   int _client_transaction_priority_weight = -1, _client_transaction_priority_dependence = -1;
-  bool _from_early_data = false;
+  bool _from_early_data         = false;
   NetVConnection *_netvc        = nullptr;
   IOBufferReader *_netvc_reader = nullptr;
   MIOBuffer *_netvc_read_buffer = nullptr;
