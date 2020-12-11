@@ -64,16 +64,16 @@ public:
   ServerSessionPool();
   /// Handle events from server sessions.
   int eventHandler(int event, void *data);
-  int
-  count() const
-  {
-    return m_ip_pool.count();
-  }
   static bool validate_host_sni(HttpSM *sm, NetVConnection *netvc);
   static bool validate_sni(HttpSM *sm, NetVConnection *netvc);
   static bool validate_cert(HttpSM *sm, NetVConnection *netvc);
   void removeSession(PoolableSession *ssn);
   void addSession(PoolableSession *ssn);
+  int
+  count() const
+  {
+    return m_ip_pool.count();
+  }
 
 protected:
   using IPTable   = IntrusiveHashMap<PoolableSession::IPLinkage>;

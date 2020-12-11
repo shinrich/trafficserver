@@ -2426,9 +2426,6 @@ HttpSM::state_hostdb_lookup(int event, void *data)
 {
   STATE_ENTER(&HttpSM::state_hostdb_lookup, event);
   HttpTransact::State &s = this->t_state;
-  // REQ_FLAVOR_SCHEDULED_UPDATE can be transformed into
-  // REQ_FLAVOR_REVPROXY
-  // ink_assert(s.req_flavor == HttpTransact::REQ_FLAVOR_SCHEDULED_UPDATE || s.req_flavor == HttpTransact::REQ_FLAVOR_REVPROXY);
 
   switch (event) {
   case EVENT_HOST_DB_LOOKUP:
@@ -3248,7 +3245,6 @@ HttpSM::tunnel_handler_server(int event, HttpTunnelProducer *p)
 
   case HTTP_TUNNEL_EVENT_PRECOMPLETE:
   case VC_EVENT_READ_COMPLETE:
-
     //
     // The transfer completed successfully
     //    If there is still data in the buffer, the server
@@ -5094,36 +5090,6 @@ HttpSM::send_origin_throttled_response()
   call_transact_and_set_next_state(HttpTransact::HandleResponse);
 }
 
-std::string_view
-HttpSM::get_outbound_cert() const
-{
-  const char *cert_name = t_state.txn_conf->ssl_client_cert_filename;
-  if (cert_name == nullptr) {
-    cert_name = "";
-  }
-  return std::string_view(cert_name);
-}
-
-std::string_view
-HttpSM::get_outbound_sni() const
-{
-  using namespace ts::literals;
-  ts::TextView zret;
-  ts::TextView policy{t_state.txn_conf->ssl_client_sni_policy, ts::TextView::npos};
-  if (policy.empty() || !strcmp(policy, "host"_tv)) {
-    // By default the host header field value is used for the SNI.
-    int len;
-    char const *ptr = t_state.hdr_info.server_request.host_get(&len);
-    zret.assign(ptr, len);
-  } else if (policy.front() == '@') { // guaranteed non-empty from previous clause
-    zret = policy.remove_prefix(1);
-  } else {
-    // If other is specified, like "remap" and "verify_with_name_source", the remapped origin name is used for the SNI value
-    zret.assign(t_state.server_info.name, ts::TextView::npos);
-  }
-  return zret;
-}
-
 static void
 set_tls_options(NetVCOptions &opt, const OverridableHttpConfigParams *txn_conf)
 {
@@ -5162,6 +5128,36 @@ set_tls_options(NetVCOptions &opt, const OverridableHttpConfigParams *txn_conf)
       opt.verifyServerProperties = YamlSNIConfig::Property::NONE;
     }
   }
+}
+
+std::string_view
+HttpSM::get_outbound_cert() const
+{
+  const char *cert_name = t_state.txn_conf->ssl_client_cert_filename;
+  if (cert_name == nullptr) {
+    cert_name = "";
+  }
+  return std::string_view(cert_name);
+}
+
+std::string_view
+HttpSM::get_outbound_sni() const
+{
+  using namespace ts::literals;
+  ts::TextView zret;
+  ts::TextView policy{t_state.txn_conf->ssl_client_sni_policy, ts::TextView::npos};
+  if (policy.empty() || !strcmp(policy, "host"_tv)) {
+    // By default the host header field value is used for the SNI.
+    int len;
+    char const *ptr = t_state.hdr_info.server_request.host_get(&len);
+    zret.assign(ptr, len);
+  } else if (policy.front() == '@') { // guaranteed non-empty from previous clause
+    zret = policy.remove_prefix(1);
+  } else {
+    // If other is specified, like "remap" and "verify_with_name_source", the remapped origin name is used for the SNI value
+    zret.assign(t_state.server_info.name, ts::TextView::npos);
+  }
+  return zret;
 }
 
 //////////////////////////////////////////////////////////////////////////

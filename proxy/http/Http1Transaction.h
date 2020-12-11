@@ -37,7 +37,6 @@ public:
 
   ////////////////////
   // Methods
-  // void release(IOBufferReader *r) override;
   void destroy() override; // todo make ~Http1Transaction()
 
   void
@@ -45,10 +44,6 @@ public:
   {
   }
   int get_transaction_id() const override;
-  // void increment_client_transactions_stat() override;
-  // void decrement_client_transactions_stat() override;
-
-  // void set_reader(IOBufferReader *reader);
 
   ////////////////////
   // Variables
