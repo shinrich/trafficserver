@@ -1,6 +1,6 @@
 /** @file
 
-  Http1Transaction.h - The Transaction class for Http1*
+  Http1ClientTransaction.h - The Client Transaction class for Http1*
 
   @section license License
 
@@ -23,46 +23,29 @@
 
 #pragma once
 
-#include "../ProxyTransaction.h"
+#include "Http1Transaction.h"
 
-class Continuation;
-
-class Http1Transaction : public ProxyTransaction
+class Http1ClientTransaction : public Http1Transaction
 {
 public:
-  using super_type = ProxyTransaction;
+  using super_type = Http1Transaction;
 
-  Http1Transaction() {}
-  virtual ~Http1Transaction() {}
+  Http1ClientTransaction() {}
 
   ////////////////////
   // Methods
-  void destroy() override; // todo make ~Http1Transaction()
+  void release() override;
+  // void destroy() override; // todo make ~Http1Transaction()
 
-  void
-  transaction_done() override
-  {
-  }
-  int get_transaction_id() const override;
+  bool allow_half_open() const override;
+  void transaction_done() override;
+  // int get_transaction_id() const override;
+  void increment_transactions_stat() override;
+  void decrement_transactions_stat() override;
 
   ////////////////////
   // Variables
 
 protected:
+  bool outbound_transparent{false};
 };
-
-inline void
-Http1Transaction::destroy() // todo make ~Http1Transaction()
-{
-  _sm = nullptr;
-}
-
-inline int
-Http1Transaction::get_transaction_id() const
-{
-  // For HTTP/1 there is only one on-going transaction at a time per session/connection.  Therefore, the transaction count can be
-  // presumed not to increase during the lifetime of a transaction, thus this function will return a consistent unique transaction
-  // identifier.
-  //
-  return _proxy_ssn->get_transact_count();
-}

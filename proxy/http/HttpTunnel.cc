@@ -477,6 +477,7 @@ HttpTunnel::reset()
   }
 #endif
 
+  call_sm       = false;
   num_producers = 0;
   num_consumers = 0;
   ink_zero(consumers);
@@ -980,6 +981,13 @@ HttpTunnel::producer_run(HttpTunnelProducer *p)
         p->read_vio = p->vc->do_io_read(this, producer_n, p->read_buffer);
       }
     }
+  } else {
+    // If the producer is not alive (precomplete) make sure to kick the consumers
+    for (c = p->consumer_list.head; c; c = c->link.next) {
+      if (c->alive && c->write_vio) {
+        c->write_vio->reenable();
+      }
+    }
   }
 
   // Now that the tunnel has started, we must remove producer's reader so
@@ -1103,14 +1111,6 @@ HttpTunnel::producer_handler(int event, HttpTunnelProducer *p)
   // Handle chunking/dechunking/chunked-passthrough if necessary.
   if (p->do_chunking) {
     event = producer_handler_dechunked(event, p);
-
-    // If we were in PRECOMPLETE when this function was called
-    // and we are doing chunking, then we just wrote the last
-    // chunk in the the function call above.  We are done with the
-    // tunnel.
-    if (event == HTTP_TUNNEL_EVENT_PRECOMPLETE) {
-      event = VC_EVENT_EOS;
-    }
   } else if (p->do_dechunking || p->do_chunked_passthru) {
     event = producer_handler_chunked(event, p);
   } else {
@@ -1158,6 +1158,8 @@ HttpTunnel::producer_handler(int event, HttpTunnelProducer *p)
     // If the write completes on the stack (as it can for http2), then
     // consumer could have called back by this point.  Must treat this as
     // a regular read complete (falling through to the following cases).
+    p->bytes_read = p->init_bytes_done;
+    // FALLTHROUGH
 
   case VC_EVENT_READ_COMPLETE:
   case VC_EVENT_EOS:
@@ -1171,7 +1173,6 @@ HttpTunnel::producer_handler(int event, HttpTunnelProducer *p)
       //   the message length being a property of the encoding)
       //   In that case, we won't have done a do_io so there
       //   will not be vio
-      p->bytes_read = 0;
     }
 
     // callback the SM to notify of completion
@@ -1186,9 +1187,12 @@ HttpTunnel::producer_handler(int event, HttpTunnelProducer *p)
     sm_callback = true;
     p->update_state_if_not_set(HTTP_SM_POST_SUCCESS);
 
-    // Data read from producer, reenable consumers
+    // Kick off the consumers if appropriate
     for (c = p->consumer_list.head; c; c = c->link.next) {
       if (c->alive && c->write_vio) {
+        if (c->write_vio->nbytes == INT64_MAX) {
+          c->write_vio->nbytes = p->bytes_read + p->init_bytes_done;
+        }
         c->write_vio->reenable();
       }
     }
