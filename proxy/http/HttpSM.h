@@ -221,24 +221,14 @@ public:
 
   void attach_client_session(ProxyTransaction *client_vc_arg);
 
-  // Called by on return from the connectSM to set
-  //  the session timeouts and initiate a read while
+  // Called after the network connection has been completed
+  //  to set the session timeouts and initiate a read while
   //  holding the lock for the server session
   void attach_server_session();
 
-  // Used to read attributes of
-  // the current active server session
-  ProxyTransaction *
-  get_server_txn() const
-  {
-    return server_txn;
-  }
+  ProxyTransaction *get_server_txn() const;
 
-  ProxyTransaction *
-  get_ua_txn()
-  {
-    return ua_txn;
-  }
+  ProxyTransaction *get_ua_txn();
 
   void set_server_txn(ProxyTransaction *txn);
   void create_server_txn(PoolableSession *new_session = nullptr);
@@ -356,17 +346,6 @@ public:
   // See if we should allow the transaction
   // based on sni and host name header values
   void check_sni_host();
-
-  void
-  reset_server()
-  {
-    if (server_entry) {
-      ink_assert(server_entry->vc_type == HTTP_SERVER_VC);
-      vc_table.cleanup_entry(server_entry);
-      server_entry = nullptr;
-      server_txn   = nullptr;
-    }
-  }
 
 protected:
   int reentrancy_count = 0;
@@ -778,4 +757,16 @@ inline IOBufferReader *
 HttpSM::get_postbuf_clone_reader()
 {
   return this->_postbuf.get_post_data_buffer_clone_reader();
+}
+
+inline ProxyTransaction *
+HttpSM::get_server_txn() const
+{
+  return server_txn;
+}
+
+inline ProxyTransaction *
+HttpSM::get_ua_txn()
+{
+  return ua_txn;
 }

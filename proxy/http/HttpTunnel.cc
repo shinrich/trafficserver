@@ -1173,7 +1173,6 @@ HttpTunnel::producer_handler(int event, HttpTunnelProducer *p)
       //   the message length being a property of the encoding)
       //   In that case, we won't have done a do_io so there
       //   will not be vio
-      // p->bytes_read = p->init_bytes_done;
     }
 
     // callback the SM to notify of completion
