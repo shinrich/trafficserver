@@ -47,10 +47,10 @@ ts.Disk.records_config.update({
 })
 
 ts.Disk.remap_config.AddLine(
-    'map /some/path2 https://127.0.0.1:{0}/some/path2 @plugin=conf_remap.so @pparam=proxy.config.ssl.client.alpn.protocols=http1.1'.format(
+    'map /some/path2 https://127.0.0.1:{0}/some/path2 @plugin=conf_remap.so @pparam=proxy.config.ssl.client.alpn_protocols=http1.1'.format(
         serverh1.Variables.https_port))
 ts.Disk.remap_config.AddLine(
-    'map / https://127.0.0.1:{0}'.format(serverh1.Variables.https_port)
+    'map / https://127.0.0.1:{0}'.format(server.Variables.https_port)
 )
 ts.Disk.ssl_multicert_config.AddLine(
     'dest_ip=* ssl_cert_name=server.pem ssl_key_name=server.key'

@@ -5525,6 +5525,12 @@ HttpSM::do_http_server_open(bool raw, bool only_direct)
   opt.set_ssl_client_cert_name(t_state.txn_conf->ssl_client_cert_filename);
   opt.ssl_client_private_key_name = t_state.txn_conf->ssl_client_private_key_filename;
   opt.ssl_client_ca_cert_name     = t_state.txn_conf->ssl_client_ca_cert_filename;
+  if (t_state.txn_conf->ssl_client_alpn_protocols != nullptr) {
+    opt.alpn_protocols_array_size = MAX_ALPN_STRING;
+    Debug("connect", "Override alpn %s", t_state.txn_conf->ssl_client_alpn_protocols);
+    ALPNSupport::process_alpn_protocols(t_state.txn_conf->ssl_client_alpn_protocols, opt.alpn_protocols_array,
+                                        opt.alpn_protocols_array_size);
+  }
 
   ConnectingEntry *new_entry = nullptr;
   if (multiplexed_origin) {
@@ -7296,6 +7302,11 @@ HttpSM::kill_this()
     // Clean up the tunnel resources. Take
     // it down if it is still active
     tunnel.kill_tunnel();
+
+    if (_netvc) {
+      _netvc->do_io_close();
+      free_MIOBuffer(_netvc_read_buffer);
+    }
 
     // It possible that a plugin added transform hook
     //   but the hook never executed due to a client abort
