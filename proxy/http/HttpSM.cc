@@ -5321,6 +5321,7 @@ HttpSM::do_http_server_open(bool raw, bool only_direct)
     switch (shared_result) {
     case HSM_DONE:
       hsm_release_assert(server_txn != nullptr);
+      attach_server_session();
       handle_http_server_open();
       return;
     case HSM_NOT_FOUND:
