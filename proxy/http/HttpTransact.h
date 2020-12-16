@@ -911,6 +911,16 @@ public:
     }
 
     ProxyProtocol pp_info;
+    void
+    set_connect_fail(int e)
+    {
+      if (e == EIO || this->current.server->connect_result == EIO) {
+        this->current.server->connect_result = e;
+      }
+      if (e != EIO) {
+        this->cause_of_death_errno = e;
+      }
+    }
 
     void
     set_connect_fail(int e)

@@ -1905,10 +1905,12 @@ HttpSM::state_http_server_open(int event, void *data)
   /* fallthrough */
   case VC_EVENT_ERROR:
   case NET_EVENT_OPEN_FAILED: {
-    if (server_session) {
-      NetVConnection *vc = server_session->get_netvc();
+    if (server_txn) {
+      NetVConnection *vc = server_txn->get_netvc();
       if (vc) {
-        t_state.set_connect_fail(vc->lerrno);
+        if (event == VC_EVENT_ERROR || event == NET_EVENT_OPEN_FAILED) {
+          t_state.set_connect_fail(vc->lerrno);
+        }
         server_connection_provided_cert = vc->provided_cert();
       }
     }
