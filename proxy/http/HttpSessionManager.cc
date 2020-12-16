@@ -165,7 +165,9 @@ ServerSessionPool::acquireSession(sockaddr const *addr, CryptoHash const &hostna
     }
     if (zret == HSM_DONE) {
       to_return = first;
-      this->removeSession(to_return);
+      if (!to_return->is_multiplexing()) {
+        this->removeSession(to_return);
+      }
     } else if (first != m_fqdn_pool.end()) {
       Debug("http_ss", "Failed find entry due to name mismatch %s", sm->t_state.current.server->name);
     }
@@ -190,7 +192,9 @@ ServerSessionPool::acquireSession(sockaddr const *addr, CryptoHash const &hostna
     }
     if (zret == HSM_DONE) {
       to_return = first;
-      this->removeSession(to_return);
+      if (!to_return->is_multiplexing()) {
+        this->removeSession(to_return);
+      }
     }
   }
   return zret;
@@ -450,7 +454,10 @@ HttpSessionManager::_acquire_session(sockaddr const *ip, CryptoHash const &hostn
       } else {
         Debug("http_ss", "[%" PRId64 "] [acquire session] failed to get transaction on session from shared pool",
               to_return->connection_id());
-        to_return->do_io_close();
+        // Don't close the H2 origin.  Otherwise you get use-after free with the activity timeout cop
+        if (!to_return->is_multiplexing()) {
+          to_return->do_io_close();
+        }
         retval = HSM_RETRY;
       }
     }
@@ -502,6 +509,15 @@ ServerSessionPool::removeSession(PoolableSession *to_remove)
     Debug("http_ss", "After Remove session %p m_fqdn_pool size=%zu m_ip_pool_size=%zu", to_remove, m_fqdn_pool.count(),
           m_ip_pool.count());
   }
+}
+
+void
+ServerSessionPool::testSession(PoolableSession *ss)
+{
+  auto fqdn_iter = m_fqdn_pool.find(ss);
+  ink_release_assert(fqdn_iter == m_fqdn_pool.end());
+  auto ip_iter = m_ip_pool.find(ss);
+  ink_release_assert(ip_iter == m_ip_pool.end());
 }
 
 void

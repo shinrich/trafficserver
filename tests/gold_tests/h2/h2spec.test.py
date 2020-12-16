@@ -50,8 +50,7 @@ ts.Disk.records_config.update({
     'proxy.config.http.insert_response_via_str': 1,
     'proxy.config.ssl.server.cert.path': '{0}'.format(ts.Variables.SSLDir),
     'proxy.config.ssl.server.private_key.path': '{0}'.format(ts.Variables.SSLDir),
-    'proxy.config.ssl.client.verify.server': 0,
-    'proxy.config.diags.debug.enabled': 0,
+    'proxy.config.diags.debug.enabled': 1,
     'proxy.config.diags.debug.tags': 'http',
 })
 
@@ -60,6 +59,7 @@ ts.Disk.records_config.update({
 # ----
 
 # In case you need to disable some of the tests, you can specify sections like http2/6.4.
+#h2spec_targets ="http2/6.3"
 h2spec_targets = "http2/1 http2/2 http2/3 http2/4 http2/5 http2/6 http2/7 http2/8 hpack"
 
 test_run = Test.AddTestRun()

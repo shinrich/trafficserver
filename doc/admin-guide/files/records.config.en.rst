@@ -3857,6 +3857,13 @@ Client-Related Configuration
 
    Enables (``1``) or disables (``0``) TLSv1_3 in the ATS client context. If not specified, enabled by default
 
+.. ts:cv:: CONFIG proxy.config.ssl.client.alpn_protocol STRING ""
+
+   Set the alpn string that ATS will send to origin during new connections.  By default no ALPN string will be set.
+   To enable HTTP/2 communication to the origin, set this to "h2,http1.1".
+
+   :overridable:
+
 .. ts:cv:: CONFIG proxy.config.ssl.async.handshake.enabled INT 0
 
    Enables the use of openssl async job during the TLS handshake.  Traffic
@@ -3962,7 +3969,17 @@ HTTP/2 Configuration
 .. ts:cv:: CONFIG proxy.config.http2.initial_window_size_in INT 65535
    :reloadable:
 
-   The initial window size for inbound connections.
+   The initial window size for inbound connection streams.
+
+.. ts:cv:: CONFIG proxy.config.http2.session_initial_window_size_in INT 0
+   :reloadable:
+
+   The initial window size for inbound connection session.  HTTP/2 provides both
+   a per stream window and a session wide window.  Each data byte exchanged decrements
+   the window of the associated stream and the session window.  To allow for multiple
+   active streams, the session window should be larger than the stream window.
+   |TS| verifies that the session initial window is always at least as large as the
+   stream initial window.
 
 .. ts:cv:: CONFIG proxy.config.http2.max_frame_size INT 16384
    :reloadable:
