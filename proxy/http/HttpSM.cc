@@ -1222,6 +1222,7 @@ HttpSM::state_raw_http_server_open(int event, void *data)
 
     netvc->set_inactivity_timeout(get_server_inactivity_timeout());
     netvc->set_active_timeout(get_server_active_timeout());
+    t_state.current.server->clear_connect_fail();
     break;
 
   case VC_EVENT_ERROR:
@@ -1893,18 +1894,29 @@ HttpSM::state_http_server_open(int event, void *data)
     break;
   case VC_EVENT_INACTIVITY_TIMEOUT:
   case VC_EVENT_ACTIVE_TIMEOUT:
+    t_state.set_connect_fail(ETIMEDOUT);
+  /* fallthrough */
   case VC_EVENT_ERROR:
   case NET_EVENT_OPEN_FAILED: {
-    if (server_session) {
-      NetVConnection *vc = server_session->get_netvc();
+    if (server_txn) {
+      NetVConnection *vc = server_txn->get_netvc();
       if (vc) {
+        t_state.set_connect_fail(vc->lerrno);
         server_connection_provided_cert = vc->provided_cert();
       }
     }
 
     t_state.current.state = HttpTransact::CONNECTION_ERROR;
+    t_state.outbound_conn_track_state.clear();
+    if (_netvc != nullptr) {
+      if (event == VC_EVENT_ERROR || event == NET_EVENT_OPEN_FAILED) {
+        t_state.set_connect_fail(_netvc->lerrno);
+      }
+    }
+
+    t_state.current.state = HttpTransact::CONNECTION_ERROR;
     // save the errno from the connect fail for future use (passed as negative value, flip back)
-    t_state.current.server->set_connect_fail(event == NET_EVENT_OPEN_FAILED ? -reinterpret_cast<intptr_t>(data) : ECONNABORTED);
+    t_state.set_connect_fail(event == NET_EVENT_OPEN_FAILED ? -reinterpret_cast<intptr_t>(data) : ECONNABORTED);
     t_state.outbound_conn_track_state.clear();
 
     /* If we get this error in transparent mode, then we simply can't bind to the 4-tuple to make the connection.  There's no hope
@@ -3076,7 +3088,9 @@ HttpSM::tunnel_handler_server(int event, HttpTunnelProducer *p)
       t_state.current.server->abort      = HttpTransact::ABORTED;
       t_state.client_info.keep_alive     = HTTP_NO_KEEPALIVE;
       t_state.current.server->keep_alive = HTTP_NO_KEEPALIVE;
-      t_state.squid_codes.log_code       = SQUID_LOG_ERR_READ_ERROR;
+      if (event == VC_EVENT_EOS) {
+        t_state.squid_codes.log_code = SQUID_LOG_ERR_READ_ERROR;
+      }
     } else {
       SMDebug("http", "[%" PRId64 "] [HttpSM::tunnel_handler_server] finishing HTTP tunnel", sm_id);
       p->read_success               = true;
@@ -5470,7 +5484,7 @@ HttpSM::mark_server_down_on_client_abort()
         wait = 0;
       }
       if (ink_hrtime_to_sec(wait) > t_state.txn_conf->client_abort_threshold) {
-        t_state.current.server->set_connect_fail(ETIMEDOUT);
+        t_state.set_connect_fail(ETIMEDOUT);
         do_hostdb_update_if_necessary();
       }
     }
@@ -5704,12 +5718,14 @@ HttpSM::handle_server_setup_error(int event, void *data)
   switch (event) {
   case VC_EVENT_EOS:
     t_state.current.state = HttpTransact::CONNECTION_CLOSED;
+    t_state.set_connect_fail(EPIPE);
     break;
   case VC_EVENT_ERROR:
     t_state.current.state        = HttpTransact::CONNECTION_ERROR;
     t_state.cause_of_death_errno = server_session->get_netvc()->lerrno;
     break;
   case VC_EVENT_ACTIVE_TIMEOUT:
+    t_state.set_connect_fail(ETIMEDOUT);
     t_state.current.state = HttpTransact::ACTIVE_TIMEOUT;
     break;
 
@@ -5719,6 +5735,7 @@ HttpSM::handle_server_setup_error(int event, void *data)
     //   server failed
     // In case of TIMEOUT, the iocore sends back
     // server_entry->read_vio instead of the write_vio
+    t_state.set_connect_fail(ETIMEDOUT);
     if (server_entry->write_vio && server_entry->write_vio->nbytes > 0 && server_entry->write_vio->ndone == 0) {
       t_state.current.state = HttpTransact::CONNECTION_ERROR;
     } else {
@@ -7731,6 +7748,9 @@ HttpSM::set_next_state()
   }
 
   case HttpTransact::SM_ACTION_ORIGIN_SERVER_RAW_OPEN: {
+    // Pre-emptively set a server connect failure that will be cleared once a WRITE_READY is received from origin or
+    // bytes are received back
+    t_state.set_connect_fail(EIO);
     HTTP_SM_SET_DEFAULT_HANDLER(&HttpSM::state_raw_http_server_open);
 
     ink_assert(server_entry == nullptr);
