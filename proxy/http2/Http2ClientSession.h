@@ -63,9 +63,6 @@ public:
 
   ProxySession *get_proxy_session() override;
 
-  void set_upgrade_context(HTTPHdr *h);
-  const Http2UpgradeContext &get_upgrade_context() const;
-
   // noncopyable
   Http2ClientSession(Http2ClientSession &) = delete;
   Http2ClientSession &operator=(const Http2ClientSession &) = delete;
