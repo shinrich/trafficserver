@@ -67,19 +67,10 @@ public:
   virtual int get_transaction_id() const = 0;
   virtual int get_transaction_priority_weight() const;
   virtual int get_transaction_priority_dependence() const;
-  virtual bool
-  allow_half_open() const
-  {
-    return false;
-  }
-  virtual void
-  increment_transactions_stat()
-  {
-  }
-  virtual void
-  decrement_transactions_stat()
-  {
-  }
+  virtual bool allow_half_open() const;
+
+  virtual void increment_transactions_stat();
+  virtual void decrement_transactions_stat();
 
   virtual NetVConnection *get_netvc() const;
   virtual bool is_first_transaction() const;
@@ -100,6 +91,11 @@ public:
   virtual void set_proxy_ssn(ProxySession *set_proxy_ssn);
 
   sockaddr const *get_remote_addr() const;
+
+  // Returns true if there is a request body for this request
+  virtual bool has_request_body(int64_t content_length, bool is_chunked_set) const;
+
+  virtual HostDBApplicationInfo::HttpVersion get_version(HTTPHdr &hdr) const;
 
   /// Non-Virtual Methods
   //
@@ -130,8 +126,8 @@ public:
   // This function must return a non-negative number that is different for two in-progress transactions with the same proxy_ssn
   // session.
   //
-  void set_rx_error_code(ProxyError e);
-  void set_tx_error_code(ProxyError e);
+  virtual void set_rx_error_code(ProxyError e);
+  virtual void set_tx_error_code(ProxyError e);
 
   bool support_sni() const;
 

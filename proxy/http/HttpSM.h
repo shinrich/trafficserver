@@ -354,8 +354,6 @@ protected:
 
   HttpVCTable vc_table;
 
-  HttpVCTableEntry *ua_entry = nullptr;
-
 public:
   ProxyTransaction *ua_txn         = nullptr;
   BackgroundFill_t background_fill = BACKGROUND_FILL_NONE;
@@ -364,11 +362,12 @@ public:
 
   History<HISTORY_DEFAULT_SIZE> history;
 
-protected:
-  IOBufferReader *ua_raw_buffer_reader = nullptr;
-
+  HttpVCTableEntry *ua_entry     = nullptr;
   HttpVCTableEntry *server_entry = nullptr;
   ProxyTransaction *server_txn   = nullptr;
+
+protected:
+  IOBufferReader *ua_raw_buffer_reader = nullptr;
 
   /* Because we don't want to take a session from a shared pool if we know that it will be private,
    * but we cannot set it to private until we have an attached server session.
@@ -409,6 +408,7 @@ protected:
   int tunnel_handler_cache_fill(int event, void *data);
   int state_read_client_request_header(int event, void *data);
   int state_watch_for_client_abort(int event, void *data);
+  int state_watch_for_server_abort(int event, void *data);
   int state_read_push_response_header(int event, void *data);
   int state_hostdb_lookup(int event, void *data);
   int state_hostdb_reverse_lookup(int event, void *data);
@@ -641,6 +641,9 @@ public:
   void rewind_state_machine();
 
 private:
+  void cancel_pending_server_connection();
+
+  int _cont_lock_miss_count = 0;
   PostDataBuffers _postbuf;
   int _client_connection_id = -1, _client_transaction_id = -1;
   int _client_transaction_priority_weight = -1, _client_transaction_priority_dependence = -1;

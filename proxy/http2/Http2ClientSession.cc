@@ -44,6 +44,10 @@ Http2ClientSession::destroy()
     in_destroy = true;
     REMEMBER(NO_EVENT, this->recursion)
     Http2SsnDebug("session destroy");
+    if (_vc) {
+      _vc->do_io_close();
+      _vc = nullptr;
+    }
     // Let everyone know we are going down
     do_api_callout(TS_HTTP_SSN_CLOSE_HOOK);
   }
@@ -107,7 +111,7 @@ Http2ClientSession::new_connection(NetVConnection *new_vc, MIOBuffer *iobuf, IOB
   this->_vc->set_tcp_congestion_control(CLIENT_SIDE);
 
   this->read_buffer             = iobuf ? iobuf : new_MIOBuffer(HTTP2_HEADER_BUFFER_SIZE_INDEX);
-  this->read_buffer->water_mark = connection_state.server_settings.get(HTTP2_SETTINGS_MAX_FRAME_SIZE);
+  this->read_buffer->water_mark = connection_state.local_settings.get(HTTP2_SETTINGS_MAX_FRAME_SIZE);
   this->_reader                 = reader ? reader : this->read_buffer->alloc_reader();
 
   // This block size is the buffer size that we pass to SSLWriteBuffer
@@ -274,11 +278,6 @@ Http2ClientSession::get_protocol_string() const
 void
 Http2ClientSession::release(ProxyTransaction *trans)
 {
-  // If no streams are active, set the inactivity timeout
-  // to the keep alive timeout
-  if (connection_state.no_streams()) {
-    this->set_inactivity_timeout(HRTIME_SECONDS(Http2::no_activity_timeout_in));
-  }
 }
 
 int
@@ -311,4 +310,13 @@ ProxySession *
 Http2ClientSession::get_proxy_session()
 {
   return this;
+}
+
+void
+Http2ClientSession::set_no_activity_timeout()
+{
+  // Only set if not previously set
+  if (this->_vc->get_inactivity_timeout() == 0) {
+    this->set_inactivity_timeout(HRTIME_SECONDS(Http2::no_activity_timeout_in));
+  }
 }

@@ -26,7 +26,7 @@ Test.ContinueOnFail = True
 #
 # Communicate to origin with HTTP/2
 #
-ts = Test.MakeATSProcess("ts", enable_cache="false", enable_tls="true")
+ts = Test.MakeATSProcess("ts", enable_tls="true")
 ts.addSSLfile("ssl/server.pem")
 ts.addSSLfile("ssl/server.key")
 replay_file = "replay/h2-origin.yaml"

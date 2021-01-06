@@ -26,10 +26,10 @@ Test.ContinueOnFail = True
 #
 # Communicate to origin with HTTP/2
 #
-ts = Test.MakeATSProcess("ts", enable_cache="false", enable_tls="true")
+ts = Test.MakeATSProcess("ts", enable_tls="true")
 ts.addSSLfile("ssl/server.pem")
 ts.addSSLfile("ssl/server.key")
-replay_file = "replay/"
+replay_file = "replay"
 server = Test.MakeVerifierServerProcess("h2-origin", replay_file, ssl_cert="ssl/server.pem")
 ts.Disk.records_config.update({
     'proxy.config.ssl.server.cert.path': '{0}'.format(ts.Variables.SSLDir),
@@ -39,10 +39,11 @@ ts.Disk.records_config.update({
     'proxy.config.exec_thread.autoconfig': 0,
     # Limiting ourselves to 1 thread to exercise origin reuse
     'proxy.config.exec_thread.limit': 1,
-    'proxy.config.ssl.client.alpn_protocols': 'h2,http/1.1',
+    'proxy.config.ssl.client.alpn_protocols': 'h2,http1.1',
     # Sticking with thread pool because global pool does not work with h2
-    'proxy.config.http.server_session_sharing.pool': 'thread',
-    'proxy.config.http.server_session_sharing.match': 'hostonly,sni,cert',
+    'proxy.config.http.server_session_sharing.pool': 'global',
+    'proxy.config.http.server_session_sharing.pool_hybrid_limit': -1,
+    'proxy.config.http.server_session_sharing.match': 'hostonly',
 })
 
 ts.Disk.remap_config.AddLine(
@@ -85,4 +86,4 @@ ts.Disk.squid_log.Content = Testers.ContainsExpression(" [1-4] http/1.1 http/2",
 ts.Disk.squid_log.Content += Testers.ExcludesExpression(" [1-4] http/2 http/2", "cases 1-4 request http/1.1")
 ts.Disk.squid_log.Content += Testers.ContainsExpression(" [5-9] http/2 http/2", "cases 5-9 request http/2")
 ts.Disk.squid_log.Content += Testers.ExcludesExpression(" [5-9] http/1.1 http/2", "cases 5-9 request http/2")
-ts.Disk.squid_log.Content += Testers.ContainsExpression(" http/2 1 1 1 1", "At least one case of origin reuse")
+ts.Disk.squid_log.Content += Testers.ContainsExpression(" http/2 1 1 1 [2-9]", "At least one case of origin reuse")

@@ -52,10 +52,9 @@ public:
   void release(ProxyTransaction *trans) override;
   void free() override;
   ProxyTransaction *new_transaction() override;
-  bool ready_to_write() const override;
-  void received_setting() override;
 
-  void add_session();
+  void add_session() override;
+  void test_session() override;
   void remove_session();
 
   ////////////////////
@@ -71,14 +70,16 @@ public:
 
   ProxySession *get_proxy_session() override;
 
-  void set_upgrade_context(HTTPHdr *h);
-  const Http2UpgradeContext &get_upgrade_context() const;
-
   // noncopyable
   Http2ServerSession(Http2ServerSession &) = delete;
   Http2ServerSession &operator=(const Http2ServerSession &) = delete;
 
   bool is_multiplexing() const override;
+  bool is_outbound() const override;
+
+  void set_netvc(NetVConnection *netvc) override;
+
+  void set_no_activity_timeout() override;
 
 private:
   int main_event_handler(int, void *);
@@ -86,19 +87,7 @@ private:
   IpEndpoint cached_client_addr;
   IpEndpoint cached_local_addr;
 
-  bool _received_setting = false;
-
-  // For Upgrade: h2c
-  Http2UpgradeContext upgrade_context;
+  bool in_session_table = false;
 };
 
 extern ClassAllocator<Http2ServerSession> http2ServerSessionAllocator;
-
-///////////////////////////////////////////////
-// INLINE
-
-inline const Http2UpgradeContext &
-Http2ServerSession::get_upgrade_context() const
-{
-  return upgrade_context;
-}

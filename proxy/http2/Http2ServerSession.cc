@@ -42,19 +42,31 @@ void
 Http2ServerSession::destroy()
 {
   if (!in_destroy) {
+    write_vio = nullptr;
+    this->remove_session();
+    this->release_outbound_comnection_tracking();
     in_destroy = true;
     REMEMBER(NO_EVENT, this->recursion)
     Http2SsnDebug("session destroy");
-    // Let everyone know we are going down
-    do_api_callout(TS_HTTP_SSN_CLOSE_HOOK);
+    if (_vc) {
+      _vc->do_io_close();
+      _vc = nullptr;
+    }
+    free();
+  } else if (kill_me && !this->connection_state.is_recursing() && this->recursion == 0) {
+    free();
   }
 }
 
 void
 Http2ServerSession::free()
 {
+  ink_release_assert(in_destroy);
+  test_session();
   if (Http2CommonSession::free(this)) {
     HTTP2_DECREMENT_THREAD_DYN_STAT(HTTP2_STAT_CURRENT_SERVER_SESSION_COUNT, this->mutex->thread_holding);
+    ink_release_assert(_ip_link._next == nullptr && _ip_link._prev == nullptr && _fqdn_link._next == nullptr &&
+                       _fqdn_link._prev == nullptr);
     super::free();
     THREAD_FREE(this, http2ServerSessionAllocator, this_ethread());
   }
@@ -88,22 +100,6 @@ Http2ServerSession::start()
   this->handleEvent(VC_EVENT_READ_READY, read_vio);
 }
 
-bool
-Http2ServerSession::ready_to_write() const
-{
-  return _received_setting;
-}
-
-void
-Http2ServerSession::received_setting()
-{
-  // On the transition, unleash all waiting streams
-  if (!_received_setting) {
-    this->connection_state.start_streams();
-  }
-  _received_setting = true;
-}
-
 void
 Http2ServerSession::new_connection(NetVConnection *new_vc, MIOBuffer *iobuf, IOBufferReader *reader)
 {
@@ -133,7 +129,7 @@ Http2ServerSession::new_connection(NetVConnection *new_vc, MIOBuffer *iobuf, IOB
   this->_vc->set_tcp_congestion_control(CLIENT_SIDE);
 
   this->read_buffer             = iobuf ? iobuf : new_MIOBuffer(HTTP2_HEADER_BUFFER_SIZE_INDEX);
-  this->read_buffer->water_mark = connection_state.server_settings.get(HTTP2_SETTINGS_MAX_FRAME_SIZE);
+  this->read_buffer->water_mark = connection_state.local_settings.get(HTTP2_SETTINGS_MAX_FRAME_SIZE);
   this->_reader                 = reader ? reader : this->read_buffer->alloc_reader();
 
   // Set write buffer size to max size of TLS record (16KB)
@@ -148,46 +144,6 @@ Http2ServerSession::new_connection(NetVConnection *new_vc, MIOBuffer *iobuf, IOB
   do_api_callout(TS_HTTP_SSN_START_HOOK);
 }
 
-void
-Http2ServerSession::set_upgrade_context(HTTPHdr *h)
-{
-  upgrade_context.req_header = new HTTPHdr();
-  upgrade_context.req_header->copy(h);
-
-  MIMEField *settings = upgrade_context.req_header->field_find(MIME_FIELD_HTTP2_SETTINGS, MIME_LEN_HTTP2_SETTINGS);
-  ink_release_assert(settings != nullptr);
-  int svlen;
-  const char *sv = settings->value_get(&svlen);
-
-  if (sv && svlen > 0) {
-    // Maybe size of data decoded by Base64URL is lower than size of encoded data.
-    unsigned char out_buf[svlen];
-    size_t decoded_len;
-    ats_base64_decode(sv, svlen, out_buf, svlen, &decoded_len);
-    for (size_t nbytes = 0; nbytes < decoded_len; nbytes += HTTP2_SETTINGS_PARAMETER_LEN) {
-      Http2SettingsParameter param;
-      if (!http2_parse_settings_parameter(make_iovec(out_buf + nbytes, HTTP2_SETTINGS_PARAMETER_LEN), param) ||
-          !http2_settings_parameter_is_valid(param)) {
-        // TODO ignore incoming invalid parameters and send suitable SETTINGS
-        // frame.
-      }
-      upgrade_context.client_settings.set(static_cast<Http2SettingsIdentifier>(param.id), param.value);
-    }
-  }
-
-  // Such intermediaries SHOULD also remove other connection-
-  // specific header fields, such as Keep-Alive, Proxy-Connection,
-  // Transfer-Encoding and Upgrade, even if they are not nominated by
-  // Connection.
-  upgrade_context.req_header->field_delete(MIME_FIELD_CONNECTION, MIME_LEN_CONNECTION);
-  upgrade_context.req_header->field_delete(MIME_FIELD_KEEP_ALIVE, MIME_LEN_KEEP_ALIVE);
-  upgrade_context.req_header->field_delete(MIME_FIELD_PROXY_CONNECTION, MIME_LEN_PROXY_CONNECTION);
-  upgrade_context.req_header->field_delete(MIME_FIELD_TRANSFER_ENCODING, MIME_LEN_TRANSFER_ENCODING);
-  upgrade_context.req_header->field_delete(MIME_FIELD_UPGRADE, MIME_LEN_UPGRADE);
-  upgrade_context.req_header->field_delete(MIME_FIELD_HTTP2_SETTINGS, MIME_LEN_HTTP2_SETTINGS);
-}
-
-// XXX Currently, we don't have a half-closed state, but we will need to
 // implement that. After we send a GOAWAY, there
 // are scenarios where we would like to complete the outstanding streams.
 
@@ -207,10 +163,7 @@ Http2ServerSession::do_io_close(int alerrno)
     this->connection_state.release_stream();
   }
 
-  this->clear_session_active();
-
-  // Clean up the write VIO in case of inactivity timeout
-  this->do_io_write(nullptr, 0, nullptr);
+  // Destroy will be called from connection_state.release_stream() once the number of active streams goes to 0
 }
 
 int
@@ -225,6 +178,8 @@ Http2ServerSession::main_event_handler(int event, void *edata)
   if (e == schedule_event) {
     schedule_event = nullptr;
   }
+
+  Http2SsnDebug("main_event_handler=%d edata=%p", event, edata);
 
   switch (event) {
   case VC_EVENT_READ_COMPLETE:
@@ -250,16 +205,15 @@ Http2ServerSession::main_event_handler(int event, void *edata)
   case VC_EVENT_EOS:
     this->set_dying_event(event);
     this->do_io_close();
-    if (_vc != nullptr) {
-      _vc->do_io_close();
-      _vc = nullptr;
-    }
     retval = 0;
     break;
 
   case VC_EVENT_WRITE_READY:
   case VC_EVENT_WRITE_COMPLETE:
     this->connection_state.restart_streams();
+    if ((Thread::get_hrtime() >= this->_write_buffer_last_flush + HRTIME_MSECONDS(this->_write_time_threshold))) {
+      this->flush();
+    }
 
     retval = 0;
     break;
@@ -280,17 +234,17 @@ Http2ServerSession::main_event_handler(int event, void *edata)
     if (this->is_draining()) { // For a case we already checked Connection header and it didn't exist
       Http2SsnDebug("Preparing for graceful shutdown because of draining state");
       this->connection_state.set_shutdown_state(HTTP2_SHUTDOWN_NOT_INITIATED);
-    } else if (this->connection_state.get_stream_error_rate() >
+    } /*else if (this->connection_state.get_stream_error_rate() >
                Http2::stream_error_rate_threshold) { // For a case many stream errors happened
       ip_port_text_buffer ipb;
       const char *client_ip = ats_ip_ntop(get_remote_addr(), ipb, sizeof(ipb));
-      Warning("HTTP/2 session error client_ip=%s session_id=%" PRId64
+      Warning("HTTP/2 session error origin_ip=%s session_id=%" PRId64
               " closing a connection, because its stream error rate (%f) exceeded the threshold (%f)",
               client_ip, connection_id(), this->connection_state.get_stream_error_rate(), Http2::stream_error_rate_threshold);
       Http2SsnDebug("Preparing for graceful shutdown because of a high stream error rate");
       cause_of_death = Http2SessionCod::HIGH_ERROR_RATE;
       this->connection_state.set_shutdown_state(HTTP2_SHUTDOWN_NOT_INITIATED, Http2ErrorCode::HTTP2_ERROR_ENHANCE_YOUR_CALM);
-    }
+    } */
   }
 
   if (this->connection_state.get_shutdown_state() == HTTP2_SHUTDOWN_NOT_INITIATED) {
@@ -343,17 +297,6 @@ Http2ServerSession::get_protocol_string() const
 void
 Http2ServerSession::release(ProxyTransaction *trans)
 {
-  // Session should already be in the server session pool
-  //
-
-  // If no streams are active, set the inactivity timeout
-  // to the keep alive timeout
-  if (connection_state.single_stream()) {
-    // Don't need to move the do_io_continuation to the session pool
-    // Just need to make sure that the Http2ServerSession removes itself
-    // from the session pool on timeout or termination
-    this->set_inactivity_timeout(HRTIME_SECONDS(Http2::no_activity_timeout_out));
-  }
 }
 
 int
@@ -393,12 +336,17 @@ Http2ServerSession::new_transaction()
 {
   // In == client side
   Http2StreamId latest_id = connection_state.get_latest_stream_id_in();
-  Http2StreamId stream_id = (latest_id == 0) ? 1 : latest_id + 2;
+  Http2StreamId stream_id = (latest_id == 0) ? 3 : latest_id + 2;
   this->set_session_active();
 
   // Create a new stream/transaction
   Http2Error error(Http2ErrorClass::HTTP2_ERROR_CLASS_NONE);
   Http2Stream *stream = connection_state.create_stream(stream_id, error, true);
+
+  if (connection_state.is_peer_concurrent_stream_max()) {
+    Warning("Remove SSN %" PRId64, con_id);
+    remove_session();
+  }
 
   return stream;
 }
@@ -406,22 +354,47 @@ Http2ServerSession::new_transaction()
 void
 Http2ServerSession::add_session()
 {
+  if (this->in_session_table) {
+    return;
+  }
+  Http2SsnDebug("Add session to pool");
   EThread *ethread        = this_ethread();
   ServerSessionPool *pool = ethread->server_session_pool;
   MUTEX_TRY_LOCK(lock, pool->mutex, ethread);
   if (lock.is_locked()) {
     pool->addSession(this);
+    this->in_session_table = true;
   }
 }
 
 void
 Http2ServerSession::remove_session()
 {
+  if (!this->in_session_table) {
+    return;
+  }
+  Http2SsnDebug("Remove session from pool");
   EThread *ethread        = this_ethread();
   ServerSessionPool *pool = ethread->server_session_pool;
   MUTEX_TRY_LOCK(lock, pool->mutex, ethread);
   if (lock.is_locked()) {
     pool->removeSession(this);
+    in_session_table = false;
+  } else {
+    ink_release_assert(!"How did we not get the pool lock?");
+  }
+}
+
+void
+Http2ServerSession::test_session()
+{
+  EThread *ethread        = this_ethread();
+  ServerSessionPool *pool = ethread->server_session_pool;
+  MUTEX_TRY_LOCK(lock, pool->mutex, ethread);
+  if (lock.is_locked()) {
+    pool->testSession(this);
+  } else {
+    ink_release_assert(!"How did we not get the pool lock?");
   }
 }
 
@@ -429,4 +402,28 @@ bool
 Http2ServerSession::is_multiplexing() const
 {
   return true;
+}
+
+bool
+Http2ServerSession::is_outbound() const
+{
+  return true;
+}
+
+void
+Http2ServerSession::set_netvc(NetVConnection *netvc)
+{
+  super::set_netvc(netvc);
+  if (netvc == nullptr) {
+    write_vio = nullptr;
+  }
+}
+
+void
+Http2ServerSession::set_no_activity_timeout()
+{
+  // Only set if not previously set
+  if (this->_vc->get_inactivity_timeout() == 0) {
+    this->set_inactivity_timeout(HRTIME_SECONDS(Http2::no_activity_timeout_out));
+  }
 }

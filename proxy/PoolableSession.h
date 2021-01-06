@@ -36,6 +36,7 @@ public:
     SSN_IN_USE,  // actively in use
     KA_RESERVED, // stuck to client
     KA_POOLED,   // free for reuse
+    SSN_CLOSED,  // Session ready to be freed
   };
 
   /// Hash map descriptor class for IP map.

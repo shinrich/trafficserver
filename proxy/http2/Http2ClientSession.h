@@ -61,6 +61,8 @@ public:
   void increment_current_active_connections_stat() override;
   void decrement_current_active_connections_stat() override;
 
+  void set_no_activity_timeout() override;
+
   ProxySession *get_proxy_session() override;
 
   // noncopyable

@@ -40,6 +40,9 @@ public:
 
   void increment_transactions_stat() override;
   void decrement_transactions_stat() override;
+  void transaction_done() override;
+
+  void force_close();
 
   ////////////////////
   // Variables

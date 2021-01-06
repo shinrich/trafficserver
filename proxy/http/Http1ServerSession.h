@@ -62,6 +62,7 @@ public:
   // Methods
   void release(ProxyTransaction *) override;
   void destroy() override;
+  void release_transaction();
 
   // VConnection Methods
   void do_io_close(int lerrno = -1) override;
@@ -81,7 +82,9 @@ public:
   ProxyTransaction *
   new_transaction() override
   {
+    state = SSN_IN_USE;
     transact_count++;
+    ink_release_assert(transact_count == (released_transactions + 1));
     trans.set_reader(this->get_reader());
     trans.set_proxy_ssn(this);
     return &trans;
@@ -105,6 +108,8 @@ private:
   int magic = HTTP_SS_MAGIC_DEAD;
 
   IOBufferReader *_reader = nullptr;
+
+  int released_transactions = 0;
 
   Http1ServerTransaction trans;
 };

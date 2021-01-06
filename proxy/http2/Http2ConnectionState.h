@@ -129,16 +129,16 @@ public:
   ActivityCop<Http2Stream> _cop;
 
   // Settings.
-  Http2ConnectionSettings server_settings;
-  Http2ConnectionSettings client_settings;
+  Http2ConnectionSettings local_settings;
+  Http2ConnectionSettings peer_settings;
 
   void
   init()
   {
     this->_server_rwnd = Http2::initial_window_size;
 
-    local_hpack_handle  = new HpackHandle(HTTP2_HEADER_TABLE_SIZE);
-    remote_hpack_handle = new HpackHandle(HTTP2_HEADER_TABLE_SIZE);
+    local_hpack_handle  = new HpackHandle(Http2::header_table_size);
+    remote_hpack_handle = new HpackHandle(Http2::header_table_size);
     if (Http2::stream_priority_enabled) {
       dependency_tree = new DependencyTree(Http2::max_concurrent_streams_in);
     }
@@ -196,6 +196,9 @@ public:
   void cleanup_streams();
   void restart_receiving(Http2Stream *stream);
   void update_initial_rwnd(Http2WindowSize new_size);
+
+  bool is_local_concurrent_stream_max() const;
+  bool is_peer_concurrent_stream_max() const;
 
   Http2StreamId
   get_latest_stream_id_in() const

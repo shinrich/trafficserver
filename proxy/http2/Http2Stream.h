@@ -138,6 +138,11 @@ public:
   bool is_state_writeable() const;
   bool is_closed() const;
   IOBufferReader *send_get_data_reader() const;
+  void set_rx_error_code(ProxyError e) override;
+  void set_tx_error_code(ProxyError e) override;
+
+  bool has_request_body(int64_t content_length, bool is_chunked_set) const override;
+  HostDBApplicationInfo::HttpVersion get_version(HTTPHdr &hdr) const override;
 
   void mark_milestone(Http2StreamMilestone type);
 
@@ -156,6 +161,7 @@ public:
   void reset_send_headers();
   MIOBuffer *read_vio_writer() const;
   int64_t read_vio_read_avail();
+  bool read_enabled() const;
 
   //////////////////
   // Variables
@@ -207,6 +213,8 @@ private:
   bool _possible_trailing_header = false;
   bool _expect_send_trailer      = false;
   bool _expect_receive_trailer   = false;
+
+  bool has_body = false;
 
   bool _outbound_flag = false;
 
@@ -375,6 +383,12 @@ inline MIOBuffer *
 Http2Stream::read_vio_writer() const
 {
   return this->read_vio.get_writer();
+}
+
+inline bool
+Http2Stream::read_enabled() const
+{
+  return !this->read_vio.is_disabled();
 }
 
 inline void

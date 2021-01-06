@@ -480,7 +480,6 @@ HpackDynamicTable::_evict_overflowed_entries()
       break;
     }
   }
-
   this->_mime_hdr_gc();
 }
 
@@ -802,7 +801,6 @@ update_dynamic_table_size(const uint8_t *buf_start, const uint8_t *buf_end, Hpac
   if (size > maximum_table_size) {
     return HPACK_ERROR_COMPRESSION_ERROR;
   }
-
   indexing_table.update_maximum_size(size);
 
   return len;

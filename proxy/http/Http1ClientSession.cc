@@ -59,6 +59,8 @@ ClassAllocator<Http1ClientSession> http1ClientSessionAllocator("http1ClientSessi
 
 Http1ClientSession::Http1ClientSession() {}
 
+//
+// Will only close the connection if do_io_close has been called previously (to set read_state to HCS_CLOSED
 void
 Http1ClientSession::destroy()
 {
@@ -84,9 +86,11 @@ Http1ClientSession::release_transaction()
   if (transact_count == released_transactions) {
     // Make sure we previously called release() or do_io_close() on the session
     ink_release_assert(read_state != HCS_INIT);
-    if (read_state == HCS_ACTIVE_READER) {
+    if (is_active()) {
       // (in)active timeout
       do_io_close(HTTP_ERRNO);
+    } else if (read_state == HCS_ACTIVE_READER) {
+      release(&trans);
     } else {
       destroy();
     }
@@ -258,8 +262,6 @@ Http1ClientSession::do_io_close(int alerrno)
     HTTP_SUM_DYN_STAT(http_transactions_per_client_con, transact_count);
     read_state = HCS_CLOSED;
 
-    // Can go ahead and close the netvc now, but keeping around the session object
-    // until all the transactions are closed
     if (_vc) {
       _vc->do_io_close();
       _vc = nullptr;
@@ -348,11 +350,21 @@ Http1ClientSession::state_keep_alive(int event, void *data)
 {
   // Route the event.  It is either for vc or
   //  the origin server slave vc
-  if (data && data == slave_ka_vio) {
-    return state_slave_keep_alive(event, data);
-  } else {
-    ink_assert(data && data == ka_vio);
-    ink_assert(read_state == HCS_KEEP_ALIVE);
+  if (data) {
+    if (data == slave_ka_vio) {
+      return state_slave_keep_alive(event, data);
+    } else if (data == schedule_event) {
+      schedule_event = nullptr;
+    } else {
+      ink_assert(data && data == ka_vio);
+      ink_assert(read_state == HCS_KEEP_ALIVE);
+    }
+  }
+
+  // If we got here due to a network I/O event directly, go ahead and cancel any remaining schedule events
+  if (schedule_event) {
+    schedule_event->cancel();
+    schedule_event = nullptr;
   }
 
   STATE_ENTER(&Http1ClientSession::state_keep_alive, event, data);
@@ -388,8 +400,6 @@ Http1ClientSession::state_keep_alive(int event, void *data)
 void
 Http1ClientSession::release(ProxyTransaction *trans)
 {
-  ink_assert(read_state == HCS_ACTIVE_READER || read_state == HCS_INIT);
-
   // When release is called from start() to read the first transaction, get_sm()
   // will return null.
   HttpSM *sm = trans->get_sm();
@@ -408,7 +418,25 @@ Http1ClientSession::release(ProxyTransaction *trans)
   //  buffer.  If there is, spin up a new state
   //  machine to process it.  Otherwise, issue an
   //  IO to wait for new data
+  /*  Start the new transaction once we finish completely the current transaction and unroll the stack */
   bool more_to_read = this->_reader->is_read_avail_more_than(0);
+  if (more_to_read) {
+    // Is it just extra \r or \n?  Easily added by health checking scripts
+    int64_t b_avail       = this->_reader->block_read_avail();
+    char *start           = this->_reader->start();
+    int64_t consume_count = 0;
+    while (consume_count < b_avail) {
+      if (start[consume_count] == '\r' || start[consume_count] == '\n') {
+        consume_count++;
+      } else {
+        break;
+      }
+    }
+    if (consume_count > 0) {
+      _reader->consume(consume_count);
+      more_to_read = this->_reader->is_read_avail_more_than(0);
+    }
+  }
   if (more_to_read) {
     trans->destroy();
     HttpSsnDebug("[%" PRId64 "] data already in buffer, starting new transaction", con_id);
