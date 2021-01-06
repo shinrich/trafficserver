@@ -124,11 +124,9 @@ public:
   virtual int populate_protocol(std::string_view *result, int size) const;
   virtual const char *protocol_contains(std::string_view tag_prefix) const;
 
-  virtual bool ready_to_write() const;
-
   // Non-Virtual Methods
   NetVConnection *get_netvc() const;
-  void set_netvc(NetVConnection *netvc);
+  virtual void set_netvc(NetVConnection *netvc);
   int do_api_callout(TSHttpHookID id);
 
   void set_debug(bool flag);

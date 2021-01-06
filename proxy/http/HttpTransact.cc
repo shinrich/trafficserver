@@ -1498,7 +1498,8 @@ HttpTransact::HandleRequest(State *s)
       }
     }
     if (s->txn_conf->request_buffer_enabled &&
-        (s->hdr_info.request_content_length > 0 || s->client_info.transfer_encoding == CHUNKED_ENCODING)) {
+        s->state_machine->ua_txn->has_request_body(s->hdr_info.request_content_length,
+                                                   s->client_info.transfer_encoding == CHUNKED_ENCODING)) {
       TRANSACT_RETURN(SM_ACTION_WAIT_FOR_FULL_BODY, nullptr);
     }
   }
@@ -3958,37 +3959,11 @@ HttpTransact::handle_forward_server_connection_open(State *s)
   TxnDebug("http_seq", "[HttpTransact::handle_server_connection_open] ");
   ink_release_assert(s->current.state == CONNECTION_ALIVE);
 
-  if (s->hdr_info.server_response.version_get() == HTTPVersion(0, 9)) {
-    TxnDebug("http_trans", "[hfsco] server sent 0.9 response, reading...");
-    build_response(s, &s->hdr_info.client_response, s->client_info.http_version, HTTP_STATUS_OK, "Connection Established");
-
-    s->client_info.keep_alive = HTTP_NO_KEEPALIVE;
-    s->cache_info.action      = CACHE_DO_NO_ACTION;
-    s->next_action            = SM_ACTION_SERVER_READ;
-    return;
-
-  } else if (s->hdr_info.server_response.version_get() == HTTPVersion(1, 0)) {
-    if (s->current.server->http_version == HTTPVersion(0, 9)) {
-      // update_hostdb_to_indicate_server_version_is_1_0
-      s->updated_server_version = HostDBApplicationInfo::HTTP_VERSION_10;
-    } else if (s->current.server->http_version == HTTPVersion(1, 1)) {
-      // update_hostdb_to_indicate_server_version_is_1_0
-      s->updated_server_version = HostDBApplicationInfo::HTTP_VERSION_10;
-    } else {
-      // dont update the hostdb. let us try again with what we currently think.
-    }
-  } else if (s->hdr_info.server_response.version_get() == HTTPVersion(1, 1)) {
-    if (s->current.server->http_version == HTTPVersion(0, 9)) {
-      // update_hostdb_to_indicate_server_version_is_1_1
-      s->updated_server_version = HostDBApplicationInfo::HTTP_VERSION_11;
-    } else if (s->current.server->http_version == HTTPVersion(1, 0)) {
-      // update_hostdb_to_indicate_server_version_is_1_1
-      s->updated_server_version = HostDBApplicationInfo::HTTP_VERSION_11;
-    } else {
-      // dont update the hostdb. let us try again with what we currently think.
-    }
-  } else {
-    // dont update the hostdb. let us try again with what we currently think.
+  HostDBApplicationInfo::HttpVersion real_version = s->state_machine->server_txn->get_version(s->hdr_info.server_response);
+  if (real_version != s->host_db_info.app.http_data.http_version) {
+    TxnDebug("http_trans", "Update hostdb history of server HTTP version");
+    // Need to update the hostdb
+    s->updated_server_version = real_version;
   }
 
   if (s->hdr_info.server_response.status_get() == HTTP_STATUS_CONTINUE ||
@@ -5341,8 +5316,11 @@ HttpTransact::check_request_validity(State *s, HTTPHdr *incoming_hdr)
   // than in initialize_state_variables_from_request //
   /////////////////////////////////////////////////////
   if (method != HTTP_WKSIDX_TRACE) {
-    int64_t length                     = incoming_hdr->get_content_length();
-    s->hdr_info.request_content_length = (length >= 0) ? length : HTTP_UNDEFINED_CL; // content length less than zero is invalid
+    if (incoming_hdr->presence(MIME_PRESENCE_CONTENT_LENGTH)) {
+      s->hdr_info.request_content_length = incoming_hdr->get_content_length();
+    } else {
+      s->hdr_info.request_content_length = HTTP_UNDEFINED_CL; // content length less than zero is invalid
+    }
 
     TxnDebug("http_trans", "[init_stat_vars_from_req] set req cont length to %" PRId64, s->hdr_info.request_content_length);
 
@@ -5372,22 +5350,23 @@ HttpTransact::check_request_validity(State *s, HTTPHdr *incoming_hdr)
     if ((scheme == URL_WKSIDX_HTTP || scheme == URL_WKSIDX_HTTPS) &&
         (method == HTTP_WKSIDX_POST || method == HTTP_WKSIDX_PUSH || method == HTTP_WKSIDX_PUT) &&
         s->client_info.transfer_encoding != CHUNKED_ENCODING) {
-      if (!incoming_hdr->presence(MIME_PRESENCE_CONTENT_LENGTH)) {
-        // In normal operation there will always be a ua_txn at this point, but in one of the -R1  regression tests a request is
-        // created
-        // independent of a transaction and this method is called, so we must null check
-        if (s->txn_conf->post_check_content_length_enabled &&
-            (!s->state_machine->ua_txn || s->state_machine->ua_txn->is_chunked_encoding_supported())) {
-          return NO_POST_CONTENT_LENGTH;
-        } else {
-          // Stuff in a TE setting so we treat this as chunked, sort of.
-          s->client_info.transfer_encoding = HttpTransact::CHUNKED_ENCODING;
-          incoming_hdr->value_append(MIME_FIELD_TRANSFER_ENCODING, MIME_LEN_TRANSFER_ENCODING, HTTP_VALUE_CHUNKED, HTTP_LEN_CHUNKED,
-                                     true);
+      // In normal operation there will always be a ua_txn at this point, but in one of the -R1  regression tests a request is
+      // createdindependent of a transaction and this method is called, so we must null check
+      if (!s->state_machine->ua_txn || s->state_machine->ua_txn->is_chunked_encoding_supported()) {
+        // See if we need to insert a chunked header
+        if (!incoming_hdr->presence(MIME_PRESENCE_CONTENT_LENGTH)) {
+          if (s->txn_conf->post_check_content_length_enabled) {
+            return NO_POST_CONTENT_LENGTH;
+          } else {
+            // Stuff in a TE setting so we treat this as chunked, sort of.
+            s->client_info.transfer_encoding = HttpTransact::CHUNKED_ENCODING;
+            incoming_hdr->value_append(MIME_FIELD_TRANSFER_ENCODING, MIME_LEN_TRANSFER_ENCODING, HTTP_VALUE_CHUNKED,
+                                       HTTP_LEN_CHUNKED, true);
+          }
         }
-      }
-      if (HTTP_UNDEFINED_CL == s->hdr_info.request_content_length) {
-        return INVALID_POST_CONTENT_LENGTH;
+        if (HTTP_UNDEFINED_CL == s->hdr_info.request_content_length) {
+          return INVALID_POST_CONTENT_LENGTH;
+        }
       }
     }
   }

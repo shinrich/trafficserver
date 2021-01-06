@@ -41,3 +41,13 @@ Http1ServerTransaction::decrement_transactions_stat()
 {
   HTTP_DECREMENT_DYN_STAT(http_current_server_transactions_stat);
 }
+
+void
+Http1ServerTransaction::transaction_done()
+{
+  SCOPED_MUTEX_LOCK(lock, this->mutex, this_ethread());
+  super_type::transaction_done();
+  if (_proxy_ssn) {
+    static_cast<Http1ServerSession *>(_proxy_ssn)->release_transaction();
+  }
+}

@@ -36,12 +36,11 @@ sessions:
           version: '2'
           scheme: https
           method: GET
-          url: /some/path
+          url: /some/path;arg=1;arg=2?foo
           headers:
             encoding: esc_json
             fields:
               - [ Host, data.brian.example.com ]
-              - [ Content-Length, 0 ]
           content:
             encoding: plain
             size: 0
@@ -62,7 +61,9 @@ sessions:
           version: '2'
           scheme: https
           method: GET
-          url: /some/path
+          url: 
+            - [ path, { value: /some/path;arg=1;arg=2, as: equal } ]
+            - [ query, { value: foo, as: equal } ]
           headers:
             encoding: esc_json
             fields:
@@ -118,7 +119,7 @@ sessions:
           version: '2'
           scheme: https
           method: GET
-          url: /some/path2
+          url: /some/path2#stuff
           headers:
             encoding: esc_json
             fields:
@@ -144,7 +145,9 @@ sessions:
           version: '2'
           scheme: https
           method: GET
-          url: /some/path2
+          url: 
+            - [ path, { value: /some/path2, as: equal } ]
+            - [ fragment, { value: stuff, as: equal } ]
           headers:
             encoding: esc_json
             fields:
@@ -212,7 +215,7 @@ sessions:
           version: '2'
           scheme: https
           method: POST
-          url: /some/path3
+          url: /some/path3?foo=bar#target
           headers:
             encoding: esc_json
             fields:
@@ -238,7 +241,10 @@ sessions:
           version: '2'
           scheme: https
           method: POST
-          url: /some/path3
+          url: 
+            - [ path, { value: /some/path3, as: equal }]
+            - [ query, { value: foo=bar, as: equal }]
+            - [ fragment, {value: target, as: equal }]
           headers:
             encoding: esc_json
             fields:
@@ -249,6 +255,18 @@ sessions:
             size: 8
 
         server-response:
+          version: '2'
+          status: 404
+          reason: "Not Found"
+          headers:
+            encoding: esc_json
+            fields:
+              - [ bob, 0 ]
+          content:
+            encoding: plain
+            size: 0
+
+        proxy-response:
           version: '2'
           status: 404
           reason: "Not Found"
@@ -417,6 +435,18 @@ sessions:
           headers:
             encoding: esc_json
             fields:
+              - [ bob, 1600 ]
+          content:
+            encoding: plain
+            size: 1600
+
+        proxy-response:
+          version: '2'
+          status: 200
+          reason: OK
+          headers:
+            encoding: esc_json
+            fields:
               - [ Content-Length, 1600 ]
           content:
             encoding: plain
@@ -460,7 +490,6 @@ sessions:
             encoding: esc_json
             fields:
               - [ Host, data.brian.example.com ]
-              - [ Content-Length, 3200 ]
           content:
             encoding: plain
             size: 3200 

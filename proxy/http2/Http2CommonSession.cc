@@ -75,11 +75,6 @@ Http2CommonSession::free(ProxySession *ssn)
     this->_reenable_event = nullptr;
   }
 
-  if (ssn->get_netvc()) {
-    ssn->get_netvc()->do_io_close();
-    ssn->set_netvc(nullptr);
-  }
-
   // Make sure the we are at the bottom of the stack
   if (this->connection_state.is_recursing() || this->recursion != 0) {
     // Note that we are ready to be cleaned up
@@ -140,8 +135,6 @@ Http2CommonSession::free(ProxySession *ssn)
     }
   }
 
-  ink_release_assert(ssn->get_netvc() == nullptr);
-
   delete _h2_pushed_urls;
   this->connection_state.destroy();
 
@@ -185,7 +178,6 @@ Http2CommonSession::xmit(const Http2TxFrame &frame, bool flush)
       flush = true;
     }
   }
-
   if (flush) {
     this->flush();
   }
@@ -207,7 +199,12 @@ Http2CommonSession::flush()
 void
 Http2CommonSession::write_reenable()
 {
-  write_vio->reenable();
+  if (write_vio) {
+    // Grab the lock for the write_vio.  Holding the lock is
+    // checked eventually via the reenable logic
+    SCOPED_MUTEX_LOCK(lock, write_vio->mutex, this_ethread());
+    write_vio->reenable();
+  }
 }
 
 int64_t
@@ -306,13 +303,13 @@ Http2CommonSession::do_start_frame_read(Http2ErrorCode &ret_error)
 
   this->_reader->consume(nbytes);
 
-  if (!http2_frame_header_is_valid(this->current_hdr, this->connection_state.server_settings.get(HTTP2_SETTINGS_MAX_FRAME_SIZE))) {
+  if (!http2_frame_header_is_valid(this->current_hdr, this->connection_state.local_settings.get(HTTP2_SETTINGS_MAX_FRAME_SIZE))) {
     ret_error = Http2ErrorCode::HTTP2_ERROR_PROTOCOL_ERROR;
     return -1;
   }
 
   // If we know up front that the payload is too long, nuke this connection.
-  if (this->current_hdr.length > this->connection_state.server_settings.get(HTTP2_SETTINGS_MAX_FRAME_SIZE)) {
+  if (this->current_hdr.length > this->connection_state.local_settings.get(HTTP2_SETTINGS_MAX_FRAME_SIZE)) {
     ret_error = Http2ErrorCode::HTTP2_ERROR_FRAME_SIZE_ERROR;
     return -1;
   }
@@ -378,11 +375,15 @@ Http2CommonSession::do_complete_frame_read()
 int
 Http2CommonSession::state_process_frame_read(int event, VIO *vio, bool inside_frame)
 {
+  Http2SsnDebug("state_process_frame_read %" PRId64 " bytes ready", this->_reader->read_avail());
+
   if (inside_frame) {
     do_complete_frame_read();
   }
 
   while (this->_reader->read_avail() >= static_cast<int64_t>(HTTP2_FRAME_HEADER_LEN)) {
+    Http2SsnDebug("state_process_frame_read try to read frame %" PRId64 " bytes ready", this->_reader->read_avail());
+
     // Cancel reading if there was an error or connection is closed
     if (connection_state.tx_error_code.code != static_cast<uint32_t>(Http2ErrorCode::HTTP2_ERROR_NO_ERROR) ||
         connection_state.is_state_closed()) {
@@ -394,7 +395,7 @@ Http2CommonSession::state_process_frame_read(int event, VIO *vio, bool inside_fr
     if (this->connection_state.get_stream_error_rate() > std::min(1.0, Http2::stream_error_rate_threshold * 2.0)) {
       ip_port_text_buffer ipb;
       const char *client_ip = ats_ip_ntop(this->get_proxy_session()->get_remote_addr(), ipb, sizeof(ipb));
-      Warning("HTTP/2 session error client_ip=%s session_id=%" PRId64
+      Warning("HTTP/2 session error peer_ip=%s session_id=%" PRId64
               " closing a connection, because its stream error rate (%f) exceeded the threshold (%f)",
               client_ip, this->get_connection_id(), this->connection_state.get_stream_error_rate(),
               Http2::stream_error_rate_threshold);
@@ -444,4 +445,15 @@ Http2CommonSession::_should_do_something_else()
 {
   // Do something else every 128 incoming frames
   return (this->_n_frame_read & 0x7F) == 0;
+}
+
+void
+Http2CommonSession::add_session()
+{
+}
+
+bool
+Http2CommonSession::is_outbound() const
+{
+  return false;
 }

@@ -55,24 +55,6 @@ enum class Http2SsnMilestone {
 
 size_t const HTTP2_HEADER_BUFFER_SIZE_INDEX = CLIENT_CONNECTION_FIRST_READ_BUFFER_SIZE_INDEX;
 
-// To support Upgrade: h2c
-struct Http2UpgradeContext {
-  Http2UpgradeContext() {}
-  ~Http2UpgradeContext()
-  {
-    if (req_header) {
-      req_header->clear();
-      delete req_header;
-    }
-  }
-
-  // Modified request header
-  HTTPHdr *req_header = nullptr;
-
-  // Decoded HTTP2-Settings Header Field
-  Http2ConnectionSettings client_settings;
-};
-
 class Http2CommonSession
 {
 public:
@@ -92,7 +74,6 @@ public:
   bool is_url_pushed(const char *url, int url_len);
   void add_url_to_pushed_table(const char *url, int url_len);
   int64_t xmit(const Http2TxFrame &frame, bool flush = true);
-  virtual void received_setting();
   void flush();
 
   int64_t get_connection_id();
@@ -104,12 +85,21 @@ public:
   int64_t write_buffer_size();
 
   virtual ProxySession *get_proxy_session() = 0;
+  virtual void
+  test_session()
+  {
+  }
   // more methods
   void write_reenable();
 
   ///////////////////
   // Variables
   Http2ConnectionState connection_state;
+
+  virtual void add_session();
+  virtual bool is_outbound() const;
+
+  virtual void set_no_activity_timeout() = 0;
 
 protected:
   SessionHandler session_handler = nullptr;
@@ -228,9 +218,4 @@ inline int64_t
 Http2CommonSession::write_buffer_size()
 {
   return write_buffer->max_read_avail();
-}
-
-inline void
-Http2CommonSession::received_setting()
-{
 }

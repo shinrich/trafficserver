@@ -262,3 +262,37 @@ ProxyTransaction::release()
     _proxy_ssn->release(this);
   }
 }
+
+bool
+ProxyTransaction::has_request_body(int64_t request_content_length, bool is_chunked) const
+{
+  return request_content_length > 0 || is_chunked;
+}
+
+HostDBApplicationInfo::HttpVersion
+ProxyTransaction::get_version(HTTPHdr &hdr) const
+{
+  if (hdr.version_get() == HTTPVersion(1, 1)) {
+    return HostDBApplicationInfo::HTTP_VERSION_11;
+  } else if (hdr.version_get() == HTTPVersion(1, 0)) {
+    return HostDBApplicationInfo::HTTP_VERSION_10;
+  } else {
+    return HostDBApplicationInfo::HTTP_VERSION_09;
+  }
+}
+
+bool
+ProxyTransaction::allow_half_open() const
+{
+  return false;
+}
+
+void
+ProxyTransaction::increment_transactions_stat()
+{
+}
+
+void
+ProxyTransaction::decrement_transactions_stat()
+{
+}

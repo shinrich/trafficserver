@@ -107,7 +107,7 @@ ProxySession::state_api_callout(int event, void *data)
       if (!lock.is_locked()) {
         SET_HANDLER(&ProxySession::state_api_callout);
         if (!schedule_event) { // Don't bother if there is already one
-          schedule_event = mutex->thread_holding->schedule_in(this, HRTIME_MSECONDS(10));
+          schedule_event = this_ethread()->schedule_in(this, HRTIME_MSECONDS(10));
         }
         return -1;
       }
@@ -306,10 +306,4 @@ bool
 ProxySession::support_sni() const
 {
   return _vc ? _vc->support_sni() : false;
-}
-
-bool
-ProxySession::ready_to_write() const
-{
-  return true;
 }

@@ -42,7 +42,8 @@ Test.PrepareTestPlugin(os.path.join(Test.Variables.AtsTestPluginsDir,
 server.addResponse("sessionfile.log", request_header, response_header)
 ts.Disk.records_config.update({
     'proxy.config.diags.debug.enabled': 0,
-    'proxy.config.diags.debug.tags': 'ssntxnorder_verify.*',
+    'proxy.config.diags.debug.tags': 'ssntxnorder_verify.*|http',
+    'proxy.config.http.cache.http': 0,  # disable cache to simplify the test.
     'proxy.config.cache.enable_read_while_writer': 0
 })
 
@@ -51,7 +52,7 @@ ts.Disk.remap_config.AddLine(
         ts.Variables.port, server.Variables.Port)
 )
 
-cmd = 'curl -vs -H "host:oc.test" http://127.0.0.1:{0}'.format(ts.Variables.port)
+cmd = 'curl -H "Connection: close" -vs -H "host:oc.test" http://127.0.0.1:{0}'.format(ts.Variables.port)
 numberOfRequests = 100
 
 tr = Test.AddTestRun()

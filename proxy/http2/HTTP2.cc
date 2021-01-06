@@ -601,6 +601,9 @@ http2_convert_header_from_1_1_to_2(HTTPHdr *headers)
       } else {
         field->value_set(headers->m_heap, headers->m_mime, value, value_len);
       }
+      // Remove the host header field, redundant to the authority field
+      // For istio/envoy, having both was causing 404 responses
+      headers->field_delete(MIME_FIELD_HOST, MIME_LEN_HOST);
     } else {
       ink_abort("initialize HTTP/2 pseudo-headers");
       return PARSE_RESULT_ERROR;
@@ -610,13 +613,35 @@ http2_convert_header_from_1_1_to_2(HTTPHdr *headers)
     if (MIMEField *field = headers->field_find(HTTP2_VALUE_PATH, HTTP2_LEN_PATH); field != nullptr) {
       int value_len;
       const char *value = headers->path_get(&value_len);
+      int param_len;
+      const char *param = headers->params_get(&param_len);
+      int query_len;
+      const char *query = headers->query_get(&query_len);
+      int frag_len;
+      const char *frag = headers->fragment_get(&frag_len);
+      int path_len     = value_len + 1;
 
-      ts::LocalBuffer<char> buf(value_len + 1);
+      ts::LocalBuffer<char> buf(value_len + 1 + 1 + 1 + 1 + query_len + frag_len + param_len);
       char *path = buf.data();
       path[0]    = '/';
       memcpy(path + 1, value, value_len);
+      if (param_len > 0) {
+        path[path_len] = ';';
+        memcpy(path + path_len + 1, param, param_len);
+        path_len += 1 + param_len;
+      }
+      if (query_len > 0) {
+        path[path_len] = '?';
+        memcpy(path + path_len + 1, query, query_len);
+        path_len += 1 + query_len;
+      }
+      if (frag_len > 0) {
+        path[path_len] = '#';
+        memcpy(path + path_len + 1, frag, frag_len);
+        path_len += 1 + frag_len;
+      }
 
-      field->value_set(headers->m_heap, headers->m_mime, path, value_len + 1);
+      field->value_set(headers->m_heap, headers->m_mime, path, path_len);
     } else {
       ink_abort("initialize HTTP/2 pseudo-headers");
       return PARSE_RESULT_ERROR;

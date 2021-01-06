@@ -41,6 +41,9 @@ ClassAllocator<Http1ServerSession> httpServerSessionAllocator("httpServerSession
 void
 Http1ServerSession::destroy()
 {
+  if (state != SSN_CLOSED) {
+    return;
+  }
   ink_release_assert(_vc == nullptr);
   ink_assert(read_buffer);
   magic = HTTP_SS_MAGIC_DEAD;
@@ -89,12 +92,17 @@ Http1ServerSession::new_connection(NetVConnection *new_vc, MIOBuffer *iobuf, IOB
 void
 Http1ServerSession::do_io_close(int alerrno)
 {
+  if (state == SSN_CLOSED) { // Already been closed
+    return;
+  }
+
   ts::LocalBufferWriter<256> w;
   bool debug_p = is_debug_tag_set("http_ss");
 
   if (state == SSN_IN_USE) {
     HTTP_DECREMENT_DYN_STAT(http_current_server_transactions_stat);
   }
+  state = SSN_CLOSED;
 
   if (debug_p) {
     w.print("[{}] session close: nevtc {:x}", con_id, _vc);
@@ -118,7 +126,9 @@ Http1ServerSession::do_io_close(int alerrno)
   if (to_parent_proxy) {
     HTTP_DECREMENT_DYN_STAT(http_current_parent_proxy_connections_stat);
   }
-  destroy();
+  if (transact_count == released_transactions) {
+    this->destroy();
+  }
 }
 
 // void Http1ServerSession::release()
@@ -128,9 +138,8 @@ Http1ServerSession::do_io_close(int alerrno)
 void
 Http1ServerSession::release(ProxyTransaction *trans)
 {
-  Debug("http_ss", "Releasing session, private_session=%d, sharing_match=%d", this->is_private(), sharing_match);
-  // Set our state to KA for stat issues
-  state = KA_POOLED;
+  Debug("http_ss", "[%" PRId64 "] Releasing session, private_session=%d, sharing_match=%d", con_id, this->is_private(),
+        sharing_match);
 
   _vc->control_flags.set_flags(0);
 
@@ -151,13 +160,19 @@ Http1ServerSession::release(ProxyTransaction *trans)
     // Session could not be put in the session manager
     //  due to lock contention
     // FIX:  should retry instead of closing
-    this->do_io_close();
+    this->release_transaction();
     HTTP_INCREMENT_DYN_STAT(http_origin_shutdown_pool_lock_contention);
   } else {
     // The session was successfully put into the session
     //    manager and it will manage it
     // (Note: should never get HSM_NOT_FOUND here)
+    // Set our state to KA for stat issues
+    state = KA_POOLED;
     ink_assert(r == HSM_DONE);
+    if (trans != nullptr) {
+      released_transactions++;
+    }
+    ink_release_assert(transact_count == released_transactions);
   }
 }
 
@@ -200,4 +215,23 @@ bool
 Http1ServerSession::is_chunked_encoding_supported() const
 {
   return true;
+}
+
+void
+Http1ServerSession ::release_transaction()
+{
+  released_transactions++;
+  if (transact_count == released_transactions) {
+    // Make sure we previously called release() or do_io_close() on the session
+    ink_release_assert(state != INIT);
+    if (state == SSN_IN_USE) {
+      // (in)active timeout
+      do_io_close(HTTP_ERRNO);
+    } else {
+      ink_release_assert(state == KA_POOLED || state == SSN_CLOSED);
+      destroy();
+    }
+  } else {
+    ink_release_assert(transact_count == released_transactions);
+  }
 }

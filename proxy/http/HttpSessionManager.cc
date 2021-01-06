@@ -108,7 +108,7 @@ ServerSessionPool::validate_sni(HttpSM *sm, NetVConnection *netvc)
   if (sm->t_state.scheme == URL_WKSIDX_HTTPS) {
     const char *session_sni       = netvc->get_sni_servername();
     std::string_view proposed_sni = sm->get_outbound_sni();
-    Debug("http_ss", "validate_sni proposed_sni=%s, sni=%s", proposed_sni.data(), session_sni);
+    Debug("http_ss", "validate_sni proposed_sni=%.*s, sni=%s", proposed_sni.length(), proposed_sni.data(), session_sni);
     if (!session_sni || proposed_sni.length() == 0) {
       retval = session_sni == nullptr && proposed_sni.length() == 0;
     } else {
@@ -167,8 +167,13 @@ ServerSessionPool::acquireSession(sockaddr const *addr, CryptoHash const &hostna
     if (zret == HSM_DONE) {
       to_return = first;
       if (!to_return->is_multiplexing()) {
+        HTTP_DECREMENT_DYN_STAT(http_pooled_server_connections_stat);
         m_fqdn_pool.erase(first);
         m_ip_pool.erase(to_return);
+      }
+    } else {
+      if (first != m_fqdn_pool.end()) {
+        Debug("http_ss", "Failed find entry due to name mismatch %s", sm->t_state.current.server->name);
       }
     }
   } else if (TS_SERVER_SESSION_SHARING_MATCH_MASK_IP & match_style) { // matching is not disabled.
@@ -193,6 +198,7 @@ ServerSessionPool::acquireSession(sockaddr const *addr, CryptoHash const &hostna
     if (zret == HSM_DONE) {
       to_return = first;
       if (!to_return->is_multiplexing()) {
+        HTTP_DECREMENT_DYN_STAT(http_pooled_server_connections_stat);
         m_ip_pool.erase(first);
         m_fqdn_pool.erase(to_return);
       }
@@ -220,6 +226,8 @@ ServerSessionPool::releaseSession(PoolableSession *ss)
   // put it in the pools.
   m_ip_pool.insert(ss);
   m_fqdn_pool.insert(ss);
+
+  HTTP_INCREMENT_DYN_STAT(http_pooled_server_connections_stat);
 
   Debug("http_ss",
         "[%" PRId64 "] [release session] "
@@ -291,6 +299,7 @@ ServerSessionPool::eventHandler(int event, void *data)
       // Drop connection on this end.
       s->do_io_close();
       found = true;
+      HTTP_DECREMENT_DYN_STAT(http_pooled_server_connections_stat);
       break;
     }
   }
@@ -409,7 +418,7 @@ HttpSessionManager::_acquire_session(sockaddr const *ip, CryptoHash const &hostn
                                    m_g_pool->mutex;
     MUTEX_TRY_LOCK(lock, pool_mutex, ethread);
     if (lock.is_locked()) {
-      if (TS_SERVER_SESSION_SHARING_POOL_THREAD == s->http_config_param->server_session_sharing_pool) {
+      if (TS_SERVER_SESSION_SHARING_POOL_THREAD == pool_type) {
         retval = ethread->server_session_pool->acquireSession(ip, hostname_hash, match_style, sm, to_return);
         Debug("http_ss", "[acquire session] thread pool search %s", to_return ? "successful" : "failed");
       } else {
@@ -451,11 +460,16 @@ HttpSessionManager::_acquire_session(sockaddr const *ip, CryptoHash const &hostn
     }
 
     if (to_return) {
-      Debug("http_ss", "[%" PRId64 "] [acquire session] return session from shared pool", to_return->connection_id());
-      to_return->state = PoolableSession::SSN_IN_USE;
-      // the attach_server_session will issue the do_io_read under the sm lock
-      sm->set_server_txn(to_return->new_transaction());
-      retval = HSM_DONE;
+      ProxyTransaction *trans = to_return->new_transaction();
+      if (trans) {
+        Debug("http_ss", "[%" PRId64 "] [acquire session] return session from shared pool", to_return->connection_id());
+        to_return->state = PoolableSession::SSN_IN_USE;
+        // the attach_server_session will issue the do_io_read under the sm lock
+        sm->set_server_txn(trans);
+        retval = HSM_DONE;
+      } else {
+        retval = HSM_RETRY;
+      }
     }
   }
   return retval;
@@ -497,9 +511,20 @@ ServerSessionPool::removeSession(PoolableSession *to_remove)
   Debug("http_ss", "Remove session %p %s m_fqdn_pool size=%" PRId64 " m_ip_pool_size=%" PRId64, to_remove, peer_ip,
         m_fqdn_pool.count(), m_ip_pool.count());
   m_fqdn_pool.erase(to_remove);
-  m_ip_pool.erase(to_remove);
+  if (m_ip_pool.erase(to_remove)) {
+    HTTP_DECREMENT_DYN_STAT(http_pooled_server_connections_stat);
+  }
   Debug("http_ss", "After Remove session %p m_fqdn_pool size=%" PRId64 " m_ip_pool_size=%" PRId64, to_remove, m_fqdn_pool.count(),
         m_ip_pool.count());
+}
+
+void
+ServerSessionPool::testSession(PoolableSession *ss)
+{
+  auto fqdn_iter = m_fqdn_pool.find(ss);
+  ink_release_assert(fqdn_iter == m_fqdn_pool.end());
+  auto ip_iter = m_ip_pool.find(ss);
+  ink_release_assert(ip_iter == m_ip_pool.end());
 }
 
 void
@@ -510,8 +535,11 @@ ServerSessionPool::addSession(PoolableSession *ss)
 
   EThread *ethread = this_ethread();
   SCOPED_MUTEX_LOCK(lock, mutex, ethread);
+  // First make sure it is not in the pools
+  this->testSession(ss);
   // put it in the pools.
   m_ip_pool.insert(ss);
   m_fqdn_pool.insert(ss);
+  HTTP_INCREMENT_DYN_STAT(http_pooled_server_connections_stat);
   Debug("http_ss", "[%" PRId64 "] [add session] session placed into shared pool under ip %s", ss->connection_id(), peer_ip);
 }
