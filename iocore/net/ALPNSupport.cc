@@ -101,7 +101,7 @@ ALPNSupport::process_alpn_protocols(const std::string_view protocols, unsigned c
     offset = protocols.find(',', start);
   }
   // Copy in the last string
-  offset = protocols.length() + 1;
+  offset = protocols.length();
   if ((index + 1 + static_cast<int>(offset) - start) > alpn_array_len) {
     retval         = false;
     alpn_array_len = 0;
