@@ -84,6 +84,19 @@ sessions:
             encoding: plain
             size: 0
 
+        proxy-response:
+          version: '2'
+          status: 200
+          reason: OK
+          headers:
+            encoding: esc_json
+            fields:
+              - [ Content-Length, 0 ]
+          content:
+            encoding: plain
+            size: 0
+
+
       #
       # Test 2: Non-zero length response.
       #
@@ -142,6 +155,18 @@ sessions:
             size: 0
 
         server-response:
+          version: '2'
+          status: 200
+          reason: OK
+          headers:
+            encoding: esc_json
+            fields:
+              - [ Content-Length, 16 ]
+          content:
+            encoding: plain
+            size: 16
+
+        proxy-response:
           version: '2'
           status: 200
           reason: OK
@@ -235,6 +260,18 @@ sessions:
             encoding: plain
             size: 0
 
+        proxy-response:
+          version: '2'
+          status: 404
+          reason: "Not Found"
+          headers:
+            encoding: esc_json
+            fields:
+              - [ Content-Length, 0 ]
+          content:
+            encoding: plain
+            size: 0
+
       #
       # Test 4: 32 byte POST with a 200 response.
       #
@@ -293,6 +330,18 @@ sessions:
             size: 32
 
         server-response:
+          version: '2'
+          status: 200
+          reason: OK
+          headers:
+            encoding: esc_json
+            fields:
+              - [ Content-Length, 32 ]
+          content:
+            encoding: plain
+            size: 32
+
+        proxy-response:
           version: '2'
           status: 200
           reason: OK
@@ -373,6 +422,18 @@ sessions:
             encoding: plain
             size: 1600
 
+        proxy-response:
+          version: '2'
+          status: 200
+          reason: OK
+          headers:
+            encoding: esc_json
+            fields:
+              - [ Content-Length, 1600 ]
+          content:
+            encoding: plain
+            size: 1600
+
       #
       # Test 6: large post body small response
       #
@@ -442,6 +503,18 @@ sessions:
             encoding: plain
             size: 16
 
+        proxy-response:
+          version: '2'
+          status: 200
+          reason: OK
+          headers:
+            encoding: esc_json
+            fields:
+              - [ Content-Length, 16 ]
+          content:
+            encoding: plain
+            size: 16
+
       #
       # Test 7: small post body large response
       #
@@ -500,6 +573,18 @@ sessions:
             size: 32
 
         server-response:
+          version: '2'
+          status: 200
+          reason: OK
+          headers:
+            encoding: esc_json
+            fields:
+              - [ Content-Length, 3200 ]
+          content:
+            encoding: plain
+            size: 3200
+
+        proxy-response:
           version: '2'
           status: 200
           reason: OK
