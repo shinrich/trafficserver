@@ -54,7 +54,7 @@ class Http1ServerSession : public PoolableSession
   using super_type = PoolableSession;
 
 public:
-  Http1ServerSession() : super_type() {}
+  Http1ServerSession();
   Http1ServerSession(self_type const &) = delete;
   self_type &operator=(self_type const &) = delete;
   ~Http1ServerSession()                   = default;
@@ -76,20 +76,12 @@ public:
   void new_connection(NetVConnection *new_vc, MIOBuffer *iobuf, IOBufferReader *reader) override;
   void start() override;
   bool is_chunked_encoding_supported() const override;
+  void free() override;
 
   IOBufferReader *get_reader();
   IpEndpoint const &get_server_ip() const;
 
-  ProxyTransaction *
-  new_transaction() override
-  {
-    state = SSN_IN_USE;
-    transact_count++;
-    ink_release_assert(transact_count == (released_transactions + 1));
-    trans.set_reader(this->get_reader());
-    trans.set_proxy_ssn(this);
-    return &trans;
-  }
+  ProxyTransaction *new_transaction() override;
 
   ////////////////////
   // Variables

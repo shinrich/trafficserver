@@ -36,12 +36,12 @@
 #include "tscore/CryptoHash.h"
 #include "tscore/ts_file.h"
 
-namespace tag
+namespace ts::tag
 {
 struct bytes {
   static constexpr char const *const label = " bytes";
 };
-} // namespace tag
+} // namespace ts::tag
 
 using ts::round_down;
 using ts::round_up;

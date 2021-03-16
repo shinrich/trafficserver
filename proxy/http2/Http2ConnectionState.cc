@@ -288,8 +288,8 @@ rcv_headers_frame(Http2ConnectionState &cstate, const Http2Frame &frame)
   if (!stream) {
     if (reset_header_after_decoding) {
       free_stream_after_decoding = true;
-      stream                     = THREAD_ALLOC_INIT(http2StreamAllocator, this_ethread());
-      stream->init(stream_id, cstate.peer_settings.get(HTTP2_SETTINGS_INITIAL_WINDOW_SIZE), true);
+      stream = THREAD_ALLOC_INIT(http2StreamAllocator, this_ethread(), cstate.session->get_proxy_session(), stream_id,
+                                 cstate.peer_settings.get(HTTP2_SETTINGS_INITIAL_WINDOW_SIZE), true);
     } else {
       // Create new stream
       Http2Error error(Http2ErrorClass::HTTP2_ERROR_CLASS_NONE);
@@ -964,7 +964,7 @@ rcv_continuation_frame(Http2ConnectionState &cstate, const Http2Frame &frame)
   } else {
     switch (stream->get_state()) {
     case Http2StreamState::HTTP2_STREAM_STATE_HALF_CLOSED_REMOTE:
-      return Http2Error(Http2ErrorClass::HTTP2_ERROR_CLASS_STREAM, Http2ErrorCode::HTTP2_ERROR_STREAM_CLOSED,
+      return Http2Error(Http2ErrorClass::HTTP2_ERROR_CLASS_CONNECTION, Http2ErrorCode::HTTP2_ERROR_STREAM_CLOSED,
                         "continuation half close remote");
     case Http2StreamState::HTTP2_STREAM_STATE_IDLE:
       break;
@@ -1309,8 +1309,8 @@ Http2ConnectionState::create_stream(Http2StreamId new_id, Http2Error &error, boo
     }
   }
 
-  Http2Stream *new_stream = THREAD_ALLOC_INIT(http2StreamAllocator, this_ethread(), ua_session, new_id,
-                                              client_settings.get(HTTP2_SETTINGS_INITIAL_WINDOW_SIZE));
+  Http2Stream *new_stream = THREAD_ALLOC_INIT(http2StreamAllocator, this_ethread(), session->get_proxy_session(), new_id,
+                                              peer_settings.get(HTTP2_SETTINGS_INITIAL_WINDOW_SIZE), initiating_connection);
 
   ink_assert(nullptr != new_stream);
   ink_assert(!stream_list.in(new_stream));

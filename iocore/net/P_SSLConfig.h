@@ -41,7 +41,6 @@
 #include "YamlSNIConfig.h"
 
 #include "P_SSLUtils.h"
-#include "P_ALPNSupport.h"
 
 struct SSLCertLookup;
 struct ssl_ticket_key_block;

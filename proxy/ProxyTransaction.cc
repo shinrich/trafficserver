@@ -222,11 +222,6 @@ ProxyTransaction::has_request_body(int64_t request_content_length, bool is_chunk
 }
 
 bool
-ProxyTransaction::allow_half_open() const
-{
-  return false;
-}
-
 ProxyTransaction::is_read_closed() const
 {
   return false;
@@ -242,6 +237,7 @@ void
 ProxyTransaction::set_expect_send_trailer()
 {
 }
+
 bool
 ProxyTransaction::expect_receive_trailer() const
 {
@@ -257,26 +253,6 @@ void
 ProxyTransaction::attach_transaction(HttpSM *attach_sm)
 {
   _sm = attach_sm;
-}
-
-void
-ProxyTransaction::release()
-{
-  HttpTxnDebug("[%" PRId64 "] session released by sm [%" PRId64 "]", _proxy_ssn ? _proxy_ssn->connection_id() : 0,
-               _sm ? _sm->sm_id : 0);
-
-  this->decrement_transactions_stat();
-
-  // Pass along the release to the session
-  if (_proxy_ssn) {
-    _proxy_ssn->release(this);
-  }
-}
-
-bool
-ProxyTransaction::has_request_body(int64_t request_content_length, bool is_chunked) const
-{
-  return request_content_length > 0 || is_chunked;
 }
 
 HostDBApplicationInfo::HttpVersion
@@ -295,14 +271,4 @@ bool
 ProxyTransaction::allow_half_open() const
 {
   return false;
-}
-
-void
-ProxyTransaction::increment_transactions_stat()
-{
-}
-
-void
-ProxyTransaction::decrement_transactions_stat()
-{
 }

@@ -294,12 +294,6 @@ public:
 private:
   virtual void *_prepareForMigration();
   virtual NetProcessor *_getNetProcessor();
-
-  virtual void
-  notify_open()
-  {
-    action_.continuation->handleEvent(NET_EVENT_OPEN, this);
-  }
 };
 
 extern ClassAllocator<UnixNetVConnection> netVCAllocator;

@@ -4935,9 +4935,9 @@ TSHttpTxnServerVConnGet(TSHttpTxn txnp)
   sdk_assert(sdk_sanity_check_txn(txnp) == TS_SUCCESS);
   HttpSM *sm = reinterpret_cast<HttpSM *>(txnp);
   if (sm != nullptr) {
-    PoolableSession *ss = sm->get_server_session();
-    if (ss != nullptr) {
-      vconn = reinterpret_cast<TSVConn>(ss->get_netvc());
+    ProxyTransaction *st = sm->server_txn;
+    if (st != nullptr) {
+      vconn = reinterpret_cast<TSVConn>(st->get_netvc());
     }
   }
   return vconn;
@@ -5791,7 +5791,7 @@ TSHttpTxnOutgoingAddrGet(TSHttpTxn txnp)
 
   HttpSM *sm = reinterpret_cast<HttpSM *>(txnp);
 
-  ProxyTransaction *ssn = sm->get_server_txn();
+  ProxyTransaction *ssn = sm->server_txn;
   if (ssn == nullptr) {
     return nullptr;
   }
@@ -5925,7 +5925,7 @@ TSHttpTxnServerPacketMarkSet(TSHttpTxn txnp, int mark)
   HttpSM *sm = (HttpSM *)txnp;
 
   // change the mark on an active server session
-  ProxyTransaction *ssn = sm->get_server_txn();
+  ProxyTransaction *ssn = sm->server_txn;
   if (nullptr != ssn) {
     NetVConnection *vc = ssn->get_netvc();
     if (vc != nullptr) {
@@ -5965,7 +5965,7 @@ TSHttpTxnServerPacketTosSet(TSHttpTxn txnp, int tos)
   HttpSM *sm = (HttpSM *)txnp;
 
   // change the tos on an active server session
-  ProxyTransaction *ssn = sm->get_server_txn();
+  ProxyTransaction *ssn = sm->server_txn;
   if (nullptr != ssn) {
     NetVConnection *vc = ssn->get_netvc();
     if (vc != nullptr) {
@@ -6005,7 +6005,7 @@ TSHttpTxnServerPacketDscpSet(TSHttpTxn txnp, int dscp)
   HttpSM *sm = (HttpSM *)txnp;
 
   // change the tos on an active server session
-  ProxyTransaction *ssn = sm->get_server_txn();
+  ProxyTransaction *ssn = sm->server_txn;
   if (nullptr != ssn) {
     NetVConnection *vc = ssn->get_netvc();
     if (vc != nullptr) {
@@ -7791,7 +7791,7 @@ TSHttpTxnServerFdGet(TSHttpTxn txnp, int *fdp)
   HttpSM *sm = reinterpret_cast<HttpSM *>(txnp);
   *fdp       = -1;
 
-  ProxyTransaction *ss = sm->get_server_txn();
+  ProxyTransaction *ss = sm->server_txn;
   if (ss == nullptr) {
     return TS_ERROR;
   }

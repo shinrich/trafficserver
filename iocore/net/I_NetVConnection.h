@@ -39,7 +39,6 @@
 #include "YamlSNIConfig.h"
 #include "tscpp/util/TextView.h"
 #include "tscore/IpMap.h"
-#include "P_ALPNSupport.h"
 
 #define CONNECT_SUCCESS 1
 #define CONNECT_FAILURE 0

@@ -31,6 +31,7 @@ public:
   using super_type = Http1Transaction;
 
   Http1ServerTransaction() {}
+  Http1ServerTransaction(ProxySession *session) : super_type(session) {}
   ~Http1ServerTransaction() override {}
 
   ////////////////////

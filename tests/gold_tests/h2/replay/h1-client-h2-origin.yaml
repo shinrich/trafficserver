@@ -381,7 +381,7 @@ sessions:
               - [ Content-Length, 3200 ]
           content:
             encoding: plain
-            size: 3200 
+            size: 3200
 
         proxy-request:
           protocol:
@@ -462,7 +462,7 @@ sessions:
               - [ Content-Length, 3200 ]
           content:
             encoding: plain
-            size: 3200 
+            size: 3200
 
         proxy-request:
           protocol:
@@ -543,7 +543,7 @@ sessions:
               - [ Content-Length, 32 ]
           content:
             encoding: plain
-            size: 32 
+            size: 32
 
         proxy-request:
           protocol:

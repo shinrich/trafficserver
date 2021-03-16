@@ -25,6 +25,7 @@
 #include "HttpDebugNames.h"
 #include "tscore/ink_base64.h"
 #include "Http2CommonSessionInternal.h"
+#include "P_SSLNetVConnection.h"
 
 ClassAllocator<Http2ClientSession, true> http2ClientSessionAllocator("http2ClientSessionAllocator");
 
@@ -56,10 +57,10 @@ Http2ClientSession::destroy()
 void
 Http2ClientSession::free()
 {
-  if (Http2CommonSession::free(this)) {
-    HTTP2_DECREMENT_THREAD_DYN_STAT(HTTP2_STAT_CURRENT_CLIENT_SESSION_COUNT, this->mutex->thread_holding);
-    super::free();
-    THREAD_FREE(this, http2ClientSessionAllocator, this_ethread());
+  auto mutex_thread = this->mutex->thread_holding;
+  if (Http2CommonSession::common_free(this)) {
+    HTTP2_DECREMENT_THREAD_DYN_STAT(HTTP2_STAT_CURRENT_CLIENT_SESSION_COUNT, mutex_thread);
+    THREAD_FREE(this, http2ClientSessionAllocator, mutex_thread);
   }
 }
 
@@ -112,7 +113,7 @@ Http2ClientSession::new_connection(NetVConnection *new_vc, MIOBuffer *iobuf, IOB
 
   this->read_buffer             = iobuf ? iobuf : new_MIOBuffer(HTTP2_HEADER_BUFFER_SIZE_INDEX);
   this->read_buffer->water_mark = connection_state.local_settings.get(HTTP2_SETTINGS_MAX_FRAME_SIZE);
-  this->_reader_buffer_reader   = reader ? reader : this->read_buffer->alloc_reader();
+  this->_read_buffer_reader     = reader ? reader : this->read_buffer->alloc_reader();
 
   // This block size is the buffer size that we pass to SSLWriteBuffer
   auto buffer_block_size_index = iobuffer_size_to_index(Http2::write_buffer_block_size, MAX_BUFFER_SIZE_INDEX);

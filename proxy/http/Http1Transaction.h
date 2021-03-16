@@ -36,29 +36,19 @@ public:
   ~Http1Transaction() = default;
 
   Http1Transaction() {}
-  virtual ~Http1Transaction() {}
+
+  void reset();
 
   ////////////////////
   // Methods
-  void destroy() override; // todo make ~Http1Transaction()
-
-  void
-  transaction_done() override
-  {
-  }
   int get_transaction_id() const override;
+  void set_reader(IOBufferReader *reader);
 
   ////////////////////
   // Variables
 
 protected:
 };
-
-inline void
-Http1Transaction::destroy() // todo make ~Http1Transaction()
-{
-  _sm = nullptr;
-}
 
 inline int
 Http1Transaction::get_transaction_id() const
@@ -68,4 +58,16 @@ Http1Transaction::get_transaction_id() const
   // identifier.
   //
   return _proxy_ssn->get_transact_count();
+}
+
+inline void
+Http1Transaction::reset()
+{
+  _sm = nullptr;
+}
+
+inline void
+Http1Transaction::set_reader(IOBufferReader *reader)
+{
+  _reader = reader;
 }

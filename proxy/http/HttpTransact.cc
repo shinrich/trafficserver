@@ -1898,7 +1898,12 @@ HttpTransact::OSDNSLookup(State *s)
 
       // output the DNS failure error message
       SET_VIA_STRING(VIA_DETAIL_TUNNEL, VIA_DETAIL_TUNNEL_NO_FORWARD);
-      build_error_response(s, HTTP_STATUS_BAD_GATEWAY, "Cannot find server.", "connect#dns_failed");
+      // Set to internal server error so later logging will pick up SQUID_LOG_ERR_DNS_FAIL
+      build_error_response(s, HTTP_STATUS_INTERNAL_SERVER_ERROR, "Cannot find server.", "connect#dns_failed");
+      char *url_str = s->hdr_info.client_request.url_string_get(&s->arena, nullptr);
+      Log::error("%s",
+                 lbw().clip(1).print("DNS Error: looking up {}", ts::bwf::FirstOf(url_str, "<none>")).extend(1).write('\0').data());
+      // s->cache_info.action = CACHE_DO_NO_ACTION;
       TRANSACT_RETURN(SM_ACTION_SEND_ERROR_CACHE_NOOP, nullptr);
     }
     return;
@@ -3974,18 +3979,18 @@ HttpTransact::handle_forward_server_connection_open(State *s)
 
   HostDBApplicationInfo::HttpVersion real_version = s->state_machine->server_txn->get_version(s->hdr_info.server_response);
   if (real_version != s->host_db_info.app.http_data.http_version) {
-    TxnDebug("http_trans", "Update hostdb history of server HTTP version");
+    TxnDebug("http_trans", "Update hostdb history of server HTTP version 0x%x", real_version);
     // Need to update the hostdb
     s->updated_server_version = real_version;
   }
+
+  s->state_machine->do_hostdb_update_if_necessary();
 
   if (s->hdr_info.server_response.status_get() == HTTP_STATUS_CONTINUE ||
       s->hdr_info.server_response.status_get() == HTTP_STATUS_EARLY_HINTS) {
     handle_100_continue_response(s);
     return;
   }
-
-  s->state_machine->do_hostdb_update_if_necessary();
 
   if (s->www_auth_content == CACHE_AUTH_FRESH) {
     // no update is needed - either to serve from cache if authorized,

@@ -55,12 +55,12 @@ public:
   using super           = ProxyTransaction; ///< Parent type.
 
   Http2Stream() {} // Just to satisfy ClassAllocator
-  Http2Stream(ProxySession *session, Http2StreamId sid, ssize_t initial_rwnd);
+  Http2Stream(ProxySession *session, Http2StreamId sid, ssize_t initial_rwnd, bool outbound_connection = false);
   ~Http2Stream();
 
   int main_event_handler(int event, void *edata);
 
-  void release(IOBufferReader *r) override;
+  void release() override;
   void reenable(VIO *vio) override;
   void reenable_write();
   void transaction_done() override;
@@ -139,8 +139,6 @@ public:
   bool has_request_body(int64_t content_length, bool is_chunked_set) const override;
   HostDBApplicationInfo::HttpVersion get_version(HTTPHdr &hdr) const override;
 
-  bool has_request_body(int64_t content_length, bool is_chunked_set) const override;
-
   void mark_milestone(Http2StreamMilestone type);
 
   void increment_data_length(uint64_t length);
@@ -200,7 +198,6 @@ private:
 
   HTTPHdr _recv_header;
   MIOBuffer _recv_buffer = CLIENT_CONNECTION_FIRST_READ_BUFFER_SIZE_INDEX;
-  int64_t read_vio_nbytes;
   VIO read_vio;
   VIO write_vio;
 

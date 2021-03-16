@@ -78,9 +78,8 @@ ServerSessionPool::match(PoolableSession *ss, sockaddr const *addr, CryptoHash c
 bool
 ServerSessionPool::validate_host_sni(HttpSM *sm, NetVConnection *netvc)
 {
-  HttpTransact::State *s = &sm->t_state;
-  bool retval            = true;
-  if (s->scheme == URL_WKSIDX_HTTPS) {
+  bool retval = true;
+  if (sm->t_state.scheme == URL_WKSIDX_HTTPS) {
     // The sni_servername of the connection was set on HttpSM::do_http_server_open
     // by fetching the hostname from the server request.  So the connection should only
     // be reused if the hostname in the new request is the same as the host name in the
@@ -90,7 +89,7 @@ ServerSessionPool::validate_host_sni(HttpSM *sm, NetVConnection *netvc)
       // TS-4468: If the connection matches, make sure the SNI server
       // name (if present) matches the request hostname
       int len              = 0;
-      const char *req_host = s->hdr_info.server_request.host_get(&len);
+      const char *req_host = sm->t_state.hdr_info.server_request.host_get(&len);
       retval               = strncasecmp(session_sni, req_host, len) == 0;
       Debug("http_ss", "validate_host_sni host=%*.s, sni=%s", len, req_host, session_sni);
     }
@@ -108,7 +107,8 @@ ServerSessionPool::validate_sni(HttpSM *sm, NetVConnection *netvc)
   if (sm->t_state.scheme == URL_WKSIDX_HTTPS) {
     const char *session_sni       = netvc->get_sni_servername();
     std::string_view proposed_sni = sm->get_outbound_sni();
-    Debug("http_ss", "validate_sni proposed_sni=%.*s, sni=%s", proposed_sni.length(), proposed_sni.data(), session_sni);
+    Debug("http_ss", "validate_sni proposed_sni=%.*s, sni=%s", static_cast<int>(proposed_sni.length()), proposed_sni.data(),
+          session_sni);
     if (!session_sni || proposed_sni.length() == 0) {
       retval = session_sni == nullptr && proposed_sni.length() == 0;
     } else {
@@ -121,12 +121,11 @@ ServerSessionPool::validate_sni(HttpSM *sm, NetVConnection *netvc)
 bool
 ServerSessionPool::validate_cert(HttpSM *sm, NetVConnection *netvc)
 {
-  HttpTransact::State *s = &sm->t_state;
-  bool retval            = true;
+  bool retval = true;
   // Verify that the cert file associated this connection would match the cert file we would have use to create
   // a new connection.
   //
-  if (s->scheme == URL_WKSIDX_HTTPS) {
+  if (sm->t_state.scheme == URL_WKSIDX_HTTPS) {
     const char *session_cert       = netvc->options.ssl_client_cert_name;
     std::string_view proposed_cert = sm->get_outbound_cert();
     Debug("http_ss", "validate_cert proposed_cert=%.*s, cert=%s", static_cast<int>(proposed_cert.size()), proposed_cert.data(),
@@ -344,10 +343,9 @@ HttpSessionManager::purge_keepalives()
 HSMresult_t
 HttpSessionManager::acquire_session(HttpSM *sm, sockaddr const *ip, const char *hostname, ProxyTransaction *ua_txn)
 {
-  HttpTransact::State *s     = &sm->t_state;
   PoolableSession *to_return = nullptr;
   TSServerSessionSharingMatchMask match_style =
-    static_cast<TSServerSessionSharingMatchMask>(s->txn_conf->server_session_sharing_match);
+    static_cast<TSServerSessionSharingMatchMask>(sm->t_state.txn_conf->server_session_sharing_match);
   CryptoHash hostname_hash;
   HSMresult_t retval = HSM_NOT_FOUND;
 
@@ -403,7 +401,6 @@ HSMresult_t
 HttpSessionManager::_acquire_session(sockaddr const *ip, CryptoHash const &hostname_hash, HttpSM *sm,
                                      TSServerSessionSharingMatchMask match_style, TSServerSessionSharingPoolType pool_type)
 {
-  HttpTransact::State *s     = &sm->t_state;
   PoolableSession *to_return = nullptr;
   HSMresult_t retval         = HSM_NOT_FOUND;
 
@@ -412,10 +409,11 @@ HttpSessionManager::_acquire_session(sockaddr const *ip, CryptoHash const &hostn
   // due to a potential parallel network read on the VC with no mutex guarding
   {
     // Now check to see if we have a connection in our shared connection pool
-    EThread *ethread           = this_ethread();
-    Ptr<ProxyMutex> pool_mutex = (TS_SERVER_SESSION_SHARING_POOL_THREAD == s->http_config_param->server_session_sharing_pool) ?
-                                   ethread->server_session_pool->mutex :
-                                   m_g_pool->mutex;
+    EThread *ethread = this_ethread();
+    Ptr<ProxyMutex> pool_mutex =
+      (TS_SERVER_SESSION_SHARING_POOL_THREAD == sm->t_state.http_config_param->server_session_sharing_pool) ?
+        ethread->server_session_pool->mutex :
+        m_g_pool->mutex;
     MUTEX_TRY_LOCK(lock, pool_mutex, ethread);
     if (lock.is_locked()) {
       if (TS_SERVER_SESSION_SHARING_POOL_THREAD == pool_type) {

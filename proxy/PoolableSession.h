@@ -74,7 +74,7 @@ public:
   TSServerSessionSharingPoolType sharing_pool   = TS_SERVER_SESSION_SHARING_POOL_GLOBAL;
 
   void enable_outbound_connection_tracking(OutboundConnTrack::Group *group);
-  void release_outbound_comnection_tracking();
+  void release_outbound_connection_tracking();
 
   void attach_hostname(const char *hostname);
 
@@ -83,7 +83,7 @@ public:
   void set_private(bool new_private = true);
   bool is_private() const;
 
-  void set_netvc(NetVConnection *newvc);
+  virtual void set_netvc(NetVConnection *newvc);
   virtual bool is_multiplexing() const;
 
   // Used to determine whether the session is for parent proxy
@@ -213,7 +213,7 @@ PoolableSession::enable_outbound_connection_tracking(OutboundConnTrack::Group *g
 }
 
 inline void
-PoolableSession::release_outbound_comnection_tracking()
+PoolableSession::release_outbound_connection_tracking()
 {
   // Update upstream connection tracking data if present.
   if (conn_track_group) {

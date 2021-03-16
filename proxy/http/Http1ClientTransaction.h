@@ -31,15 +31,14 @@ public:
   using super_type = Http1Transaction;
 
   Http1ClientTransaction() {}
+  Http1ClientTransaction(ProxySession *session) : super_type(session) {}
 
   ////////////////////
   // Methods
   void release() override;
-  // void destroy() override; // todo make ~Http1Transaction()
 
   bool allow_half_open() const override;
   void transaction_done() override;
-  // int get_transaction_id() const override;
   void increment_transactions_stat() override;
   void decrement_transactions_stat() override;
 

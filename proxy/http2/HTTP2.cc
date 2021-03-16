@@ -452,6 +452,14 @@ http2_convert_header_from_2_to_1_1(HTTPHdr *headers)
       url_host_set(headers->m_heap, headers->m_http->u.req.m_url_impl, authority, authority_len, true);
 
       headers->field_delete(field);
+
+      // Set the host header field
+      MIMEField *host = headers->field_find(MIME_FIELD_HOST, MIME_LEN_HOST);
+      if (host == nullptr) {
+        host = headers->field_create(MIME_FIELD_HOST, MIME_LEN_HOST);
+        headers->field_attach(host);
+      }
+      host->value_set(headers->m_heap, headers->m_mime, authority, authority_len);
     } else {
       return PARSE_RESULT_ERROR;
     }

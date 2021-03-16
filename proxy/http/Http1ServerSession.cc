@@ -38,6 +38,8 @@
 
 ClassAllocator<Http1ServerSession, true> httpServerSessionAllocator("httpServerSessionAllocator");
 
+Http1ServerSession::Http1ServerSession() : super_type(), trans(this) {}
+
 void
 Http1ServerSession::destroy()
 {
@@ -106,7 +108,7 @@ Http1ServerSession::do_io_close(int alerrno)
   bool debug_p = is_debug_tag_set("http_ss");
 
   if (state == SSN_IN_USE) {
-    HTTP_DECREMENT_DYN_STAT(http_current_server_transactions_stat);
+    trans.decrement_transactions_stat();
   }
   state = SSN_CLOSED;
 
@@ -118,7 +120,7 @@ Http1ServerSession::do_io_close(int alerrno)
   HTTP_SUM_DYN_STAT(http_transactions_per_server_con, transact_count);
 
   // Update upstream connection tracking data if present.
-  this->release_outbound_comnection_tracking();
+  this->release_outbound_connection_tracking();
 
   if (debug_p) {
     Debug("http_ss", "%.*s", static_cast<int>(w.size()), w.data());
@@ -240,4 +242,14 @@ Http1ServerSession ::release_transaction()
   } else {
     ink_release_assert(transact_count == released_transactions);
   }
+}
+
+ProxyTransaction *
+Http1ServerSession::new_transaction()
+{
+  state = SSN_IN_USE;
+  transact_count++;
+  ink_release_assert(transact_count == (released_transactions + 1));
+  trans.set_reader(this->get_reader());
+  return &trans;
 }

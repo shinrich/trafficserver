@@ -61,7 +61,7 @@ sessions:
           version: '2'
           scheme: https
           method: GET
-          url: 
+          url:
             - [ path, { value: /some/path;arg=1;arg=2, as: equal } ]
             - [ query, { value: foo, as: equal } ]
           headers:
@@ -145,7 +145,7 @@ sessions:
           version: '2'
           scheme: https
           method: GET
-          url: 
+          url:
             - [ path, { value: /some/path2, as: equal } ]
             - [ fragment, { value: stuff, as: equal } ]
           headers:
@@ -241,7 +241,7 @@ sessions:
           version: '2'
           scheme: https
           method: POST
-          url: 
+          url:
             - [ path, { value: /some/path3, as: equal }]
             - [ query, { value: foo=bar, as: equal }]
             - [ fragment, {value: target, as: equal }]
@@ -400,7 +400,7 @@ sessions:
               - [ Content-Length, 3200 ]
           content:
             encoding: plain
-            size: 3200 
+            size: 3200
 
         proxy-request:
           protocol:
@@ -492,7 +492,7 @@ sessions:
               - [ Host, data.brian.example.com ]
           content:
             encoding: plain
-            size: 3200 
+            size: 3200
 
         proxy-request:
           protocol:
@@ -573,7 +573,7 @@ sessions:
               - [ Content-Length, 32 ]
           content:
             encoding: plain
-            size: 32 
+            size: 32
 
         proxy-request:
           protocol:

@@ -27,10 +27,11 @@ Test.ContinueOnFail = True
 # Communicate to origin with HTTP/2
 #
 ts = Test.MakeATSProcess("ts", enable_tls="true")
-ts.addSSLfile("ssl/server.pem")
-ts.addSSLfile("ssl/server.key")
+
+# add ssl materials like key, certificates for the server
+ts.addDefaultSSLFiles()
 replay_file = "replay/"
-server = Test.MakeVerifierServerProcess("h2-origin", replay_file, ssl_cert="ssl/server.pem")
+server = Test.MakeVerifierServerProcess("h2-origin", replay_file)
 ts.Disk.records_config.update({
     'proxy.config.ssl.server.cert.path': '{0}'.format(ts.Variables.SSLDir),
     'proxy.config.ssl.server.private_key.path': '{0}'.format(ts.Variables.SSLDir),

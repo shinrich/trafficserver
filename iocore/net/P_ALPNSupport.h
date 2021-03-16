@@ -30,8 +30,6 @@ class SSLNextProtocolSet;
 class SSLNextProtocolAccept;
 class Continuation;
 
-#define MAX_ALPN_STRING 30
-
 class ALPNSupport
 {
 public:

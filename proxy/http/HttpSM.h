@@ -224,9 +224,8 @@ public:
   //  holding the lock for the server session
   void attach_server_session();
 
-  ProxyTransaction *get_server_txn() const;
-
-  ProxyTransaction *get_ua_txn();
+  // Write out the proxy_protocol information on a new outbound connection
+  void write_outbound_proxy_protocol();
 
   void set_server_txn(ProxyTransaction *txn);
   void create_server_txn(PoolableSession *new_session = nullptr);
@@ -354,18 +353,17 @@ protected:
 
 public:
   ProxyTransaction *ua_txn         = nullptr;
+  ProxyTransaction *server_txn     = nullptr;
   BackgroundFill_t background_fill = BACKGROUND_FILL_NONE;
   void set_http_schedule(Continuation *);
   int get_http_schedule(int event, void *data);
 
   History<HISTORY_DEFAULT_SIZE> history;
 
-  HttpVCTableEntry *ua_entry     = nullptr;
-  HttpVCTableEntry *server_entry = nullptr;
-  ProxyTransaction *server_txn   = nullptr;
-
 protected:
   IOBufferReader *ua_raw_buffer_reader = nullptr;
+  HttpVCTableEntry *ua_entry           = nullptr;
+  HttpVCTableEntry *server_entry       = nullptr;
 
   /* Because we don't want to take a session from a shared pool if we know that it will be private,
    * but we cannot set it to private until we have an attached server session.
@@ -641,7 +639,6 @@ public:
 private:
   void cancel_pending_server_connection();
 
-  int _cont_lock_miss_count = 0;
   PostDataBuffers _postbuf;
   int _client_connection_id = -1, _client_transaction_id = -1;
   int _client_transaction_priority_weight = -1, _client_transaction_priority_dependence = -1;
@@ -759,16 +756,4 @@ inline IOBufferReader *
 HttpSM::get_postbuf_clone_reader()
 {
   return this->_postbuf.get_post_data_buffer_clone_reader();
-}
-
-inline ProxyTransaction *
-HttpSM::get_server_txn() const
-{
-  return server_txn;
-}
-
-inline ProxyTransaction *
-HttpSM::get_ua_txn()
-{
-  return ua_txn;
 }

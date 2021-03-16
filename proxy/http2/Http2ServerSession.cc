@@ -26,6 +26,7 @@
 #include "tscore/ink_base64.h"
 #include "Http2CommonSessionInternal.h"
 #include "HttpSessionManager.h"
+#include "P_SSLNetVConnection.h"
 
 ClassAllocator<Http2ServerSession> http2ServerSessionAllocator("http2ServerSessionAllocator");
 
@@ -44,7 +45,7 @@ Http2ServerSession::destroy()
   if (!in_destroy) {
     write_vio = nullptr;
     this->remove_session();
-    this->release_outbound_comnection_tracking();
+    this->release_outbound_connection_tracking();
     in_destroy = true;
     REMEMBER(NO_EVENT, this->recursion)
     Http2SsnDebug("session destroy");
@@ -63,12 +64,10 @@ Http2ServerSession::free()
 {
   ink_release_assert(in_destroy);
   test_session();
-  if (Http2CommonSession::free(this)) {
-    HTTP2_DECREMENT_THREAD_DYN_STAT(HTTP2_STAT_CURRENT_SERVER_SESSION_COUNT, this->mutex->thread_holding);
-    ink_release_assert(_ip_link._next == nullptr && _ip_link._prev == nullptr && _fqdn_link._next == nullptr &&
-                       _fqdn_link._prev == nullptr);
-    super::free();
-    THREAD_FREE(this, http2ServerSessionAllocator, this_ethread());
+  auto mutex_thread = this->mutex->thread_holding;
+  if (Http2CommonSession::common_free(this)) {
+    HTTP2_DECREMENT_THREAD_DYN_STAT(HTTP2_STAT_CURRENT_SERVER_SESSION_COUNT, mutex_thread);
+    THREAD_FREE(this, http2ServerSessionAllocator, mutex_thread);
   }
 }
 
@@ -81,7 +80,7 @@ Http2ServerSession::start()
   HTTP2_SET_SESSION_HANDLER(&Http2ServerSession::state_start_frame_read);
 
   VIO *read_vio = this->do_io_read(this, INT64_MAX, this->read_buffer);
-  write_vio     = this->do_io_write(this, INT64_MAX, this->sm_writer);
+  write_vio     = this->do_io_write(this, INT64_MAX, this->_write_buffer_reader);
 
   this->connection_state.init();
 
@@ -130,13 +129,13 @@ Http2ServerSession::new_connection(NetVConnection *new_vc, MIOBuffer *iobuf, IOB
 
   this->read_buffer             = iobuf ? iobuf : new_MIOBuffer(HTTP2_HEADER_BUFFER_SIZE_INDEX);
   this->read_buffer->water_mark = connection_state.local_settings.get(HTTP2_SETTINGS_MAX_FRAME_SIZE);
-  this->_reader                 = reader ? reader : this->read_buffer->alloc_reader();
+  this->_read_buffer_reader     = reader ? reader : this->read_buffer->alloc_reader();
 
   // Set write buffer size to max size of TLS record (16KB)
   // This block size is the buffer size that we pass to SSLWriteBuffer
   auto buffer_block_size_index = iobuffer_size_to_index(Http2::write_buffer_block_size, MAX_BUFFER_SIZE_INDEX);
   this->write_buffer           = new_MIOBuffer(buffer_block_size_index);
-  this->sm_writer              = this->write_buffer->alloc_reader();
+  this->_write_buffer_reader   = this->write_buffer->alloc_reader();
   this->_write_size_threshold  = index_to_buffer_size(buffer_block_size_index) * Http2::write_size_threshold;
 
   this->_handle_if_ssl(new_vc);

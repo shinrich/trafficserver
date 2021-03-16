@@ -177,6 +177,7 @@ set_paths_helper(const char *path, const char *filename, char **final_path, char
     *final_filename = filename ? ats_stringdup(Layout::get()->relative_to(path, filename)) : nullptr;
   }
 }
+
 void
 SSLConfigParams::initialize()
 {

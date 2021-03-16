@@ -35,7 +35,9 @@ ts.Disk.records_config.update({
     'proxy.config.http.transaction_no_activity_timeout_in': 6,
     'proxy.config.http.accept_no_activity_timeout': 2,
     'proxy.config.net.default_inactivity_timeout': 10,
-    'proxy.config.net.defer_accept': 0  # Must turn off defer accept to test the raw TCP case
+    'proxy.config.net.defer_accept': 0,  # Must turn off defer accept to test the raw TCP case
+    'proxy.config.diags.debug.enabled': 1,
+    'proxy.config.diags.debug.tags': 'http'
 })
 
 ts.Disk.ssl_multicert_config.AddLine(

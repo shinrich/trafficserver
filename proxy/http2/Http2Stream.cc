@@ -40,7 +40,7 @@
 
 ClassAllocator<Http2Stream, true> http2StreamAllocator("http2StreamAllocator");
 
-Http2Stream::Http2Stream(ProxySession *session, Http2StreamId sid, ssize_t initial_rwnd)
+Http2Stream::Http2Stream(ProxySession *session, Http2StreamId sid, ssize_t initial_rwnd, bool outbound_connection)
   : super(session), _id(sid), _client_rwnd(initial_rwnd)
 {
   SET_HANDLER(&Http2Stream::main_event_handler);
@@ -85,16 +85,16 @@ Http2Stream::~Http2Stream()
   if (_proxy_ssn) {
     cid = _proxy_ssn->connection_id();
 
-    Http2ClientSession *h2_proxy_ssn = static_cast<Http2ClientSession *>(_proxy_ssn);
-    SCOPED_MUTEX_LOCK(lock, h2_proxy_ssn->connection_state.mutex, this_ethread());
+    Http2ConnectionState &connection_state = this->get_connection_state();
+    SCOPED_MUTEX_LOCK(lock, connection_state.mutex, this_ethread());
     // Make sure the stream is removed from the stream list and priority tree
     // In many cases, this has been called earlier, so this call is a no-op
-    h2_proxy_ssn->connection_state.delete_stream(this);
+    connection_state.delete_stream(this);
 
-    h2_proxy_ssn->connection_state.decrement_stream_count();
+    connection_state.decrement_stream_count();
 
     // Update session's stream counts, so it accurately goes into keep-alive state
-    h2_proxy_ssn->connection_state.release_stream();
+    connection_state.release_stream();
 
     // Do not access `_proxy_ssn` in below. It might be freed by `release_stream`.
   }
@@ -127,11 +127,11 @@ Http2Stream::~Http2Stream()
           this->_milestones.difference_sec(Http2StreamMilestone::OPEN, Http2StreamMilestone::CLOSE));
   }
 
-  _req_header.destroy();
-  response_header.destroy();
+  _recv_header.destroy();
+  _send_header.destroy();
 
   // Drop references to all buffer data
-  this->_request_buffer.clear();
+  this->_recv_buffer.clear();
 
   // Free the mutexes in the VIO
   read_vio.mutex.clear();
@@ -452,7 +452,8 @@ void
 Http2Stream::do_io_close(int /* flags */)
 {
   SCOPED_MUTEX_LOCK(lock, this->mutex, this_ethread());
-  super::release();
+
+  this->decrement_transactions_stat();
 
   if (!closed) {
     REMEMBER(NO_EVENT, this->reentrancy_count);
@@ -515,7 +516,7 @@ Http2Stream::terminate_if_possible()
 
     Http2ConnectionState &state = this->get_connection_state();
     SCOPED_MUTEX_LOCK(lock, state.mutex, this_ethread());
-    destroy();
+    THREAD_FREE(this, http2StreamAllocator, this_ethread());
   }
 }
 
@@ -986,7 +987,8 @@ Http2Stream::clear_io_events()
 void
 Http2Stream::release()
 {
-  super::release();
+  this->decrement_transactions_stat();
+
   if (this->is_outbound_connection()) {
     // No transaction done for outbound connection
     // clear link to HttpSM here.
@@ -1180,12 +1182,6 @@ Http2Stream::set_tx_error_code(ProxyError e)
   if (!this->is_outbound_connection() && this->_sm) {
     this->_sm->t_state.client_info.tx_error_code = e;
   }
-}
-
-bool
-Http2Stream::has_request_body(int64_t content_length, bool is_chunked_set) const
-{
-  return has_body;
 }
 
 HostDBApplicationInfo::HttpVersion

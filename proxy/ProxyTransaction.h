@@ -44,7 +44,6 @@ public:
   Action *adjust_thread(Continuation *cont, int event, void *data);
   virtual void release()          = 0;
   virtual void transaction_done() = 0;
-  virtual void destroy();
 
   virtual void set_active_timeout(ink_hrtime timeout_in);
   virtual void set_inactivity_timeout(ink_hrtime timeout_in);
@@ -70,6 +69,7 @@ public:
   virtual int get_transaction_priority_weight() const;
   virtual int get_transaction_priority_dependence() const;
   virtual bool allow_half_open() const;
+
   virtual void increment_transactions_stat() = 0;
   virtual void decrement_transactions_stat() = 0;
 
@@ -93,9 +93,6 @@ public:
   virtual bool has_request_body(int64_t content_length, bool is_chunked_set) const;
 
   sockaddr const *get_remote_addr() const;
-
-  // Returns true if there is a request body for this request
-  virtual bool has_request_body(int64_t content_length, bool is_chunked_set) const;
 
   virtual HostDBApplicationInfo::HttpVersion get_version(HTTPHdr &hdr) const;
 
@@ -136,8 +133,6 @@ public:
   /// Variables
   //
   HttpSessionAccept::Options upstream_outbound_options; // overwritable copy of options
-
-  void set_reader(IOBufferReader *reader);
 
   IOBufferReader *get_reader();
 
@@ -291,12 +286,6 @@ ProxyTransaction::adjust_thread(Continuation *cont, int event, void *data)
     }
   }
   return nullptr;
-}
-
-inline void
-ProxyTransaction::set_reader(IOBufferReader *reader)
-{
-  _reader = reader;
 }
 
 inline IOBufferReader *

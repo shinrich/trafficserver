@@ -60,7 +60,7 @@ class Http2CommonSession
 public:
   using SessionHandler = int (Http2CommonSession::*)(int, void *);
 
-  bool free(ProxySession *ssn);
+  bool common_free(ProxySession *ssn);
 
   // Record history from Http2ConnectionState
   void remember(const SourceLocation &location, int event, int reentrant = NO_REENTRANT);
@@ -110,10 +110,12 @@ protected:
   History<HISTORY_DEFAULT_SIZE> _history;
   Milestones<Http2SsnMilestone, static_cast<size_t>(Http2SsnMilestone::LAST_ENTRY)> _milestones;
 
-  MIOBuffer *write_buffer = nullptr;
-  MIOBuffer *read_buffer  = nullptr;
-  VIO *write_vio          = nullptr;
-  IOBufferReader *_reader = nullptr;
+  MIOBuffer *read_buffer              = nullptr;
+  IOBufferReader *_read_buffer_reader = nullptr;
+
+  VIO *write_vio                       = nullptr;
+  MIOBuffer *write_buffer              = nullptr;
+  IOBufferReader *_write_buffer_reader = nullptr;
 
   std::unordered_set<std::string> *_h2_pushed_urls = nullptr;
 
@@ -127,7 +129,6 @@ protected:
 
   int64_t read_from_early_data        = 0;
   bool cur_frame_from_early_data      = false;
-  IOBufferReader *sm_writer           = nullptr;
   Http2FrameHeader current_hdr        = {0, 0, 0, 0};
   uint32_t _write_size_threshold      = 0;
   uint32_t _write_time_threshold      = 100;
