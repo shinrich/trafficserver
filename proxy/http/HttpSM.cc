@@ -2347,8 +2347,8 @@ HttpSM::state_send_server_request_header(int event, void *data)
 bool
 HttpSM::origin_multiplexed() const
 {
-  // return true;
-  return (t_state.host_db_info.app.http_data.http_version == HostDBApplicationInfo::HTTP_VERSION_2);
+  return (t_state.host_db_info.app.http_data.http_version == HostDBApplicationInfo::HTTP_VERSION_2 ||
+          t_state.host_db_info.app.http_data.http_version == HostDBApplicationInfo::HTTP_VERSION_UNDEFINED);
 }
 
 void
