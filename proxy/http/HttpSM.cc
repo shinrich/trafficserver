@@ -4090,7 +4090,6 @@ HttpSM::tunnel_handler_post_server(int event, HttpTunnelConsumer *c)
 
   // We may be reading from a transform.  In that case, we
   //   want to close the transform
-  HttpTunnelProducer *ua_producer;
   if (c->producer->vc_type == HT_TRANSFORM) {
     if (c->producer->handler_state == HTTP_SM_TRANSFORM_OPEN) {
       ink_assert(c->producer->vc == post_transform_info.vc);
@@ -4099,9 +4098,6 @@ HttpSM::tunnel_handler_post_server(int event, HttpTunnelConsumer *c)
       c->producer->self_consumer->alive = false;
       ink_release_assert(vc_table.find_entry(c->producer->vc) == nullptr);
     }
-    ua_producer = c->producer->self_consumer->producer;
-  } else {
-    ua_producer = c->producer;
   }
 
   switch (event) {

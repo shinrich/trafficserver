@@ -964,7 +964,7 @@ rcv_continuation_frame(Http2ConnectionState &cstate, const Http2Frame &frame)
   } else {
     switch (stream->get_state()) {
     case Http2StreamState::HTTP2_STREAM_STATE_HALF_CLOSED_REMOTE:
-      return Http2Error(Http2ErrorClass::HTTP2_ERROR_CLASS_STREAM, Http2ErrorCode::HTTP2_ERROR_STREAM_CLOSED,
+      return Http2Error(Http2ErrorClass::HTTP2_ERROR_CLASS_CONNECTION, Http2ErrorCode::HTTP2_ERROR_STREAM_CLOSED,
                         "continuation half close remote");
     case Http2StreamState::HTTP2_STREAM_STATE_IDLE:
       break;
