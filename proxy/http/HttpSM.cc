@@ -6609,7 +6609,10 @@ void
 HttpSM::attach_server_session()
 {
   hsm_release_assert(this->server_entry == nullptr);
-  server_transact_count = server_txn->get_proxy_ssn()->get_transact_count();
+  // In the h1 only origin version, the transact_count was updated after making this assignment.
+  // The SSN-TXN-COUNT option in header rewrite relies on this fact, so we decrement here so the
+  // plugin API interface is consistent as we move to more protocols to origin
+  server_transact_count = server_txn->get_proxy_ssn()->get_transact_count() - 1;
 
   // update the dst_addr when using an existing session
   // for e.g using Host based session pools may ignore the DNS IP
