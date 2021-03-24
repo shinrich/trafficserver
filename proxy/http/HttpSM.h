@@ -226,6 +226,9 @@ public:
   //  holding the lock for the server session
   void attach_server_session();
 
+  // Write out the proxy_protocol information on a new outbound connection
+  void write_outbound_proxy_protocol();
+
   ProxyTransaction *get_server_txn() const;
 
   ProxyTransaction *get_ua_txn();

@@ -4934,9 +4934,9 @@ TSHttpTxnServerVConnGet(TSHttpTxn txnp)
   sdk_assert(sdk_sanity_check_txn(txnp) == TS_SUCCESS);
   HttpSM *sm = reinterpret_cast<HttpSM *>(txnp);
   if (sm != nullptr) {
-    PoolableSession *ss = sm->get_server_session();
-    if (ss != nullptr) {
-      vconn = reinterpret_cast<TSVConn>(ss->get_netvc());
+    ProxyTransaction *st = sm->get_server_txn();
+    if (st != nullptr) {
+      vconn = reinterpret_cast<TSVConn>(st->get_netvc());
     }
   }
   return vconn;

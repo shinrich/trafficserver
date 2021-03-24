@@ -2002,6 +2002,7 @@ HttpSM::state_http_server_open(int event, void *data)
   case CONNECT_EVENT_TXN:
     Debug("http", "[%" PRId64 "] TCP Handshake complete via CONNECT_EVENT_TXN", sm_id);
     this->create_server_txn(static_cast<PoolableSession *>(data));
+    write_outbound_proxy_protocol();
     attach_server_session();
     handle_http_server_open();
     return 0;
@@ -2011,6 +2012,7 @@ HttpSM::state_http_server_open(int event, void *data)
     // Update the time out to the regular connection timeout.
     SMDebug("http_ss", "[%" PRId64 "] TCP Handshake complete", sm_id);
     this->create_server_txn();
+    write_outbound_proxy_protocol();
     attach_server_session();
     t_state.current.server->clear_connect_fail();
     handle_http_server_open();
@@ -6609,6 +6611,17 @@ HttpSM::write_header_into_buffer(HTTPHdr *h, MIOBuffer *b)
   } while (!done);
 
   return dumpoffset;
+}
+
+void
+HttpSM::write_outbound_proxy_protocol()
+{
+  int64_t nbytes = 1;
+  if (t_state.txn_conf->proxy_protocol_out >= 0) {
+    nbytes = do_outbound_proxy_protocol(server_txn->get_reader()->mbuf, server_txn->get_netvc(), ua_txn->get_netvc(),
+                                        t_state.txn_conf->proxy_protocol_out);
+  }
+  server_entry->write_vio = server_txn->do_io_write(this, nbytes, server_txn->get_reader());
 }
 
 void
