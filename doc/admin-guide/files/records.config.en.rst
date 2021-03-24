@@ -3681,7 +3681,7 @@ Client-Related Configuration
 
 .. ts:cv:: CONFIG proxy.config.ssl.client.alpn_protocol STRING ""
 
-   Set the alpn string that ATS will send to origin during new connections.  By default no ALPN string will be set.  
+   Set the alpn string that ATS will send to origin during new connections.  By default no ALPN string will be set.
    To enable HTTP/2 communication to the origin, set this to "h2,http1.1".
 
    :overridable:
