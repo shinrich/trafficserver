@@ -367,10 +367,12 @@ ConnectingEntry::state_http_server_open(int event, void *data)
     Debug("http_connect", "Stop %" PRId64 " state machines waiting for failed origin", _connect_sms.size());
     this->remove_entry();
     int vc_provided_cert = _netvc->provided_cert();
+    int lerrno           = _netvc->lerrno;
     _netvc->do_io_close();
     while (!_connect_sms.empty()) {
       auto entry = _connect_sms.begin();
       SCOPED_MUTEX_LOCK(lock, (*entry)->mutex, this_ethread());
+      (*entry)->t_state.set_connect_fail(lerrno);
       (*entry)->server_connection_provided_cert = vc_provided_cert;
       (*entry)->handleEvent(event, data);
       _connect_sms.erase(entry);
@@ -1975,14 +1977,6 @@ HttpSM::state_http_server_open(int event, void *data)
   /* fallthrough */
   case VC_EVENT_ERROR:
   case NET_EVENT_OPEN_FAILED: {
-    if (server_txn) {
-      NetVConnection *vc = server_txn->get_netvc();
-      if (vc) {
-        t_state.set_connect_fail(vc->lerrno);
-        server_connection_provided_cert = vc->provided_cert();
-      }
-    }
-
     t_state.current.state = HttpTransact::CONNECTION_ERROR;
     t_state.outbound_conn_track_state.clear();
     if (_netvc != nullptr) {
