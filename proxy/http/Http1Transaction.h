@@ -33,43 +33,36 @@ public:
   using super_type = ProxyTransaction;
 
   Http1Transaction() {}
+  virtual ~Http1Transaction() {}
 
   ////////////////////
   // Methods
-  void release(IOBufferReader *r) override;
   void destroy() override; // todo make ~Http1Transaction()
 
-  // Implement VConnection interface.
-  VIO *do_io_read(Continuation *c, int64_t nbytes = INT64_MAX, MIOBuffer *buf = nullptr) override;
-  VIO *do_io_write(Continuation *c = nullptr, int64_t nbytes = INT64_MAX, IOBufferReader *buf = nullptr,
-                   bool owner = false) override;
-  void do_io_close(int lerrno = -1) override;
-  void do_io_shutdown(ShutdownHowTo_t howto) override;
-  void reenable(VIO *vio) override;
-
-  bool allow_half_open() const override;
-  void set_active_timeout(ink_hrtime timeout_in) override;
-  void set_inactivity_timeout(ink_hrtime timeout_in) override;
-  void cancel_inactivity_timeout() override;
-  void transaction_done() override;
+  void
+  transaction_done() override
+  {
+  }
   int get_transaction_id() const override;
-  void increment_client_transactions_stat() override;
-  void decrement_client_transactions_stat() override;
-
-  void set_reader(IOBufferReader *reader);
 
   ////////////////////
   // Variables
 
 protected:
-  bool outbound_transparent{false};
 };
 
-//////////////////////////////////
-// INLINE
-
 inline void
-Http1Transaction::set_reader(IOBufferReader *reader)
+Http1Transaction::destroy() // todo make ~Http1Transaction()
 {
-  _reader = reader;
+  _sm = nullptr;
+}
+
+inline int
+Http1Transaction::get_transaction_id() const
+{
+  // For HTTP/1 there is only one on-going transaction at a time per session/connection.  Therefore, the transaction count can be
+  // presumed not to increase during the lifetime of a transaction, thus this function will return a consistent unique transaction
+  // identifier.
+  //
+  return _proxy_ssn->get_transact_count();
 }

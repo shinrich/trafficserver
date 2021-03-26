@@ -695,6 +695,7 @@ HttpTunnel::chain(HttpTunnelConsumer *c, HttpTunnelProducer *p)
 void
 HttpTunnel::tunnel_run(HttpTunnelProducer *p_arg)
 {
+  ++reentrancy_count;
   Debug("http_tunnel", "tunnel_run started, p_arg is %s", p_arg ? "provided" : "NULL");
   if (p_arg) {
     producer_run(p_arg);
@@ -710,6 +711,7 @@ HttpTunnel::tunnel_run(HttpTunnelProducer *p_arg)
       }
     }
   }
+  --reentrancy_count;
 
   // It is possible that there was nothing to do
   //   due to a all transfers being zero length
@@ -954,6 +956,7 @@ HttpTunnel::producer_run(HttpTunnelProducer *p)
           p->handler_state = HTTP_SM_POST_SUCCESS;
         }
       }
+      Debug("http_tunnel", "Start write vio %ld bytes", c_write);
       // Start the writes now that we know we will consume all the initial data
       c->write_vio = c->vc->do_io_write(this, c_write, c->buffer_reader);
       ink_assert(c_write > 0);
@@ -978,7 +981,15 @@ HttpTunnel::producer_run(HttpTunnelProducer *p)
       if (read_start_pos > 0) {
         p->read_vio = ((CacheVC *)p->vc)->do_io_pread(this, producer_n, p->read_buffer, read_start_pos);
       } else {
+        Debug("http_tunnel", "Start read vio %ld bytes", producer_n);
         p->read_vio = p->vc->do_io_read(this, producer_n, p->read_buffer);
+      }
+    }
+  } else {
+    // If the producer is not alive (precomplete) make sure to kick the consumers
+    for (c = p->consumer_list.head; c; c = c->link.next) {
+      if (c->alive && c->write_vio) {
+        c->write_vio->reenable();
       }
     }
   }
@@ -1010,7 +1021,7 @@ HttpTunnel::producer_handler_dechunked(int event, HttpTunnelProducer *p)
       HttpTunnelConsumer *c;
       for (c = p->consumer_list.head; c; c = c->link.next) {
         if (c->alive) {
-          c->write_vio->nbytes = p->chunked_handler.chunked_size;
+          c->write_vio->nbytes = p->chunked_handler.chunked_size + p->chunked_handler.skip_bytes;
           // consumer_handler(VC_EVENT_WRITE_COMPLETE, c);
         }
       }
@@ -1104,14 +1115,6 @@ HttpTunnel::producer_handler(int event, HttpTunnelProducer *p)
   // Handle chunking/dechunking/chunked-passthrough if necessary.
   if (p->do_chunking) {
     event = producer_handler_dechunked(event, p);
-
-    // If we were in PRECOMPLETE when this function was called
-    // and we are doing chunking, then we just wrote the last
-    // chunk in the the function call above.  We are done with the
-    // tunnel.
-    if (event == HTTP_TUNNEL_EVENT_PRECOMPLETE) {
-      event = VC_EVENT_EOS;
-    }
   } else if (p->do_dechunking || p->do_chunked_passthru) {
     event = producer_handler_chunked(event, p);
   } else {
@@ -1150,6 +1153,7 @@ HttpTunnel::producer_handler(int event, HttpTunnelProducer *p)
     // Data read from producer, reenable consumers
     for (c = p->consumer_list.head; c; c = c->link.next) {
       if (c->alive && c->write_vio) {
+        Debug("http_redirect", "Read ready alive");
         c->write_vio->reenable();
       }
     }
@@ -1159,6 +1163,8 @@ HttpTunnel::producer_handler(int event, HttpTunnelProducer *p)
     // If the write completes on the stack (as it can for http2), then
     // consumer could have called back by this point.  Must treat this as
     // a regular read complete (falling through to the following cases).
+    p->bytes_read = p->init_bytes_done;
+    // FALLTHROUGH
 
   case VC_EVENT_READ_COMPLETE:
   case VC_EVENT_EOS:
@@ -1172,7 +1178,6 @@ HttpTunnel::producer_handler(int event, HttpTunnelProducer *p)
       //   the message length being a property of the encoding)
       //   In that case, we won't have done a do_io so there
       //   will not be vio
-      p->bytes_read = 0;
     }
 
     // callback the SM to notify of completion
@@ -1187,9 +1192,12 @@ HttpTunnel::producer_handler(int event, HttpTunnelProducer *p)
     sm_callback = true;
     p->update_state_if_not_set(HTTP_SM_POST_SUCCESS);
 
-    // Data read from producer, reenable consumers
+    // Kick off the consumers if appropriate
     for (c = p->consumer_list.head; c; c = c->link.next) {
       if (c->alive && c->write_vio) {
+        if (c->write_vio->nbytes == INT64_MAX) {
+          c->write_vio->nbytes = p->bytes_read + p->init_bytes_done - c->skip_bytes;
+        }
         c->write_vio->reenable();
       }
     }
@@ -1234,7 +1242,7 @@ HttpTunnel::consumer_reenable(HttpTunnelConsumer *c)
 {
   HttpTunnelProducer *p = c->producer;
 
-  if (p && p->alive && p->read_buffer->write_avail() > 0) {
+  if (p && p->alive) {
     // Only do flow control if enabled and the producer is an external
     // source.  Otherwise disable by making the backlog zero. Because
     // the backlog short cuts quit when the value is equal (or
@@ -1312,6 +1320,10 @@ HttpTunnel::consumer_handler(int event, HttpTunnelConsumer *c)
   switch (event) {
   case VC_EVENT_WRITE_READY:
     this->consumer_reenable(c);
+    // Once we get a write ready from the origin, we can assume the connect to some degree succeeded
+    if (c->vc_type == HT_HTTP_SERVER) {
+      sm->t_state.current.server->clear_connect_fail();
+    }
     break;
 
   case VC_EVENT_WRITE_COMPLETE:
@@ -1321,6 +1333,9 @@ HttpTunnel::consumer_handler(int event, HttpTunnelConsumer *c)
   case VC_EVENT_INACTIVITY_TIMEOUT:
     ink_assert(c->alive);
     ink_assert(c->buffer_reader);
+    if (c->write_vio) {
+      c->write_vio->reenable();
+    }
     c->alive = false;
 
     c->bytes_written = c->write_vio ? c->write_vio->ndone : 0;

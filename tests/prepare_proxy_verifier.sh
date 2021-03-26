@@ -18,16 +18,16 @@
 #  limitations under the License.
 
 ROOT=${ROOT:-$(cd $(dirname $0) && git rev-parse --show-toplevel)}
-pv_top_dir="${ROOT}/tests/proxy-verifier"
-pv_unpack_dir="${pv_top_dir}/unpack"
-bin_dir="${pv_unpack_dir}/bin"
 pv_name="proxy-verifier"
-pv_version="v1.10.0"
+pv_version=`cat ${ROOT}/tests/proxy-verifier-version.txt`
+pv_top_dir="${ROOT}/tests/proxy-verifier"
+pv_unpack_dir="${pv_top_dir}/unpack/${pv_version}"
+bin_dir="${pv_unpack_dir}/bin"
 pv_dir="${pv_name}-${pv_version}"
 pv_tar_filename="${pv_dir}.tar.gz"
 pv_tar="${pv_top_dir}/${pv_tar_filename}"
 pv_tar_url="https://ci.trafficserver.apache.org/bintray/${pv_tar_filename}"
-expected_sha1="f9ad11942f9098733e0286112a3c17975ebed363"
+expected_sha1="7e17ea3fa13bede2a33a9a1d23425f23cbd16521"
 pv_client="${bin_dir}/verifier-client"
 pv_server="${bin_dir}/verifier-server"
 TAR=${TAR:-tar}

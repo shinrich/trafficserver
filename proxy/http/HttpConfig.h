@@ -65,6 +65,7 @@ enum {
   http_current_client_transactions_stat,
   http_total_incoming_connections_stat,
   http_current_server_transactions_stat,
+  http_pooled_server_connections_stat,
 
   //  Http Abort information (from HttpNetConnection)
   http_ua_msecs_counts_errors_pre_accept_hangups_stat,
@@ -702,6 +703,7 @@ struct OverridableHttpConfigParams {
   char *ssl_client_cert_filename        = nullptr;
   char *ssl_client_private_key_filename = nullptr;
   char *ssl_client_ca_cert_filename     = nullptr;
+  char *ssl_client_alpn_protocols       = nullptr;
 
   // Host Resolution order
   HostResData host_res_data;

@@ -35,6 +35,7 @@
 #include <ctime>
 #include "tscore/ParseRules.h"
 #include "tscore/Filenames.h"
+#include "tscore/bwf_std_format.h"
 #include "HTTP.h"
 #include "HdrUtils.h"
 #include "logging/Log.h"
@@ -88,6 +89,9 @@ static char range_type[] = "multipart/byteranges; boundary=RANGE_SEPARATOR";
   SpecificDebug((s->state_machine->debug_on), tag, "[%" PRId64 "] " fmt, s->state_machine->sm_id, ##__VA_ARGS__)
 
 extern HttpBodyFactory *body_factory;
+
+// Handy typedef for short (single line) message generation.
+using lbw = ts::LocalBufferWriter<256>;
 
 // wrapper to choose between a remap next hop strategy or use parent.config
 // remap next hop strategy is preferred
@@ -1498,7 +1502,8 @@ HttpTransact::HandleRequest(State *s)
       }
     }
     if (s->txn_conf->request_buffer_enabled &&
-        (s->hdr_info.request_content_length > 0 || s->client_info.transfer_encoding == CHUNKED_ENCODING)) {
+        s->state_machine->ua_txn->has_request_body(s->hdr_info.request_content_length,
+                                                   s->client_info.transfer_encoding == CHUNKED_ENCODING)) {
       TRANSACT_RETURN(SM_ACTION_WAIT_FOR_FULL_BODY, nullptr);
     }
   }
@@ -1817,10 +1822,14 @@ HttpTransact::ReDNSRoundRobin(State *s)
     s->next_action = how_to_open_connection(s);
   } else {
     // Our ReDNS failed so output the DNS failure error message
-    build_error_response(s, HTTP_STATUS_BAD_GATEWAY, "Cannot find server.", "connect#dns_failed");
+    // Set to internal server error so later logging will pick up SQUID_LOG_ERR_DNS_FAIL
+    build_error_response(s, HTTP_STATUS_INTERNAL_SERVER_ERROR, "Cannot find server.", "connect#dns_failed");
     s->cache_info.action = CACHE_DO_NO_ACTION;
     s->next_action       = SM_ACTION_SEND_ERROR_CACHE_NOOP;
     //  s->next_action = PROXY_INTERNAL_CACHE_NOOP;
+    char *url_str = s->hdr_info.client_request.url_string_get(&s->arena, nullptr);
+    Log::error("%s",
+               lbw().clip(1).print("DNS Error: looking up {}", ts::bwf::FirstOf(url_str, "<none>")).extend(1).write('\0').data());
   }
 
   return;
@@ -1881,7 +1890,12 @@ HttpTransact::OSDNSLookup(State *s)
 
       // output the DNS failure error message
       SET_VIA_STRING(VIA_DETAIL_TUNNEL, VIA_DETAIL_TUNNEL_NO_FORWARD);
-      build_error_response(s, HTTP_STATUS_BAD_GATEWAY, "Cannot find server.", "connect#dns_failed");
+      // Set to internal server error so later logging will pick up SQUID_LOG_ERR_DNS_FAIL
+      build_error_response(s, HTTP_STATUS_INTERNAL_SERVER_ERROR, "Cannot find server.", "connect#dns_failed");
+      char *url_str = s->hdr_info.client_request.url_string_get(&s->arena, nullptr);
+      Log::error("%s",
+                 lbw().clip(1).print("DNS Error: looking up {}", ts::bwf::FirstOf(url_str, "<none>")).extend(1).write('\0').data());
+      // s->cache_info.action = CACHE_DO_NO_ACTION;
       TRANSACT_RETURN(SM_ACTION_SEND_ERROR_CACHE_NOOP, nullptr);
     }
     return;
@@ -3693,26 +3707,16 @@ HttpTransact::handle_response_from_server(State *s)
   case OUTBOUND_CONGESTION:
     TxnDebug("http_trans", "[handle_response_from_server] Error. congestion control -- congested.");
     SET_VIA_STRING(VIA_DETAIL_SERVER_CONNECT, VIA_DETAIL_SERVER_FAILURE);
-    s->current.server->set_connect_fail(EUSERS); // too many users
+    s->set_connect_fail(EUSERS); // too many users
     handle_server_connection_not_open(s);
     break;
   case OPEN_RAW_ERROR:
-  /* fall through */
   case CONNECTION_ERROR:
-  /* fall through */
   case STATE_UNDEFINED:
-  /* fall through */
   case INACTIVE_TIMEOUT:
-  /* fall through */
   case PARSE_ERROR:
-  /* fall through */
   case CONNECTION_CLOSED:
-  /* fall through */
   case BAD_INCOMING_RESPONSE:
-    // Set to generic I/O error if not already set specifically.
-    if (!s->current.server->had_connect_fail()) {
-      s->current.server->set_connect_fail(EIO);
-    }
 
     if (is_server_negative_cached(s)) {
       max_connect_retries = s->txn_conf->connect_attempts_max_retries_dead_server - 1;
@@ -3760,6 +3764,7 @@ HttpTransact::handle_response_from_server(State *s)
         return;
       }
     } else {
+      error_log_connection_failure(s, s->current.state);
       TxnDebug("http_trans", "[handle_response_from_server] Error. No more retries.");
       SET_VIA_STRING(VIA_DETAIL_SERVER_CONNECT, VIA_DETAIL_SERVER_FAILURE);
       handle_server_connection_not_open(s);
@@ -3768,7 +3773,7 @@ HttpTransact::handle_response_from_server(State *s)
   case ACTIVE_TIMEOUT:
     TxnDebug("http_trans", "[hrfs] connection not alive");
     SET_VIA_STRING(VIA_DETAIL_SERVER_CONNECT, VIA_DETAIL_SERVER_FAILURE);
-    s->current.server->set_connect_fail(ETIMEDOUT);
+    s->set_connect_fail(ETIMEDOUT);
     handle_server_connection_not_open(s);
     break;
   default:
@@ -3809,6 +3814,28 @@ HttpTransact::delete_server_rr_entry(State *s, int max_retries)
   TRANSACT_RETURN(SM_ACTION_ORIGIN_SERVER_RR_MARK_DOWN, ReDNSRoundRobin);
 }
 
+void
+HttpTransact::error_log_connection_failure(State *s, ServerState_t conn_state)
+{
+  char addrbuf[INET6_ADDRSTRLEN];
+
+  TxnDebug("http_trans", "[%d] failed to connect [%d] to %s", s->current.attempts, conn_state,
+           ats_ip_ntop(&s->current.server->dst_addr.sa, addrbuf, sizeof(addrbuf)));
+
+  //////////////////////////////////////////
+  // on the first connect attempt failure //
+  // record the failue                   //
+  //////////////////////////////////////////
+  if (0 == s->current.attempts) {
+    char *url_string = s->hdr_info.client_request.url_string_get(&s->arena);
+    Log::error("CONNECT: first attempt could not connect [%s] to %s for '%s' connect_result=%d src_port=%d cause_of_death_errno=%d",
+               HttpDebugNames::get_server_state_name(conn_state),
+               ats_ip_ntop(&s->current.server->dst_addr.sa, addrbuf, sizeof(addrbuf)), url_string ? url_string : "<none>",
+               s->current.server->connect_result, ntohs(s->current.server->src_addr.port()), s->cause_of_death_errno);
+    s->arena.str_free(url_string);
+  }
+}
+
 ///////////////////////////////////////////////////////////////////////////////
 // Name       : retry_server_connection_not_open
 // Description:
@@ -3827,28 +3854,10 @@ HttpTransact::retry_server_connection_not_open(State *s, ServerState_t conn_stat
   ink_assert(s->current.state != CONNECTION_ALIVE);
   ink_assert(s->current.state != ACTIVE_TIMEOUT);
   ink_assert(s->current.attempts <= max_retries);
-  ink_assert(s->current.server->had_connect_fail());
-  char addrbuf[INET6_ADDRSTRLEN];
+  ink_assert(s->cause_of_death_errno != -UNKNOWN_INTERNAL_ERROR);
 
-  char *url_string = s->hdr_info.client_request.url_string_get(&s->arena);
+  error_log_connection_failure(s, conn_state);
 
-  TxnDebug("http_trans", "[%d] failed to connect [%d] to %s", s->current.attempts, conn_state,
-           ats_ip_ntop(&s->current.server->dst_addr.sa, addrbuf, sizeof(addrbuf)));
-
-  //////////////////////////////////////////
-  // on the first connect attempt failure //
-  // record the failue                   //
-  //////////////////////////////////////////
-  if (0 == s->current.attempts) {
-    Log::error("CONNECT:[%d] could not connect [%s] to %s for '%s' connect_result=%d src_port=%d", s->current.attempts,
-               HttpDebugNames::get_server_state_name(conn_state),
-               ats_ip_ntop(&s->current.server->dst_addr.sa, addrbuf, sizeof(addrbuf)), url_string ? url_string : "<none>",
-               s->current.server->connect_result, ntohs(s->current.server->src_addr.port()));
-  }
-
-  if (url_string) {
-    s->arena.str_free(url_string);
-  }
   //////////////////////////////////////////////
   // disable keep-alive for request and retry //
   //////////////////////////////////////////////
@@ -3958,46 +3967,20 @@ HttpTransact::handle_forward_server_connection_open(State *s)
   TxnDebug("http_seq", "[HttpTransact::handle_server_connection_open] ");
   ink_release_assert(s->current.state == CONNECTION_ALIVE);
 
-  if (s->hdr_info.server_response.version_get() == HTTPVersion(0, 9)) {
-    TxnDebug("http_trans", "[hfsco] server sent 0.9 response, reading...");
-    build_response(s, &s->hdr_info.client_response, s->client_info.http_version, HTTP_STATUS_OK, "Connection Established");
-
-    s->client_info.keep_alive = HTTP_NO_KEEPALIVE;
-    s->cache_info.action      = CACHE_DO_NO_ACTION;
-    s->next_action            = SM_ACTION_SERVER_READ;
-    return;
-
-  } else if (s->hdr_info.server_response.version_get() == HTTPVersion(1, 0)) {
-    if (s->current.server->http_version == HTTPVersion(0, 9)) {
-      // update_hostdb_to_indicate_server_version_is_1_0
-      s->updated_server_version = HostDBApplicationInfo::HTTP_VERSION_10;
-    } else if (s->current.server->http_version == HTTPVersion(1, 1)) {
-      // update_hostdb_to_indicate_server_version_is_1_0
-      s->updated_server_version = HostDBApplicationInfo::HTTP_VERSION_10;
-    } else {
-      // dont update the hostdb. let us try again with what we currently think.
-    }
-  } else if (s->hdr_info.server_response.version_get() == HTTPVersion(1, 1)) {
-    if (s->current.server->http_version == HTTPVersion(0, 9)) {
-      // update_hostdb_to_indicate_server_version_is_1_1
-      s->updated_server_version = HostDBApplicationInfo::HTTP_VERSION_11;
-    } else if (s->current.server->http_version == HTTPVersion(1, 0)) {
-      // update_hostdb_to_indicate_server_version_is_1_1
-      s->updated_server_version = HostDBApplicationInfo::HTTP_VERSION_11;
-    } else {
-      // dont update the hostdb. let us try again with what we currently think.
-    }
-  } else {
-    // dont update the hostdb. let us try again with what we currently think.
+  HostDBApplicationInfo::HttpVersion real_version = s->state_machine->server_txn->get_version(s->hdr_info.server_response);
+  if (real_version != s->host_db_info.app.http_data.http_version) {
+    TxnDebug("http_trans", "Update hostdb history of server HTTP version 0x%x", real_version);
+    // Need to update the hostdb
+    s->updated_server_version = real_version;
   }
+
+  s->state_machine->do_hostdb_update_if_necessary();
 
   if (s->hdr_info.server_response.status_get() == HTTP_STATUS_CONTINUE ||
       s->hdr_info.server_response.status_get() == HTTP_STATUS_EARLY_HINTS) {
     handle_100_continue_response(s);
     return;
   }
-
-  s->state_machine->do_hostdb_update_if_necessary();
 
   if (s->www_auth_content == CACHE_AUTH_FRESH) {
     // no update is needed - either to serve from cache if authorized,
@@ -5341,8 +5324,11 @@ HttpTransact::check_request_validity(State *s, HTTPHdr *incoming_hdr)
   // than in initialize_state_variables_from_request //
   /////////////////////////////////////////////////////
   if (method != HTTP_WKSIDX_TRACE) {
-    int64_t length                     = incoming_hdr->get_content_length();
-    s->hdr_info.request_content_length = (length >= 0) ? length : HTTP_UNDEFINED_CL; // content length less than zero is invalid
+    if (incoming_hdr->presence(MIME_PRESENCE_CONTENT_LENGTH)) {
+      s->hdr_info.request_content_length = incoming_hdr->get_content_length();
+    } else {
+      s->hdr_info.request_content_length = HTTP_UNDEFINED_CL; // content length less than zero is invalid
+    }
 
     TxnDebug("http_trans", "[init_stat_vars_from_req] set req cont length to %" PRId64, s->hdr_info.request_content_length);
 
@@ -5372,22 +5358,23 @@ HttpTransact::check_request_validity(State *s, HTTPHdr *incoming_hdr)
     if ((scheme == URL_WKSIDX_HTTP || scheme == URL_WKSIDX_HTTPS) &&
         (method == HTTP_WKSIDX_POST || method == HTTP_WKSIDX_PUSH || method == HTTP_WKSIDX_PUT) &&
         s->client_info.transfer_encoding != CHUNKED_ENCODING) {
-      if (!incoming_hdr->presence(MIME_PRESENCE_CONTENT_LENGTH)) {
-        // In normal operation there will always be a ua_txn at this point, but in one of the -R1  regression tests a request is
-        // created
-        // independent of a transaction and this method is called, so we must null check
-        if (s->txn_conf->post_check_content_length_enabled &&
-            (!s->state_machine->ua_txn || s->state_machine->ua_txn->is_chunked_encoding_supported())) {
-          return NO_POST_CONTENT_LENGTH;
-        } else {
-          // Stuff in a TE setting so we treat this as chunked, sort of.
-          s->client_info.transfer_encoding = HttpTransact::CHUNKED_ENCODING;
-          incoming_hdr->value_append(MIME_FIELD_TRANSFER_ENCODING, MIME_LEN_TRANSFER_ENCODING, HTTP_VALUE_CHUNKED, HTTP_LEN_CHUNKED,
-                                     true);
+      // In normal operation there will always be a ua_txn at this point, but in one of the -R1  regression tests a request is
+      // createdindependent of a transaction and this method is called, so we must null check
+      if (!s->state_machine->ua_txn || s->state_machine->ua_txn->is_chunked_encoding_supported()) {
+        // See if we need to insert a chunked header
+        if (!incoming_hdr->presence(MIME_PRESENCE_CONTENT_LENGTH)) {
+          if (s->txn_conf->post_check_content_length_enabled) {
+            return NO_POST_CONTENT_LENGTH;
+          } else {
+            // Stuff in a TE setting so we treat this as chunked, sort of.
+            s->client_info.transfer_encoding = HttpTransact::CHUNKED_ENCODING;
+            incoming_hdr->value_append(MIME_FIELD_TRANSFER_ENCODING, MIME_LEN_TRANSFER_ENCODING, HTTP_VALUE_CHUNKED,
+                                       HTTP_LEN_CHUNKED, true);
+          }
         }
-      }
-      if (HTTP_UNDEFINED_CL == s->hdr_info.request_content_length) {
-        return INVALID_POST_CONTENT_LENGTH;
+        if (HTTP_UNDEFINED_CL == s->hdr_info.request_content_length) {
+          return INVALID_POST_CONTENT_LENGTH;
+        }
       }
     }
   }

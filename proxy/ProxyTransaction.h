@@ -27,7 +27,6 @@
 #include <string_view>
 
 class HttpSM;
-class Http1ServerSession;
 
 // Abstract Class for any transaction with-in the HttpSM
 class ProxyTransaction : public VConnection
@@ -38,23 +37,40 @@ public:
   /// Virtual Methods
   //
   virtual void new_transaction(bool from_early_data = false);
-  virtual bool attach_server_session(Http1ServerSession *ssession, bool transaction_done = true);
+  virtual void attach_transaction(HttpSM *attach_sm);
+  virtual bool attach_server_session(PoolableSession *ssession, bool transaction_done = true);
   Action *adjust_thread(Continuation *cont, int event, void *data);
-  virtual void release(IOBufferReader *r) = 0;
-  virtual void transaction_done();
+  virtual void release()          = 0;
+  virtual void transaction_done() = 0;
   virtual void destroy();
+
+  virtual void set_active_timeout(ink_hrtime timeout_in);
+  virtual void set_inactivity_timeout(ink_hrtime timeout_in);
+  virtual void cancel_inactivity_timeout();
+  virtual void cancel_active_timeout();
+  virtual bool is_read_closed() const;
+  virtual bool expect_send_trailer() const;
+  virtual void set_expect_send_trailer();
+  virtual bool expect_receive_trailer() const;
+  virtual void set_expect_receive_trailer();
+
+  // Implement VConnection interface.
+  VIO *do_io_read(Continuation *c, int64_t nbytes = INT64_MAX, MIOBuffer *buf = nullptr) override;
+  VIO *do_io_write(Continuation *c = nullptr, int64_t nbytes = INT64_MAX, IOBufferReader *buf = nullptr,
+                   bool owner = false) override;
+  void do_io_close(int lerrno = -1) override;
+  void do_io_shutdown(ShutdownHowTo_t howto) override;
+  void reenable(VIO *vio) override;
 
   /// Virtual Accessors
   //
-  virtual void set_active_timeout(ink_hrtime timeout_in)     = 0;
-  virtual void set_inactivity_timeout(ink_hrtime timeout_in) = 0;
-  virtual void cancel_inactivity_timeout()                   = 0;
-  virtual int get_transaction_id() const                     = 0;
+  virtual int get_transaction_id() const = 0;
   virtual int get_transaction_priority_weight() const;
   virtual int get_transaction_priority_dependence() const;
-  virtual bool allow_half_open() const              = 0;
-  virtual void increment_client_transactions_stat() = 0;
-  virtual void decrement_client_transactions_stat() = 0;
+  virtual bool allow_half_open() const;
+
+  virtual void increment_transactions_stat();
+  virtual void decrement_transactions_stat();
 
   virtual NetVConnection *get_netvc() const;
   virtual bool is_first_transaction() const;
@@ -73,6 +89,13 @@ public:
   virtual bool is_chunked_encoding_supported() const;
 
   virtual void set_proxy_ssn(ProxySession *set_proxy_ssn);
+
+  sockaddr const *get_remote_addr() const;
+
+  // Returns true if there is a request body for this request
+  virtual bool has_request_body(int64_t content_length, bool is_chunked_set) const;
+
+  virtual HostDBApplicationInfo::HttpVersion get_version(HTTPHdr &hdr) const;
 
   /// Non-Virtual Methods
   //
@@ -97,20 +120,24 @@ public:
   const IpAllow::ACL &get_acl() const;
 
   ProxySession *get_proxy_ssn();
-  Http1ServerSession *get_server_session() const;
+  PoolableSession *get_server_session() const;
   HttpSM *get_sm() const;
 
   // This function must return a non-negative number that is different for two in-progress transactions with the same proxy_ssn
   // session.
   //
-  void set_rx_error_code(ProxyError e);
-  void set_tx_error_code(ProxyError e);
+  virtual void set_rx_error_code(ProxyError e);
+  virtual void set_tx_error_code(ProxyError e);
 
   bool support_sni() const;
 
   /// Variables
   //
   HttpSessionAccept::Options upstream_outbound_options; // overwritable copy of options
+
+  void set_reader(IOBufferReader *reader);
+
+  IOBufferReader *get_reader();
 
 protected:
   ProxySession *_proxy_ssn = nullptr;
@@ -185,7 +212,7 @@ ProxyTransaction::set_proxy_ssn(ProxySession *new_proxy_ssn)
   _proxy_ssn = new_proxy_ssn;
 }
 
-inline Http1ServerSession *
+inline PoolableSession *
 ProxyTransaction::get_server_session() const
 {
   return _proxy_ssn ? _proxy_ssn->get_server_session() : nullptr;
@@ -221,6 +248,38 @@ ProxyTransaction::support_sni() const
   return _proxy_ssn ? _proxy_ssn->support_sni() : false;
 }
 
+inline void
+ProxyTransaction::set_active_timeout(ink_hrtime timeout_in)
+{
+  if (_proxy_ssn) {
+    _proxy_ssn->set_active_timeout(timeout_in);
+  }
+}
+
+inline void
+ProxyTransaction::set_inactivity_timeout(ink_hrtime timeout_in)
+{
+  if (_proxy_ssn) {
+    _proxy_ssn->set_inactivity_timeout(timeout_in);
+  }
+}
+
+inline void
+ProxyTransaction::cancel_inactivity_timeout()
+{
+  if (_proxy_ssn) {
+    _proxy_ssn->cancel_inactivity_timeout();
+  }
+}
+
+inline void
+ProxyTransaction::cancel_active_timeout()
+{
+  if (_proxy_ssn) {
+    _proxy_ssn->cancel_active_timeout();
+  }
+}
+
 // See if we need to schedule on the primary thread for the transaction or change the thread that is associated with the VC.
 // If we reschedule, the scheduled action is returned.  Otherwise, NULL is returned
 inline Action *
@@ -236,4 +295,26 @@ ProxyTransaction::adjust_thread(Continuation *cont, int event, void *data)
     }
   }
   return nullptr;
+}
+
+inline void
+ProxyTransaction::set_reader(IOBufferReader *reader)
+{
+  _reader = reader;
+}
+
+inline IOBufferReader *
+ProxyTransaction::get_reader()
+{
+  return _reader;
+}
+
+inline sockaddr const *
+ProxyTransaction::get_remote_addr() const
+{
+  if (_proxy_ssn) {
+    return _proxy_ssn->get_remote_addr();
+  } else {
+    return nullptr;
+  }
 }
