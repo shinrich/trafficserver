@@ -86,7 +86,7 @@ RemapPlugins::run_single_remap()
   Debug("url_rewrite", "running single remap rule id %d for the %d%s time", map->map_id, _cur,
         _cur == 1 ? "st" : _cur == 2 ? "nd" : _cur == 3 ? "rd" : "th");
 
-  if (0 == _cur) {
+  if (!_old_remap_behavior && 0 == _cur) {
     Debug("url_rewrite", "setting the remapped url by copying from mapping rule");
     url_rewrite_remap_request(_s->url_map, _request_url, _s->hdr_info.client_request.method_get_wksidx());
   }
@@ -103,6 +103,18 @@ RemapPlugins::run_single_remap()
   if (!_s->remap_redirect) {
     if (TSREMAP_DID_REMAP_STOP == plugin_retcode || TSREMAP_DID_REMAP == plugin_retcode) {
       ++_rewritten;
+    }
+
+    if (TSREMAP_NO_REMAP == plugin_retcode || TSREMAP_NO_REMAP_STOP == plugin_retcode) {
+      // After running the first plugin, rewrite the request URL. This is doing the default rewrite rule
+      // to handle the case where no plugin ever rewrites.
+      //
+      // XXX we could probably optimize this a bit more by keeping a flag and only rewriting the request URL
+      // if no plugin has rewritten it already.
+      if (_old_remap_behavior && 1 == _cur) {
+        Debug("url_rewrite", "plugin did not change host, port or path, copying from mapping rule");
+        url_rewrite_remap_request(_s->url_map, _request_url, _s->hdr_info.client_request.method_get_wksidx());
+      }
     }
 
     if (TSREMAP_NO_REMAP_STOP == plugin_retcode || TSREMAP_DID_REMAP_STOP == plugin_retcode) {
