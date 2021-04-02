@@ -971,6 +971,11 @@ bwformat(BufferWriter &w, BWFSpec const &spec, bwf::detail::MemDump const &hex)
   return w;
 }
 
+BufferWriter &
+bwformat(BufferWriter &w, BWFSpec const &spec, std::error_code const &ec)
+{
+  return w.print("[{}:{}]", ec.value(), ec.message());
+}
 } // namespace ts
 
 namespace

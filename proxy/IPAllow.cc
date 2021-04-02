@@ -27,6 +27,7 @@
 #include <sstream>
 #include "IPAllow.h"
 #include "tscore/BufferWriter.h"
+#include "tscore/bwf_std_format.h"
 #include "tscore/ts_file.h"
 #include "tscore/ink_memory.h"
 #include "tscore/Filenames.h"
@@ -71,12 +72,6 @@ BufferWriter &
 bwformat(BufferWriter &w, BWFSpec const &spec, YAML::Mark const &mark)
 {
   return w.print("Line {}", mark.line);
-}
-
-BufferWriter &
-bwformat(BufferWriter &w, BWFSpec const &spec, std::error_code const &ec)
-{
-  return w.print("[{}:{}]", ec.value(), ec.message());
 }
 
 } // namespace ts
