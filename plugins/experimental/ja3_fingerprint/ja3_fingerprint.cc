@@ -55,6 +55,9 @@ static int ja3_idx    = -1;
 static int enable_raw = 0;
 static int enable_log = 0;
 
+static int stat_ja3_allocate   = 0; // Number of ja3_data allocations.
+static int stat_ja3_deallocate = 0; // Number of ja3_data deletes.
+
 // GREASE table as in ja3
 static const std::unordered_set<uint16_t> GREASE_table = {0x0a0a, 0x1a1a, 0x2a2a, 0x3a3a, 0x4a4a, 0x5a5a, 0x6a6a, 0x7a7a,
                                                           0x8a8a, 0x9a9a, 0xaaaa, 0xbaba, 0xcaca, 0xdada, 0xeaea, 0xfafa};
@@ -308,6 +311,7 @@ client_hello_ja3_handler(TSCont contp, TSEvent event, void *edata)
     SSL *ssl = reinterpret_cast<SSL *>(sslobj);
 
     ja3_data *data = new ja3_data;
+    TSStatIntIncrement(stat_ja3_allocate, 1);
     data->ja3_string.append(custom_get_ja3(ssl));
     getIP(TSNetVConnRemoteAddrGet(ssl_vc), data->ip_addr);
 
@@ -336,6 +340,7 @@ client_hello_ja3_handler(TSCont contp, TSEvent event, void *edata)
     TSUserArgSet(ssl_vc, ja3_idx, nullptr);
 
     delete data;
+    TSStatIntIncrement(stat_ja3_deallocate, 1);
     break;
   }
   default: {
@@ -438,6 +443,11 @@ TSPluginInit(int argc, const char *argv[])
   if (TSPluginRegister(&info) != TS_SUCCESS) {
     TSError("[%s] Unable to initialize plugin. Failed to register.", PLUGIN_NAME);
   } else {
+    stat_ja3_allocate =
+      TSStatCreate("ja3_fingerprint.ja3_data.allocate", TS_RECORDDATATYPE_INT, TS_STAT_NON_PERSISTENT, TS_STAT_SYNC_SUM);
+    stat_ja3_deallocate =
+      TSStatCreate("ja3_fingerprint.ja3_data.deallocate", TS_RECORDDATATYPE_INT, TS_STAT_NON_PERSISTENT, TS_STAT_SYNC_SUM);
+
     if (enable_log && !pluginlog) {
       TSAssert(TS_SUCCESS == TSTextLogObjectCreate(PLUGIN_NAME, TS_LOG_MODE_ADD_TIMESTAMP, &pluginlog));
       TSDebug(PLUGIN_NAME, "log object created successfully");
