@@ -8254,13 +8254,7 @@ PostDataBuffers::~PostDataBuffers()
   this->clear();
 }
 
-PoolableSession *
-HttpSM::get_server_session() const
-{
-  return server_session;
-}
-
-HostDBApplicationInfo::HttpVersion
+HostDBApplicationInfo::HttpVersion_t
 HttpSM::get_server_version(HTTPHdr &hdr) const
 {
   return this->server_session->get_version(hdr);

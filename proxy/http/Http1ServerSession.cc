@@ -239,3 +239,15 @@ Http1ServerSession::protocol_contains(std::string_view tag_prefix) const
   auto vc = this->get_netvc();
   return vc ? vc->protocol_contains(tag_prefix) : nullptr;
 }
+
+HostDBApplicationInfo::HttpVersion_t
+Http1ServerSession::get_version(HTTPHdr &hdr) const
+{
+  if (hdr.version_get() == HTTPVersion(1, 1)) {
+    return HostDBApplicationInfo::HTTP_VERSION_11;
+  } else if (hdr.version_get() == HTTPVersion(1, 0)) {
+    return HostDBApplicationInfo::HTTP_VERSION_10;
+  } else {
+    return HostDBApplicationInfo::HTTP_VERSION_09;
+  }
+}

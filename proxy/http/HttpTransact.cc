@@ -3997,7 +3997,7 @@ HttpTransact::handle_forward_server_connection_open(State *s)
   TxnDebug("http_seq", "[HttpTransact::handle_server_connection_open] ");
   ink_release_assert(s->current.state == CONNECTION_ALIVE);
 
-  HostDBApplicationInfo::HttpVersion real_version = s->state_machine->get_server_version(s->hdr_info.server_response);
+  HostDBApplicationInfo::HttpVersion_t real_version = s->state_machine->get_server_version(s->hdr_info.server_response);
   if (real_version != s->host_db_info.app.http_data.http_version) {
     TxnDebug("http_trans", "Update hostdb history of server HTTP version 0x%x", real_version);
     // Need to update the hostdb

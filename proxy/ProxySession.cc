@@ -300,7 +300,7 @@ ProxySession::support_sni() const
   return _vc ? _vc->support_sni() : false;
 }
 
-HostDBApplicationInfo::HttpVersion
+HostDBApplicationInfo::HttpVersion_t
 ProxySession::get_version(HTTPHdr &hdr) const
 {
   if (hdr.version_get() == HTTPVersion(1, 1)) {

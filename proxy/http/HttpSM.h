@@ -233,7 +233,7 @@ public:
     return server_session;
   }
 
-  HostDBApplicationInfo::HttpVersion get_server_version(HTTPHdr &hdr) const;
+  HostDBApplicationInfo::HttpVersion_t get_server_version(HTTPHdr &hdr) const;
 
   ProxyTransaction *
   get_ua_txn()

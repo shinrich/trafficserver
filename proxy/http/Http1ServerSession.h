@@ -87,6 +87,8 @@ public:
   int populate_protocol(std::string_view *result, int size) const;
   const char *protocol_contains(std::string_view tag_prefix) const;
 
+  HostDBApplicationInfo::HttpVersion_t get_version(HTTPHdr &hdr) const;
+
   ////////////////////
   // Variables
   CryptoHash hostname_hash;
