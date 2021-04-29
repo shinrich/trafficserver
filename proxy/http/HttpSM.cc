@@ -978,9 +978,9 @@ HttpSM::state_watch_for_client_abort(int event, void *data)
    * client.
    */
   case VC_EVENT_EOS: {
-    // We got an early EOS.
+    // We got an early EOS. If the tunnal has cache writer, don't kill it for background fill.
     NetVConnection *netvc = ua_txn->get_netvc();
-    if (ua_txn->allow_half_open()) {
+    if (ua_txn->allow_half_open() || tunnel.has_consumer_besides_client()) {
       if (netvc) {
         netvc->do_io_shutdown(IO_SHUTDOWN_READ);
       }
@@ -3552,6 +3552,10 @@ HttpSM::tunnel_handler_cache_write(int event, HttpTunnelConsumer *c)
     // All other events indicate problems
     ink_assert(0);
     break;
+  }
+
+  if (background_fill != BACKGROUND_FILL_NONE) {
+    server_response_body_bytes = c->bytes_written;
   }
 
   HTTP_DECREMENT_DYN_STAT(http_current_cache_connections_stat);
