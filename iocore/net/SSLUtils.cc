@@ -1937,8 +1937,36 @@ ssl_error_t
 SSLConnect(SSL *ssl)
 {
   ERR_clear_error();
+
+  SSL_SESSION *sess = SSL_get_session(ssl);
+  if (!sess && SSLConfigParams::origin_session_cache == 1 && SSLConfigParams::origin_session_cache_size > 0) {
+    std::string sni_addr = get_sni_addr(ssl);
+    if (!sni_addr.empty()) {
+      std::string lookup_key;
+      ts::bwprint(lookup_key, "{}:{}:{}", sni_addr.c_str(), SSL_get_SSL_CTX(ssl), get_verify_str(ssl));
+
+      Debug("ssl.origin_session_cache", "origin session cache lookup key = %s", lookup_key.c_str());
+
+      sess = origin_sess_cache->get_session(lookup_key);
+      if (sess) {
+        SSL_set_session(ssl, sess);
+      }
+    }
+  }
+
   int ret = SSL_connect(ssl);
+
   if (ret > 0) {
+    if (sess && SSL_session_reused(ssl)) {
+      SSL_INCREMENT_DYN_STAT(ssl_origin_session_reused_count);
+      if (is_debug_tag_set("ssl.origin_session_cache")) {
+        Debug("ssl.origin_session_cache", "reused session to origin server = %p", sess);
+      }
+    } else {
+      if (is_debug_tag_set("ssl.origin_session_cache")) {
+        Debug("ssl.origin_session_cache", "new session to origin server = %p", sess);
+      }
+    }
     return SSL_ERROR_NONE;
   }
   int ssl_error = SSL_get_error(ssl, ret);
@@ -1950,6 +1978,81 @@ SSLConnect(SSL *ssl)
   }
 
   return ssl_error;
+}
+
+std::string
+get_sni_addr(SSL *ssl)
+{
+  std::string sni_addr;
+
+  if (ssl != nullptr) {
+    const char *sni_name = SSL_get_servername(ssl, TLSEXT_NAMETYPE_host_name);
+    if (sni_name) {
+      sni_addr.assign(sni_name);
+    } else {
+      int sock_fd = SSL_get_fd(ssl);
+      sockaddr_storage addr;
+      socklen_t addr_len = sizeof(addr);
+      if (sock_fd >= 0) {
+        getpeername(sock_fd, reinterpret_cast<sockaddr *>(&addr), &addr_len);
+        if (addr.ss_family == AF_INET || addr.ss_family == AF_INET6) {
+          char ip_addr[INET6_ADDRSTRLEN];
+          ats_ip_ntop(reinterpret_cast<sockaddr *>(&addr), ip_addr, INET6_ADDRSTRLEN);
+          sni_addr.assign(ip_addr);
+        }
+      }
+    }
+  }
+
+  return sni_addr;
+}
+
+std::string
+get_verify_str(SSL *ssl)
+{
+  std::string verify_str;
+
+  SSLNetVConnection *netvc = SSLNetVCAccess(ssl);
+  if (netvc != nullptr) {
+    std::string policy_str;
+    switch (netvc->options.verifyServerPolicy) {
+    case YamlSNIConfig::Policy::DISABLED:
+      policy_str.assign("DISABLED");
+      break;
+    case YamlSNIConfig::Policy::PERMISSIVE:
+      policy_str.assign("PERMISSIVE");
+      break;
+    case YamlSNIConfig::Policy::ENFORCED:
+      policy_str.assign("ENFORCED");
+      break;
+    case YamlSNIConfig::Policy::UNSET:
+      policy_str.assign("UNSET");
+      break;
+    }
+
+    std::string property_str;
+    switch (netvc->options.verifyServerProperties) {
+    case YamlSNIConfig::Property::NONE:
+      property_str.assign("NONE");
+      break;
+    case YamlSNIConfig::Property::SIGNATURE_MASK:
+      property_str.assign("SIGNATURE_MASK");
+      break;
+    case YamlSNIConfig::Property::NAME_MASK:
+      property_str.assign("NAME_MASK");
+      break;
+    case YamlSNIConfig::Property::ALL_MASK:
+      property_str.assign("ALL_MASK");
+      break;
+    case YamlSNIConfig::Property::UNSET:
+      property_str.assign("UNSET");
+      break;
+    }
+
+    ts::bwprint(verify_str, "{}:{}", policy_str.c_str(), property_str.c_str());
+  }
+
+  return verify_str;
 }
 
 /**
