@@ -270,7 +270,6 @@ Changes with Apache Traffic Server 9.1.0
   #7464 - Upgrade Catch.hpp to v2.13.4
   #7465 - Select lua context per thread
   #7466 - Change atoi to atol, causing obvious issues on what needs to be int64's
-  #7469 - Update AuTest version update directions for pipenv
   #7473 - Adjust so transfer-encoding header can be treated hop-by-hop
   #7488 - Avoid -Warray-bounds on PROXY Protocol Builder
   #7491 - Add new log field for negotiated ALPN Protocol ID with the client
@@ -281,6 +280,7 @@ Changes with Apache Traffic Server 9.1.0
   #7500 - Disable ja3 plugin when building with boringssl
   #7502 - traffic_dump: AuTests to use Proxy Verifier.
   #7511 - Add ALPN support on TLS Partial Blind Tunnel
+  #7516 - Adding TCP Info header support to header rewrite
   #7518 - Updates the Dockerfile for debian
   #7522 - Make the H3 build script work properly on Debian platforms
   #7532 - Fix asserts in multiplexer plugin.
@@ -293,8 +293,12 @@ Changes with Apache Traffic Server 9.1.0
   #7569 - Cleanup: Rename IOBufferReader of Http2ClientSession
   #7571 - Tidy up session/transaction destruction process
   #7572 - FQ pacing plugin memory leak fix
+  #7580 -  Refine connection failure logging and messages and eliminate spurious connection errors
   #7589 - Add gold test for remap config .include directive.
+  #7601 - Update -with-profile and add some profiling documentation
   #7608 - Set pcre_malloc/free function pointers in core main() only.
+  #7619 - Use standard isdigit library function
+  #7623 - New rate_limit plugin for simple resource limitations
   #7625 - Add proxy.process.http.background_fill_total_count
   #7626 - Remove unused variables
   #7627 - Add pooled_server_connections metric
@@ -302,3 +306,4 @@ Changes with Apache Traffic Server 9.1.0
   #7630 - Add default implementation for allow_half_open
   #7631 - Fix HttpSessionManager::acquireSession from previous rebase error
   #7633 - Updating documentation for negative_revalidating_lifetime
+  #7679 - Add close header normalize openclose test
