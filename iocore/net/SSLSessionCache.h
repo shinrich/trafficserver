@@ -150,11 +150,9 @@ public:
   Ptr<IOBufferData> asn1_data; /* this is the ASN1 representation of the SSL_CTX */
   size_t len_asn1_data;
   Ptr<IOBufferData> extra_data;
-  ink_hrtime time_stamp;
 
-  SSLSession(const SSLSessionID &id, const Ptr<IOBufferData> &ssl_asn1_data, size_t len_asn1, Ptr<IOBufferData> &exdata,
-             ink_hrtime ts)
-    : session_id(id), asn1_data(ssl_asn1_data), len_asn1_data(len_asn1), extra_data(exdata), time_stamp(ts)
+  SSLSession(const SSLSessionID &id, const Ptr<IOBufferData> &ssl_asn1_data, size_t len_asn1, Ptr<IOBufferData> &exdata)
+    : session_id(id), asn1_data(ssl_asn1_data), len_asn1_data(len_asn1), extra_data(exdata)
   {
   }
 
@@ -177,8 +175,8 @@ private:
   void removeOldestSession(const std::unique_lock<std::shared_mutex> &lock);
 
   mutable std::shared_mutex mutex;
-  std::unordered_map<SSLSessionID, SSLSession *, SSLSessionIDHash> bucket_data;
-  std::map<ink_hrtime, SSLSession *> bucket_data_ts;
+  std::map<SSLSessionID, SSLSession *> bucket_map;
+  CountQueue<SSLSession> bucket_que;
 };
 
 class SSLSessionCache
