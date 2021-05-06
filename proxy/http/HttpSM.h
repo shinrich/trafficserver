@@ -171,14 +171,9 @@ class PendingAction
 {
 public:
   bool
-  operator==(Action *b)
+  is_empty() const
   {
-    return b == pending_action;
-  }
-  bool
-  operator!=(Action *b)
-  {
-    return b != pending_action;
+    return pending_action == nullptr;
   }
   PendingAction &
   operator=(Action *b)
@@ -192,13 +187,13 @@ public:
     }
     return *this;
   }
-  Action *
-  operator->()
+  Continuation *
+  get_continuation() const
   {
-    return pending_action;
+    return pending_action ? pending_action->continuation : nullptr;
   }
   Action *
-  get()
+  get() const
   {
     return pending_action;
   }
@@ -529,7 +524,6 @@ protected:
   void handle_http_server_open();
   void handle_post_failure();
   void mark_host_failure(HostDBInfo *info, time_t time_down);
-  void mark_server_down_on_client_abort();
   void release_server_session(bool serve_from_cache = false);
   void set_ua_abort(HttpTransact::AbortState_t ua_abort, int event);
   int write_header_into_buffer(HTTPHdr *h, MIOBuffer *b);
@@ -599,6 +593,7 @@ public:
   bool is_using_post_buffer           = false;
   std::optional<bool> mptcp_state; // Don't initialize, that marks it as "not defined".
   const char *client_protocol     = "-";
+  const char *server_protocol     = "-";
   const char *client_sec_protocol = "-";
   const char *client_cipher_suite = "-";
   const char *client_curve        = "-";

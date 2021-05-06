@@ -1569,6 +1569,8 @@ __saved_CXXFLAGS="${CXXFLAGS}"
 __saved_CFLAGS="${CFLAGS}"
 
 has_128bit_cas=0
+# Don't add the -mcx16 flag unless needed and it compiles cleanly.
+needs_mcx16_for_cas=0
 
 TS_TRY_COMPILE_NO_WARNING([],[
     __int128_t x = 0;
@@ -1587,6 +1589,7 @@ TS_TRY_COMPILE_NO_WARNING([],[
       ], [
         AC_MSG_RESULT(yes)
         has_128bit_cas=1
+        needs_mcx16_for_cas=1
       ], [
         AC_MSG_RESULT(no)
     ])
@@ -1597,11 +1600,9 @@ CFLAGS="${__saved_CFLAGS}"
 AC_LANG_POP
 AC_SUBST(has_128bit_cas)
 
-AS_IF([test "x$has_128bit_cas" = "x1"], [
-  AS_IF([test "x$ax_cv_c_compiler_vendor" != "xintel"], [
+AS_IF([test "x$needs_mcx16_for_cas" = "x1"], [
     TS_ADDTO(AM_CFLAGS, [-mcx16])
     TS_ADDTO(AM_CXXFLAGS, [-mcx16])
-  ])
 ])
 
 # Check for POSIX capabilities library.
@@ -1696,11 +1697,15 @@ AC_SUBST(use_hwloc)
 #
 AC_CHECK_HEADERS([GeoIP.h], [
   AC_CHECK_LIB([GeoIP], [GeoIP_new], [
-    AC_SUBST([GEO_LIBS], ["-lGeoIP"])
+    AC_SUBST([GEOIP_LIBS], ["-lGeoIP"])
+    AC_SUBST(has_geoip, 1)
   ], [
-    AC_SUBST([GEO_LIBS], [""])
+    AC_SUBST([GEOIP_LIBS], [""])
+    AC_SUBST(has_geoip, 0)
   ])
 ])
+
+AM_CONDITIONAL([HAS_GEOIP], [test "x${has_geoip}" = "x1" ])
 
 #
 # Check for libmaxmind.  This is the maxmind v2 API where GeoIP is the legacy
@@ -1709,14 +1714,49 @@ AC_CHECK_HEADERS([GeoIP.h], [
 AC_CHECK_HEADERS([maxminddb.h], [
   AC_CHECK_LIB([maxminddb], [MMDB_open], [
     AC_SUBST([MAXMINDDB_LIBS], ["-lmaxminddb"])
-    AC_SUBST(has_maxmind, 1)
+    AC_SUBST(has_maxminddb, 1)
   ], [
     AC_SUBST([MAXMINDDB_LIBS], [""])
-    AC_SUBST(has_maxmind, 0)
+    AC_SUBST(has_maxminddb, 0)
   ])
 ])
 
-AM_CONDITIONAL([BUILD_MAXMIND_ACL_PLUGIN], [test "x${has_maxmind}" = "x1" ])
+AM_CONDITIONAL([HAS_MAXMINDDB], [test "x${has_maxminddb}" = "x1" ])
+
+AC_ARG_WITH([hrw-geo-provider],
+  [AS_HELP_STRING([--with-hrw-geo-provider=geoip|maxminddb],[geo provider to use with header_rewrite [default=auto] ])],
+  [geo_provider=$withval],
+  [geo_provider="auto"]
+)
+use_hrw_geoip=0
+use_hrw_maxminddb=0
+
+AS_IF([test "x$geo_provider" = "xauto"], [
+  if test "x$has_geoip" = "x1"; then
+    use_hrw_geoip=1
+    AC_MSG_NOTICE([Using GeoIP interface for header_rewrite])
+  elif test "x$has_maxminddb" = "x1"; then
+    use_hrw_maxminddb=1
+    AC_MSG_NOTICE([Using MaxMindDB interface for header_rewrite])
+  fi
+],[
+  case "x$geo_provider" in
+    xgeoip)
+      use_hrw_geoip=1
+      AC_MSG_RESULT([forced to GeoIP])
+      ;;
+    xmaxminddb)
+      use_hrw_maxminddb=1
+      AC_MSG_RESULT([forced to MaxMindDB])
+      ;;
+    *)
+      AC_MSG_RESULT([failed])
+      AC_MSG_FAILURE([unknown geo interface $geo_provider])
+  esac
+])
+
+AC_SUBST(use_hrw_geoip)
+AC_SUBST(use_hrw_maxminddb)
 
 # Right now, the healthcheck plugins requires inotify_init (and friends)
 AM_CONDITIONAL([BUILD_HEALTHCHECK_PLUGIN], [ test "$ac_cv_func_inotify_init" = "yes" ])

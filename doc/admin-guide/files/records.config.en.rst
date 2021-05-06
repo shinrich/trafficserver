@@ -1205,6 +1205,11 @@ Parent Proxy Configuration
 
    The amount of time allowed between connection retries to a parent cache that is unavailable.
 
+.. ts:cv:: CONFIG proxy.config.http.parent_proxy.max_trans_retries INT 2
+
+   Limits the number of simultaneous transactions that may retry a parent once the parents
+   ``retry_time`` has expired.
+
 .. ts:cv:: CONFIG proxy.config.http.parent_proxy.fail_threshold INT 10
    :reloadable:
    :overridable:
@@ -1618,13 +1623,6 @@ Origin Server Connect Attempts
    :overridable:
 
    Specifies how long (in seconds) |TS| remembers that an origin server was unreachable.
-
-.. ts:cv:: CONFIG proxy.config.http.down_server.abort_threshold INT 10
-   :reloadable:
-   :overridable:
-
-   The number of seconds before |TS| marks an origin server as unavailable after a client abandons a request
-   because the origin server was too slow in sending the response header.
 
 .. ts:cv:: CONFIG proxy.config.http.uncacheable_requests_bypass_parent INT 1
    :reloadable:
@@ -3943,7 +3941,6 @@ HTTP/2 Configuration
 
 .. ts:cv:: CONFIG proxy.config.http2.accept_no_activity_timeout INT 120
    :reloadable:
-   :overridable:
 
    Specifies how long |TS| keeps connections to clients open if no
    activity is received on the connection. Lowering this timeout can ease
@@ -3952,7 +3949,6 @@ HTTP/2 Configuration
 
 .. ts:cv:: CONFIG proxy.config.http2.no_activity_timeout_in INT 120
    :reloadable:
-   :overridable:
 
    Specifies how long |TS| keeps connections to clients open if a
    transaction stalls. Lowering this timeout can ease pressure on the proxy if
