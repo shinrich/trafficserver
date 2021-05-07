@@ -170,8 +170,9 @@ wait_cleanup(ASYNC_WAIT_CTX *ctx, const void *key, OSSL_ASYNC_FD readfd, void *p
 {
   OSSL_ASYNC_FD *pwritefd = (OSSL_ASYNC_FD *)pvwritefd;
   close(readfd);
-  close(*pwritefd);
+  close(*((OSSL_ASYNC_FD *)pwritefd));
   OPENSSL_free(pwritefd);
+  fprintf(stderr, "Cleanup %d and %d\n", readfd, *pwritefd);
 }
 
 #define DUMMY_CHAR 'X'
@@ -193,8 +194,7 @@ async_pause_job(void)
   waitctx = ASYNC_get_wait_ctx(job);
 
   if (ASYNC_WAIT_CTX_get_fd(waitctx, engine_id, &pipefds[0], (void **)&writefd)) {
-    fprintf(stderr, "Existing wait ctx\n");
-    return;
+    fprintf(stderr, "Existing wait ctx %d\n", *writefd);
   } else {
     writefd = (OSSL_ASYNC_FD *)OPENSSL_malloc(sizeof(*writefd));
     if (writefd == NULL)
