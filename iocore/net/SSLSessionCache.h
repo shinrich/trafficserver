@@ -113,33 +113,19 @@ struct SSLSessionID : public TSSslSessionID {
   uint64_t
   hash() const
   {
-    if (hash_value == 0) {
-      // because the session ids should be uniformly random, we can treat the bits as a hash value
-      // however we need to combine them if the length is longer than 64bits
-      if (len >= sizeof(uint64_t)) {
-        uint64_t seed = 0;
-        for (uint64_t i = 0; i < len; i += sizeof(uint64_t)) {
-          hash_combine(seed, static_cast<uint64_t>(bytes[i]));
-        }
-        hash_value = seed;
-      } else if (len) {
-        hash_value = static_cast<uint64_t>(bytes[0]);
-      } else {
-        hash_value = 0;
+    // because the session ids should be uniformly random, we can treat the bits as a hash value
+    // however we need to combine them if the length is longer than 64bits
+    if (len >= sizeof(uint64_t)) {
+      uint64_t seed = 0;
+      for (uint64_t i = 0; i < len; i += sizeof(uint64_t)) {
+        hash_combine(seed, static_cast<uint64_t>(bytes[i]));
       }
+      return seed;
+    } else if (len) {
+      return static_cast<uint64_t>(bytes[0]);
+    } else {
+      return 0;
     }
-    return hash_value;
-  }
-
-private:
-  mutable uint64_t hash_value = 0;
-};
-
-struct SSLSessionIDHash {
-  uint64_t
-  operator()(const SSLSessionID &id) const
-  {
-    return id.hash();
   }
 };
 
