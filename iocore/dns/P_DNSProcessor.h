@@ -24,6 +24,7 @@
 #pragma once
 
 #include "I_EventSystem.h"
+#include "tscore/ink_resolver.h"
 
 #define MAX_NAMED 32
 #define DEFAULT_DNS_RETRIES 5
