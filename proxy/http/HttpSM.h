@@ -274,6 +274,8 @@ public:
   PoolableSession *create_server_session(NetVConnection *netvc);
   bool create_server_txn(PoolableSession *new_session);
 
+  HTTPVersion get_server_version(HTTPHdr &hdr) const;
+
   ProxyTransaction *
   get_ua_txn()
   {
