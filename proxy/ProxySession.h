@@ -107,7 +107,6 @@ public:
   virtual void hook_add(TSHttpHookID id, INKContInternal *cont);
 
   virtual bool is_chunked_encoding_supported() const;
-
   virtual void set_half_close_flag(bool flag);
   virtual bool get_half_close_flag() const;
 
@@ -124,7 +123,6 @@ public:
 
   virtual int populate_protocol(std::string_view *result, int size) const;
   virtual const char *protocol_contains(std::string_view tag_prefix) const;
-  virtual HTTPVersion get_version(HTTPHdr &hdr) const;
 
   // Non-Virtual Methods
   NetVConnection *get_netvc() const;
@@ -137,7 +135,7 @@ public:
   void clear_session_active();
   bool is_active() const;
   bool is_draining() const;
-  bool is_client_closed() const;
+  bool is_peer_closed() const;
 
   int64_t connection_id() const;
   TSHttpHookID get_hookid() const;
@@ -156,6 +154,12 @@ public:
   VIO *do_io_write(Continuation *c = nullptr, int64_t nbytes = INT64_MAX, IOBufferReader *buf = 0, bool owner = false) override;
   void do_io_shutdown(ShutdownHowTo_t howto) override;
   void reenable(VIO *vio) override;
+
+  virtual ProxyTransaction *
+  new_transaction()
+  {
+    return nullptr;
+  }
 
   ////////////////////
   // Members
@@ -236,7 +240,7 @@ ProxySession::is_draining() const
 }
 
 inline bool
-ProxySession::is_client_closed() const
+ProxySession::is_peer_closed() const
 {
   return get_netvc() == nullptr;
 }

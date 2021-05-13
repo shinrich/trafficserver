@@ -126,7 +126,7 @@ ServerSessionPool::validate_cert(HttpSM *sm, NetVConnection *netvc)
   // a new connection.
   //
   if (sm->t_state.scheme == URL_WKSIDX_HTTPS) {
-    const char *session_cert       = netvc->options.ssl_client_cert_name.get();
+    const char *session_cert       = netvc->options.ssl_client_cert_name;
     std::string_view proposed_cert = sm->get_outbound_cert();
     Debug("http_ss", "validate_cert proposed_cert=%.*s, cert=%s", static_cast<int>(proposed_cert.size()), proposed_cert.data(),
           session_cert);
@@ -165,9 +165,11 @@ ServerSessionPool::acquireSession(sockaddr const *addr, CryptoHash const &hostna
     }
     if (zret == HSM_DONE) {
       to_return = first;
-      HTTP_DECREMENT_DYN_STAT(http_pooled_server_connections_stat);
-      m_fqdn_pool.erase(first);
-      m_ip_pool.erase(to_return);
+      this->removeSession(to_return);
+    } else {
+      if (first != m_fqdn_pool.end()) {
+        Debug("http_ss", "Failed find entry due to name mismatch %s", sm->t_state.current.server->name);
+      }
     }
   } else if (TS_SERVER_SESSION_SHARING_MATCH_MASK_IP & match_style) { // matching is not disabled.
     auto first = m_ip_pool.find(addr);
@@ -190,9 +192,7 @@ ServerSessionPool::acquireSession(sockaddr const *addr, CryptoHash const &hostna
     }
     if (zret == HSM_DONE) {
       to_return = first;
-      HTTP_DECREMENT_DYN_STAT(http_pooled_server_connections_stat);
-      m_ip_pool.erase(first);
-      m_fqdn_pool.erase(to_return);
+      this->removeSession(to_return);
     }
   }
   return zret;
@@ -215,10 +215,7 @@ ServerSessionPool::releaseSession(PoolableSession *ss)
   ss->set_inactivity_timeout(ss->get_netvc()->get_inactivity_timeout());
   ss->set_active_timeout(ss->get_netvc()->get_active_timeout());
   // put it in the pools.
-  m_ip_pool.insert(ss);
-  m_fqdn_pool.insert(ss);
-
-  HTTP_INCREMENT_DYN_STAT(http_pooled_server_connections_stat);
+  this->addSession(ss);
 
   Debug("http_ss",
         "[%" PRId64 "] [release session] "
@@ -285,8 +282,7 @@ ServerSessionPool::eventHandler(int event, void *data)
             HttpDebugNames::get_event_name(event));
       ink_assert(s->state == PoolableSession::KA_POOLED);
       // Out of the pool! Now!
-      m_ip_pool.erase(spot);
-      m_fqdn_pool.erase(s);
+      this->removeSession(s);
       // Drop connection on this end.
       s->do_io_close();
       found = true;
@@ -362,7 +358,7 @@ HttpSessionManager::acquire_session(HttpSM *sm, sockaddr const *ip, const char *
          ServerSessionPool::validate_cert(sm, to_return->get_netvc()))) {
       Debug("http_ss", "[%" PRId64 "] [acquire session] returning attached session ", to_return->connection_id());
       to_return->state = PoolableSession::SSN_IN_USE;
-      sm->attach_server_session(to_return);
+      sm->set_server_txn(to_return->new_transaction());
       return HSM_DONE;
     }
     // Release this session back to the main session pool and
@@ -403,7 +399,9 @@ HttpSessionManager::_acquire_session(sockaddr const *ip, CryptoHash const &hostn
     // Now check to see if we have a connection in our shared connection pool
     EThread *ethread = this_ethread();
     Ptr<ProxyMutex> pool_mutex =
-      (TS_SERVER_SESSION_SHARING_POOL_THREAD == pool_type) ? ethread->server_session_pool->mutex : m_g_pool->mutex;
+      (TS_SERVER_SESSION_SHARING_POOL_THREAD == sm->t_state.http_config_param->server_session_sharing_pool) ?
+        ethread->server_session_pool->mutex :
+        m_g_pool->mutex;
     MUTEX_TRY_LOCK(lock, pool_mutex, ethread);
     if (lock.is_locked()) {
       if (TS_SERVER_SESSION_SHARING_POOL_THREAD == pool_type) {
@@ -448,11 +446,16 @@ HttpSessionManager::_acquire_session(sockaddr const *ip, CryptoHash const &hostn
     }
 
     if (to_return) {
-      Debug("http_ss", "[%" PRId64 "] [acquire session] return session from shared pool", to_return->connection_id());
-      to_return->state = PoolableSession::SSN_IN_USE;
-      // the attach_server_session will issue the do_io_read under the sm lock
-      sm->attach_server_session(to_return);
-      retval = HSM_DONE;
+      ProxyTransaction *trans = to_return->new_transaction();
+      if (trans) {
+        Debug("http_ss", "[%" PRId64 "] [acquire session] return session from shared pool", to_return->connection_id());
+        to_return->state = PoolableSession::SSN_IN_USE;
+        // the attach_server_session will issue the do_io_read under the sm lock
+        sm->set_server_txn(trans);
+        retval = HSM_DONE;
+      } else {
+        retval = HSM_RETRY;
+      }
     }
   }
   return retval;
@@ -481,4 +484,51 @@ HttpSessionManager::release_session(PoolableSession *to_release)
   }
 
   return released_p ? HSM_DONE : HSM_RETRY;
+}
+
+void
+ServerSessionPool::removeSession(PoolableSession *to_remove)
+{
+  EThread *ethread = this_ethread();
+  SCOPED_MUTEX_LOCK(lock, mutex, ethread);
+  char peer_ip[INET6_ADDRPORTSTRLEN];
+  if (is_debug_tag_set("http_ss")) {
+    ats_ip_nptop(to_remove->get_remote_addr(), peer_ip, sizeof(peer_ip));
+    Debug("http_ss", "Remove session %p %s m_fqdn_pool size=%" PRId64 " m_ip_pool_size=%" PRId64, to_remove, peer_ip,
+          m_fqdn_pool.count(), m_ip_pool.count());
+  }
+  m_fqdn_pool.erase(to_remove);
+  if (m_ip_pool.erase(to_remove)) {
+    HTTP_DECREMENT_DYN_STAT(http_pooled_server_connections_stat);
+  }
+  if (is_debug_tag_set("http_ss")) {
+    Debug("http_ss", "After Remove session %p m_fqdn_pool size=%" PRId64 " m_ip_pool_size=%" PRId64, to_remove, m_fqdn_pool.count(),
+          m_ip_pool.count());
+  }
+}
+
+void
+ServerSessionPool::testSession(PoolableSession *ss)
+{
+  auto fqdn_iter = m_fqdn_pool.find(ss);
+  ink_release_assert(fqdn_iter == m_fqdn_pool.end());
+  auto ip_iter = m_ip_pool.find(ss);
+  ink_release_assert(ip_iter == m_ip_pool.end());
+}
+
+void
+ServerSessionPool::addSession(PoolableSession *ss)
+{
+  EThread *ethread = this_ethread();
+  SCOPED_MUTEX_LOCK(lock, mutex, ethread);
+  // put it in the pools.
+  m_ip_pool.insert(ss);
+  m_fqdn_pool.insert(ss);
+  HTTP_INCREMENT_DYN_STAT(http_pooled_server_connections_stat);
+
+  if (is_debug_tag_set("http_ss")) {
+    char peer_ip[INET6_ADDRPORTSTRLEN];
+    ats_ip_nptop(ss->get_remote_addr(), peer_ip, sizeof(peer_ip));
+    Debug("http_ss", "[%" PRId64 "] [add session] session placed into shared pool under ip %s", ss->connection_id(), peer_ip);
+  }
 }

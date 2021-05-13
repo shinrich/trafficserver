@@ -597,7 +597,7 @@ Http2ClientSession::state_process_frame_read(int event, VIO *vio, bool inside_fr
   }
 
   // If the client hasn't shut us down, reenable
-  if (!this->is_client_closed()) {
+  if (!this->is_peer_closed()) {
     vio->reenable();
   }
   return 0;
@@ -693,12 +693,6 @@ Http2ClientSession::protocol_contains(std::string_view prefix) const
     retval = super::protocol_contains(prefix);
   }
   return retval;
-}
-
-HTTPVersion
-Http2ClientSession::get_version(HTTPHdr &hdr) const
-{
-  return HTTP_2_0;
 }
 
 void

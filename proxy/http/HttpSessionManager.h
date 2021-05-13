@@ -67,6 +67,9 @@ public:
   static bool validate_host_sni(HttpSM *sm, NetVConnection *netvc);
   static bool validate_sni(HttpSM *sm, NetVConnection *netvc);
   static bool validate_cert(HttpSM *sm, NetVConnection *netvc);
+  void removeSession(PoolableSession *ssn);
+  void addSession(PoolableSession *ssn);
+  void testSession(PoolableSession *ssn);
   int
   count() const
   {
@@ -110,7 +113,7 @@ class HttpSessionManager
 public:
   HttpSessionManager() {}
   ~HttpSessionManager() {}
-  HSMresult_t acquire_session(HttpSM *sm, sockaddr const *addr, const char *hostname, ProxyTransaction *ua_txn);
+  HSMresult_t acquire_session(HttpSM *cont, sockaddr const *addr, const char *hostname, ProxyTransaction *ua_txn);
   HSMresult_t release_session(PoolableSession *to_release);
   void purge_keepalives();
   void init();
