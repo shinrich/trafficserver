@@ -15,10 +15,4 @@
 #  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
-echo "GET / HTTP/1.1 \
-Host : bob\
-\
-GET / HTTP/1.1\
-Host: bob\
-\
-" | nc  127.0.0.1 $1 -o test.out 
+printf "GET / HTTP/1.1 \r\n Host : bob\r\n\r\nGET / HTTP/1.1\r\nHost: boa\r\n\r\n" | nc  127.0.0.1 $1 -o test.out 

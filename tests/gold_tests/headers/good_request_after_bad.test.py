@@ -22,22 +22,16 @@ import os
 Test.Summary = '''
 Verify that request following a ill-formed request is not processed
 '''
-ts = Test.MakeATSProcess("ts")
+ts = Test.MakeATSProcess("ts", enable_cache=False)
 
 ts.Disk.records_config.update({'proxy.config.diags.debug.tags': 'http',
                                'proxy.config.diags.debug.enabled': 1
                                })
 
-# ts.Disk.remap_config.AddLine(
-# 'map /foo http://{ip}:{uport}'.format(host=HOST, ip='127.0.0.1', uport=server.Variables.Port)
-# )
-
-testout_path = os.path.join(Test.RunDirectory, "test.out")
-
 tr = Test.AddTestRun()
-tr.Setup.Copy("requests-nc.sh")
-tr.Disk.File(testout_path, id="testout")
 tr.Processes.Default.StartBefore(Test.Processes.ts)
-tr.Processes.Default.Command = "sh ./requests-nc.sh {}".format(ts.Variables.port)
+tr.Setup.Copy("requests-nc.sh")
+tr.Disk.File(os.path.join(Test.RunDirectory, "test.out"), id="testout")
+tr.Processes.Default.Command = "sh -x ./requests-nc.sh {}".format(ts.Variables.port)
 tr.Processes.Default.ReturnCode = 1
 tr.Processes.Default.Streams.stdout = 'general-connection-failure-502.gold'
