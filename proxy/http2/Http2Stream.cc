@@ -37,7 +37,7 @@
 #define Http2StreamDebug(fmt, ...) \
   SsnDebug(_proxy_ssn, "http2_stream", "[%" PRId64 "] [%u] " fmt, _proxy_ssn->connection_id(), this->get_id(), ##__VA_ARGS__);
 
-ClassAllocator<Http2Stream> http2StreamAllocator("http2StreamAllocator");
+ClassAllocator<Http2Stream, true> http2StreamAllocator("http2StreamAllocator");
 
 Http2Stream::Http2Stream(ProxySession *session, Http2StreamId sid, ssize_t initial_rwnd)
   : super(session), _id(sid), _client_rwnd(initial_rwnd)
@@ -485,7 +485,6 @@ Http2Stream::terminate_if_possible()
 
     Http2ClientSession *h2_proxy_ssn = static_cast<Http2ClientSession *>(this->_proxy_ssn);
     SCOPED_MUTEX_LOCK(lock, h2_proxy_ssn->connection_state.mutex, this_ethread());
-    this->~Http2Stream();
     THREAD_FREE(this, http2StreamAllocator, this_ethread());
   }
 }
