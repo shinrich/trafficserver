@@ -55,7 +55,7 @@ ink_mutex debug_cs_list_mutex;
 
 #endif /* USE_HTTP_DEBUG_LISTS */
 
-ClassAllocator<Http1ClientSession> http1ClientSessionAllocator("http1ClientSessionAllocator");
+ClassAllocator<Http1ClientSession, true> http1ClientSessionAllocator("http1ClientSessionAllocator");
 
 Http1ClientSession::Http1ClientSession() : super(), trans(this) {}
 
@@ -118,7 +118,6 @@ Http1ClientSession::free()
     _vc = nullptr;
   }
 
-  this->~Http1ClientSession();
   THREAD_FREE(this, http1ClientSessionAllocator, this_thread());
 }
 
@@ -467,7 +466,7 @@ Http1ClientSession::attach_server_session(PoolableSession *ssession, bool transa
     //  have it call the client session back.  This IO also prevent
     //  the server net conneciton from calling back a dead sm
     SET_HANDLER(&Http1ClientSession::state_keep_alive);
-    slave_ka_vio = ssession->do_io_read(this, 0, nullptr);
+    slave_ka_vio = ssession->do_io_read(this, INT64_MAX, ssession->get_reader()->mbuf);
     ink_assert(slave_ka_vio != ka_vio);
 
     // Transfer control of the write side as well
