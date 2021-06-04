@@ -26,8 +26,12 @@ Test.SkipUnless(
 )
 Test.ContinueOnFail = True
 
-# test_tsapi.so will output test logging to this file.
-Test.Env["OUTPUT_FILE"] = Test.RunDirectory + "/log.txt"
+plugin_name = "test_tsapi"
+log_file_name = "log.txt"
+
+
+# The test plugin will output test logging to this file.
+Test.Env["OUTPUT_FILE"] = Test.RunDirectory + "/" + log_file_name
 
 server = Test.MakeOriginServer("server")
 
@@ -53,20 +57,21 @@ ts.Disk.records_config.update({
     'proxy.config.ssl.server.private_key.path': '{0}'.format(ts.Variables.SSLDir),
     'proxy.config.url_remap.remap_required': 1,
     'proxy.config.diags.debug.enabled': 1,
-    'proxy.config.diags.debug.tags': 'http|test_tsapi',
+    'proxy.config.diags.debug.tags': f'http|{plugin_name}',
 })
 
 ts.Disk.ssl_multicert_config.AddLine(
     'dest_ip=* ssl_cert_name=server.pem ssl_key_name=server.key'
 )
 
-rp = os.path.join(Test.TestDirectory, '.libs', 'test_tsapi.so')
+rp = os.path.join(Test.Variables.AtsBuildGoldTestsDir, 'pluginTest', 'tsapi', '.libs', f'{plugin_name}.so')
+ts.Setup.Copy(rp, ts.Env['PROXY_CONFIG_PLUGIN_PLUGIN_DIR'])
 
 ts.Disk.remap_config.AddLine(
-    "map http://myhost.test http://127.0.0.1:{0} @plugin={1} @plugin={1}".format(server.Variables.Port, rp)
+    "map http://myhost.test http://127.0.0.1:{0} @plugin={1} @plugin={1}".format(server.Variables.Port, f"{plugin_name}.so")
 )
 ts.Disk.remap_config.AddLine(
-    "map https://myhost.test:123 http://127.0.0.1:{0} @plugin={1} @plugin={1}".format(server.Variables.Port, rp)
+    "map https://myhost.test:123 http://127.0.0.1:{0} @plugin={1} @plugin={1}".format(server.Variables.Port, f"{plugin_name}.so")
 )
 
 tr = Test.AddTestRun()
@@ -94,7 +99,8 @@ tr.Processes.Default.ReturnCode = 0
 
 tr = Test.AddTestRun()
 # Change server port number (which can vary) to a fixed string for compare to gold file.
-tr.Processes.Default.Command = "sed 's/{}/SERVER_PORT/' < log.txt > log2.txt".format(server.Variables.Port)
+second_log_file_name = "log2.txt"
+tr.Processes.Default.Command = f"sed 's/{server.Variables.Port}/SERVER_PORT/' < {log_file_name} > {second_log_file_name}"
 tr.Processes.Default.ReturnCode = 0
-f = tr.Disk.File("log2.txt")
+f = tr.Disk.File(second_log_file_name)
 f.Content = "log.gold"
