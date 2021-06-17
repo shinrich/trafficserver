@@ -858,6 +858,16 @@ HttpSM::state_read_client_request_header(int event, void *data)
       break;
     }
 
+    // Special check on HTTP(S) schemes - this must match the protocol stack.
+    if (!is_internal) {
+      auto scheme = t_state.hdr_info.client_request.url_get()->scheme_get_wksidx();
+      if ((scheme == URL_WKSIDX_HTTP && client_connection_is_ssl) || (scheme == URL_WKSIDX_HTTPS && !client_connection_is_ssl)) {
+        t_state.http_return_code = HTTP_STATUS_BAD_REQUEST;
+        call_transact_and_set_next_state(HttpTransact::BadRequest);
+        break;
+      }
+    }
+
     if (_from_early_data) {
       // Only allow early data for safe methods defined in RFC7231 Section 4.2.1.
       // https://tools.ietf.org/html/rfc7231#section-4.2.1
