@@ -615,7 +615,7 @@ void
 HostDBContinuation::refresh_hash()
 {
   // We're not pending DNS anymore.
-  remove_trigger_pending_dns();
+  remove_and_trigger_pending_dns();
   hash.refresh();
 }
 
@@ -1161,7 +1161,6 @@ HostDBContinuation::dnsEvent(int event, HostEnt *e)
     if (failed && old_r && old_r->serve_stale_but_revalidate()) {
       r           = old_r;
       serve_stale = true;
-      // Should return here? No point in doing initialization, it's the old data.
     } else if (is_byname()) {
       lookup_done(hash.host_name, ttl, failed ? nullptr : &e->srv_hosts, r);
     } else if (is_srv()) {
@@ -1174,50 +1173,52 @@ HostDBContinuation::dnsEvent(int event, HostEnt *e)
       lookup_done(e->ent.h_name, ttl, &e->srv_hosts, r);
     }
 
-    auto rr_info = r->rr_info();
-    // Fill in record type specific data.
-    if (is_srv()) {
-      char *pos = rr_info.rebind<char>().end();
-      SRV *q[valid_records];
-      ink_assert(valid_records <= (int)hostdb_round_robin_max_count);
-      for (int i = 0; i < valid_records; ++i) {
-        q[i] = &e->srv_hosts.hosts[i];
-      }
-      std::sort(q, q + valid_records, [](SRV *lhs, SRV *rhs) -> bool { return *lhs < *rhs; });
+    if (!failed) { // implies r != old_r
+      auto rr_info = r->rr_info();
+      // Fill in record type specific data.
+      if (is_srv()) {
+        char *pos = rr_info.rebind<char>().end();
+        SRV *q[valid_records];
+        ink_assert(valid_records <= (int)hostdb_round_robin_max_count);
+        for (int i = 0; i < valid_records; ++i) {
+          q[i] = &e->srv_hosts.hosts[i];
+        }
+        std::sort(q, q + valid_records, [](SRV *lhs, SRV *rhs) -> bool { return *lhs < *rhs; });
 
-      SRV **cur_srv = q;
-      for (auto &item : rr_info) {
-        auto t = *cur_srv++;               // get next SRV record pointer.
-        memcpy(pos, t->host, t->host_len); // Append the name to the overall record.
-        item.assign(t, pos);
-        pos += t->host_len;
-        if (old_r) { // migrate as needed.
-          for (auto &old_item : old_r->rr_info()) {
-            if (item.data.srv.key == old_item.data.srv.key && 0 == strcmp(item.srvname(), old_item.srvname())) {
-              item.migrate_from(old_item);
-              break;
+        SRV **cur_srv = q;
+        for (auto &item : rr_info) {
+          auto t = *cur_srv++;               // get next SRV record pointer.
+          memcpy(pos, t->host, t->host_len); // Append the name to the overall record.
+          item.assign(t, pos);
+          pos += t->host_len;
+          if (old_r) { // migrate as needed.
+            for (auto &old_item : old_r->rr_info()) {
+              if (item.data.srv.key == old_item.data.srv.key && 0 == strcmp(item.srvname(), old_item.srvname())) {
+                item.migrate_from(old_item);
+                break;
+              }
             }
           }
+          // Archetypical example - "%zd" doesn't work on FreeBSD, "%ld" doesn't work on Ubuntu, "%lld" doesn't work on Fedora.
+          Debug_bw("dns_srv", "inserted SRV RR record [{}] into HostDB with TTL: {} seconds", t->host, ttl);
         }
-        // Archetypical example - "%zd" doesn't work on FreeBSD, "%ld" doesn't work on Ubuntu, "%lld" doesn't work on Fedora.
-        Debug_bw("dns_srv", "inserted SRV RR record [{}] into HostDB with TTL: {} seconds", t->host, ttl);
-      }
-    } else { // Otherwise this is a regular dns response
-      unsigned idx = 0;
-      for (auto &item : rr_info) {
-        item.assign(af, e->ent.h_addr_list[idx++]);
-        if (old_r) { // migrate as needed.
-          for (auto &old_item : old_r->rr_info()) {
-            if (item.data.ip == old_item.data.ip) {
-              item.migrate_from(old_item);
-              break;
+      } else { // Otherwise this is a regular dns response
+        unsigned idx = 0;
+        for (auto &item : rr_info) {
+          item.assign(af, e->ent.h_addr_list[idx++]);
+          if (old_r) { // migrate as needed.
+            for (auto &old_item : old_r->rr_info()) {
+              if (item.data.ip == old_item.data.ip) {
+                item.migrate_from(old_item);
+                break;
+              }
             }
           }
         }
       }
     }
 
-    if (!serve_stale) {
+    if (!serve_stale) { // implies r != old_r
       ink_rwlock *bucket_lock = hostDB.refcountcache->lock_for_key(hash.hash.fold());
       ink_rwlock_wrlock(bucket_lock);
       hostDB.refcountcache->put(
@@ -1267,7 +1268,7 @@ HostDBContinuation::dnsEvent(int event, HostEnt *e)
     bool cleanup_self = hostDB.remove_from_pending_dns_for_hash(hash.hash, this);
 
     // wake up everyone else who is waiting
-    remove_trigger_pending_dns();
+    remove_and_trigger_pending_dns();
 
     if (cleanup_self) {
       hostdb_cont_free(this);
@@ -1425,7 +1426,7 @@ HostDBContinuation::set_check_pending_dns()
 }
 
 void
-HostDBContinuation::remove_trigger_pending_dns()
+HostDBContinuation::remove_and_trigger_pending_dns()
 {
   ink_rwlock *bucket_lock = hostDB.refcountcache->lock_for_key(hash.hash.fold());
   ink_rwlock_wrlock(bucket_lock);
