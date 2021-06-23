@@ -26,6 +26,8 @@
 #include "records/I_RecHttp.h"
 #include <openssl/ssl.h>
 
+#define MAX_ALPN_BUF 512
+
 class SSLNextProtocolSet;
 class SSLNextProtocolAccept;
 class Continuation;
@@ -74,6 +76,10 @@ public:
 
   void set_negotiated_protocol_id(const ts::TextView &proto);
   int get_negotiated_protocol_id() const;
+
+  char alpn_in_buf[MAX_ALPN_BUF];
+  int alpn_in_len      = 0;
+  bool alpn_negotiated = false;
 
 private:
   static int _ex_data_index;

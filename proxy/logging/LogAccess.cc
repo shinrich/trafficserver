@@ -1321,7 +1321,34 @@ LogAccess::marshal_client_provided_cert(char *buf)
   }
   return INK_MIN_ALIGN;
 }
-
+/*-------------------------------------------------------------------------
+  -------------------------------------------------------------------------*/
+int
+LogAccess::marshal_client_negotiated_alpn(char *buf)
+{
+  int negotiated = 0;
+  if (m_http_sm) {
+    negotiated = m_http_sm->client_alpn_negotiated;
+  }
+  if (buf) {
+    marshal_int(buf, negotiated);
+  }
+  return INK_MIN_ALIGN;
+}
+/*-------------------------------------------------------------------------
+  -------------------------------------------------------------------------*/
+int
+LogAccess::marshal_client_offered_alpn(char *buf)
+{
+  int len = 0;
+  if (m_http_sm) {
+    len = round_strlen(m_http_sm->client_alpn_offered.length() + 1);
+    if (buf) {
+      marshal_str(buf, m_http_sm->client_alpn_offered.data(), len);
+    }
+  }
+  return len;
+}
 /*-------------------------------------------------------------------------
   -------------------------------------------------------------------------*/
 int

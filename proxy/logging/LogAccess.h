@@ -162,6 +162,8 @@ public:
   inkcoreapi int marshal_client_rx_error_code(char *);          // STR
   inkcoreapi int marshal_client_tx_error_code(char *);          // STR
   inkcoreapi int marshal_client_req_all_header_fields(char *);  // STR
+  inkcoreapi int marshal_client_offered_alpn(char *buf);
+  inkcoreapi int marshal_client_negotiated_alpn(char *buf);
 
   //
   // proxy -> client fields

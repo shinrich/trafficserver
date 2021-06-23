@@ -96,6 +96,14 @@ int
 ALPNSupport::select_next_protocol(SSL *ssl, const unsigned char **out, unsigned char *outlen, const unsigned char *in,
                                   unsigned inlen)
 {
+  if (in) {
+    this->alpn_in_len = inlen;
+    if (this->alpn_in_len > MAX_ALPN_BUF) {
+      this->alpn_in_len = MAX_ALPN_BUF;
+    }
+    memcpy(this->alpn_in_buf, in, this->alpn_in_len);
+  }
+
   const unsigned char *npnptr = nullptr;
   unsigned int npnsize        = 0;
   if (this->getNPN(&npnptr, &npnsize)) {
@@ -104,6 +112,29 @@ ALPNSupport::select_next_protocol(SSL *ssl, const unsigned char **out, unsigned 
     if (SSL_select_next_proto(const_cast<unsigned char **>(out), outlen, npnptr, npnsize, in, inlen) == OPENSSL_NPN_NEGOTIATED) {
       Debug("ssl", "selected ALPN protocol %.*s", (int)(*outlen), *out);
       return SSL_TLSEXT_ERR_OK;
+    }
+  }
+
+  if (inlen > 0) {
+    // Client offered a string, but we didn't bite
+    std::string client_alpn_offered;
+    unsigned int offset = 1;
+    unsigned int len    = in[0];
+    while (offset < inlen && (offset + len) <= inlen) {
+      if (offset > 1) {
+        client_alpn_offered.append(",");
+      }
+      client_alpn_offered.append(((const char *)in) + offset, len);
+      offset += len;
+      if (offset < inlen) {
+        len = in[offset];
+      }
+      offset++;
+    }
+    if (npnsize > 0) {
+      Warning("Client offered=%s with server strings registered", client_alpn_offered.c_str());
+    } else {
+      Warning("Client offered=%s with no server strings registered", client_alpn_offered.c_str());
     }
   }
 

@@ -562,6 +562,22 @@ HttpSM::attach_client_session(ProxyTransaction *client_vc)
       milestones[TS_MILESTONE_TLS_HANDSHAKE_START] = ssl_vc->get_tls_handshake_begin_time();
       milestones[TS_MILESTONE_TLS_HANDSHAKE_END]   = ssl_vc->get_tls_handshake_end_time();
     }
+    client_alpn_negotiated = ssl_vc->alpn_negotiated;
+    if (ssl_vc->alpn_in_len > 0) {
+      int offset = 1;
+      int len    = ssl_vc->alpn_in_buf[0];
+      while (offset < ssl_vc->alpn_in_len && (offset + len) <= ssl_vc->alpn_in_len) {
+        if (offset > 1) {
+          client_alpn_offered.append(",");
+        }
+        client_alpn_offered.append(ssl_vc->alpn_in_buf + offset, len);
+        offset += len;
+        if (offset < ssl_vc->alpn_in_len) {
+          len = ssl_vc->alpn_in_buf[offset];
+        }
+        offset++;
+      }
+    }
   }
 
   const char *protocol_str = client_vc->get_protocol_string();

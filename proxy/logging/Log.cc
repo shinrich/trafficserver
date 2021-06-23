@@ -479,6 +479,16 @@ Log::init_fields()
   global_field_list.add(field, false);
   field_symbol_hash.emplace("pscert", field);
 
+  field = new LogField("client_offered_alpn", "cqao", LogField::STRING, &LogAccess::marshal_client_offered_alpn,
+                       reinterpret_cast<LogField::UnmarshalFunc>(&LogAccess::unmarshal_str));
+  global_field_list.add(field, false);
+  field_symbol_hash.emplace("csao", field);
+
+  field = new LogField("client_negotiated_alpn", "cqan", LogField::sINT, &LogAccess::marshal_client_negotiated_alpn,
+                       reinterpret_cast<LogField::UnmarshalFunc>(&LogAccess::unmarshal_int_to_str));
+  global_field_list.add(field, false);
+  field_symbol_hash.emplace("csan", field);
+
   field = new LogField("process_uuid", "puuid", LogField::STRING, &LogAccess::marshal_process_uuid,
                        reinterpret_cast<LogField::UnmarshalFunc>(&LogAccess::unmarshal_str));
   global_field_list.add(field, false);

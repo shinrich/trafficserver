@@ -404,6 +404,9 @@ public:
   // based on sni and host name header values
   void check_sni_host();
 
+  bool client_alpn_negotiated = false;
+  std::string client_alpn_offered;
+
 protected:
   int reentrancy_count = 0;
 
