@@ -178,9 +178,9 @@ SplitDNSConfig::print()
    SplitDNS::getDNSRecord()
    -------------------------------------------------------------- */
 void *
-SplitDNS::getDNSRecord(ts::TextView hostname)
+SplitDNS::getDNSRecord(const char *hostname)
 {
-  Debug("splitdns", "Called SplitDNS::getDNSRecord(%.*s)", int(hostname.size()), hostname.data());
+  Debug("splitdns", "Called SplitDNS::getDNSRecord(%s)", hostname);
 
   DNSRequestData *pRD = DNSReqAllocator.alloc();
   pRD->m_pHost        = hostname;
@@ -191,7 +191,7 @@ SplitDNS::getDNSRecord(ts::TextView hostname)
   DNSReqAllocator.free(pRD);
 
   if (DNS_SRVR_SPECIFIED == res.r) {
-    return &(res.m_rec->m_servers);
+    return (void *)&(res.m_rec->m_servers);
   }
 
   Debug("splitdns", "Fail to match a valid splitdns rule, fallback to default dns resolver");

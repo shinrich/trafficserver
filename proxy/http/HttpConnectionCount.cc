@@ -31,7 +31,7 @@
 
 using namespace std::literals;
 
-extern void Enable_Config_Var(std::string_view const &name, bool (*cb)(const char *, RecDataT, RecData, void *), void *cookie);
+extern int http_config_cb(const char *, RecDataT, RecData, void *);
 
 OutboundConnTrack::Imp OutboundConnTrack::_imp;
 

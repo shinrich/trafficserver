@@ -24,7 +24,6 @@
 #pragma once
 
 #include "I_EventSystem.h"
-#include "tscore/ink_resolver.h"
 
 #define MAX_NAMED 32
 #define DEFAULT_DNS_RETRIES 5
@@ -120,7 +119,7 @@ struct DNSEntry : public Continuation {
   int which_ns                = NO_NAMESERVER_SELECTED;
   ink_hrtime submit_time      = 0;
   ink_hrtime send_time        = 0;
-  char qname[MAXDNAME + 1];
+  char qname[MAXDNAME];
   int qname_len          = 0;
   int orig_qname_len     = 0;
   char **domains         = nullptr;
@@ -140,7 +139,7 @@ struct DNSEntry : public Continuation {
   int postAllEvent(int event, Event *e);
   int post(DNSHandler *h, HostEnt *ent);
   int postOneEvent(int event, Event *e);
-  void init(DNSQueryData target, int qtype_arg, Continuation *acont, DNSProcessor::Options const &opt);
+  void init(const char *x, int len, int qtype_arg, Continuation *acont, DNSProcessor::Options const &opt);
 
   DNSEntry()
   {

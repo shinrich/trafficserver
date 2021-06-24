@@ -40,8 +40,6 @@
 #include <cctype>
 #include <string_view>
 
-#include <chrono>
-
 #include "tscore/ink_platform.h"
 #include "tscore/ink_inet.h"
 #include "tscore/ink_resolver.h"
@@ -677,7 +675,7 @@ struct OverridableHttpConfigParams {
   MgmtInt per_parent_connect_attempts = 2;
   MgmtInt parent_connect_timeout      = 30;
 
-  ts_seconds down_server_timeout{300};
+  MgmtInt down_server_timeout    = 300;
   MgmtInt client_abort_threshold = 1000;
 
   // open read failure retries.

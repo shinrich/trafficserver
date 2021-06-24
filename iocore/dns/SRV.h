@@ -25,6 +25,7 @@
 
 #include <vector>
 #include "tscore/ink_platform.h"
+#include "I_HostDBProcessor.h"
 
 struct HostDBInfo;
 
