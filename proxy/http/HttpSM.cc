@@ -861,7 +861,10 @@ HttpSM::state_read_client_request_header(int event, void *data)
     // Special check on HTTP(S) schemes - this must match the protocol stack.
     if (!is_internal) {
       auto scheme = t_state.hdr_info.client_request.url_get()->scheme_get_wksidx();
-      if ((scheme == URL_WKSIDX_HTTP && client_connection_is_ssl) || (scheme == URL_WKSIDX_HTTPS && !client_connection_is_ssl)) {
+      if ((client_connection_is_ssl && (scheme == URL_WKSIDX_HTTP || scheme == URL_WKSIDX_WS)) ||
+          (!client_connection_is_ssl && (scheme == URL_WKSIDX_HTTPS || scheme == URL_WKSIDX_WSS))) {
+        SMDebug("http", "scheme [%s] vs. protocol [%s] mismatch", hdrtoken_index_to_wks(scheme),
+                client_connection_is_ssl ? "tls" : "plaintext");
         t_state.http_return_code = HTTP_STATUS_BAD_REQUEST;
         call_transact_and_set_next_state(HttpTransact::BadRequest);
         break;
