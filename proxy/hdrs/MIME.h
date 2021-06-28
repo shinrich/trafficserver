@@ -1008,6 +1008,7 @@ public:
   void field_detach(MIMEField *field, bool detach_all_dups = true);
   void field_delete(MIMEField *field, bool delete_all_dups = true);
   void field_delete(const char *name, int name_length);
+  bool contains(MIMEField *field);
 
   MIMEField *iter_get_first(MIMEFieldIter *iter);
   MIMEField *iter_get(MIMEFieldIter *iter);
@@ -1235,6 +1236,12 @@ MIMEHdr::field_delete(const char *name, int name_length)
   MIMEField *field = field_find(name, name_length);
   if (field)
     field_delete(field);
+}
+
+inline bool
+MIMEHdr::contains(MIMEField *field)
+{
+  return mime_hdr_field_slotnum(m_mime, field) != -1;
 }
 
 inline MIMEField *
