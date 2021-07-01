@@ -5551,6 +5551,24 @@ TSHttpTxnIsWebsocket(TSHttpTxn txnp)
   return sm->t_state.is_websocket;
 }
 
+const char *
+TSHttpTxnCacheDiskPathGet(TSHttpTxn txnp, int *length)
+{
+  sdk_assert(sdk_sanity_check_txn(txnp) == TS_SUCCESS);
+
+  HttpSM *sm       = reinterpret_cast<HttpSM *>(txnp);
+  char const *path = nullptr;
+
+  if (HttpCacheSM *c_sm = &(sm->get_cache_sm()); c_sm) {
+    path = c_sm->get_disk_path();
+  }
+  if (length) {
+    *length = path ? strlen(path) : 0;
+  }
+
+  return path;
+}
+
 TSReturnCode
 TSHttpTxnCacheLookupUrlGet(TSHttpTxn txnp, TSMBuffer bufp, TSMLoc obj)
 {
