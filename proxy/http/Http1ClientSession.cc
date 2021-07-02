@@ -192,7 +192,9 @@ Http1ClientSession::new_connection(NetVConnection *new_vc, MIOBuffer *iobuf, IOB
 
   read_buffer = iobuf ? iobuf : new_MIOBuffer(HTTP_HEADER_BUFFER_SIZE_INDEX);
   _reader     = reader ? reader : read_buffer->alloc_reader();
+
   trans.set_reader(_reader);
+  trans.upstream_outbound_options = *accept_options;
 
   _handle_if_ssl(new_vc);
 
@@ -414,6 +416,8 @@ Http1ClientSession::release(ProxyTransaction *trans)
     this->do_io_write(this, 0, nullptr);
   }
 
+  h1trans->reset();
+
   // Check to see there is remaining data in the
   //  buffer.  If there is, spin up a new state
   //  machine to process it.  Otherwise, issue an
@@ -421,7 +425,6 @@ Http1ClientSession::release(ProxyTransaction *trans)
   /*  Start the new transaction once we finish completely the current transaction and unroll the stack */
   bool more_to_read = this->_reader->is_read_avail_more_than(0);
   if (more_to_read) {
-    h1trans->reset();
     HttpSsnDebug("[%" PRId64 "] data already in buffer, starting new transaction", con_id);
     new_transaction();
   } else {
@@ -432,10 +435,11 @@ Http1ClientSession::release(ProxyTransaction *trans)
     ink_assert(slave_ka_vio != ka_vio);
 
     if (_vc) {
+      // Under heavy traffic ( - e.g. hitting proxy.config.net.max_connections_in limit), calling add_to_keep_alive_queue()
+      // could free this _vc, session, and transaction.
       _vc->cancel_active_timeout();
       _vc->add_to_keep_alive_queue();
     }
-    h1trans->reset();
   }
 }
 
