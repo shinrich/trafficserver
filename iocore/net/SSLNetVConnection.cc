@@ -1588,6 +1588,7 @@ SSLNetVConnection::select_next_protocol(SSL *ssl, const unsigned char **out, uns
                                         const unsigned char *in ATS_UNUSED, unsigned inlen ATS_UNUSED, void *)
 {
   SSLNetVConnection *netvc = SSLNetVCAccess(ssl);
+  int retval               = SSL_TLSEXT_ERR_ALERT_FATAL;
 
   ink_release_assert(netvc && netvc->ssl == ssl);
   const unsigned char *npnptr = nullptr;
@@ -1597,13 +1598,17 @@ SSLNetVConnection::select_next_protocol(SSL *ssl, const unsigned char **out, uns
     // server selects the protocol. This is a n^2 search, so it's preferable to keep the protocol set short.
     if (SSL_select_next_proto(const_cast<unsigned char **>(out), outlen, npnptr, npnsize, in, inlen) == OPENSSL_NPN_NEGOTIATED) {
       Debug("ssl", "selected ALPN protocol %.*s", (int)(*outlen), *out);
-      return SSL_TLSEXT_ERR_OK;
+      retval = SSL_TLSEXT_ERR_OK;
+    } else {
+      *out    = nullptr;
+      *outlen = 0;
     }
+  } else {
+    *out    = nullptr;
+    *outlen = 0;
+    retval  = SSL_TLSEXT_ERR_NOACK;
   }
-
-  *out    = nullptr;
-  *outlen = 0;
-  return SSL_TLSEXT_ERR_NOACK;
+  return retval;
 }
 
 void
