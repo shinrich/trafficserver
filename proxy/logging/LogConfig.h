@@ -207,9 +207,8 @@ public:
   int max_line_size;
   int logbuffer_max_iobuf_index;
 
-  char *hostname           = nullptr;
-  char *logfile_dir        = nullptr;
-  char *error_log_filename = nullptr;
+  char *hostname;
+  char *logfile_dir;
 
 private:
   bool evaluate_config();

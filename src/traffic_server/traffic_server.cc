@@ -122,8 +122,7 @@ extern "C" int plock(int);
 #define DEFAULT_COMMAND_FLAG 0
 
 #define DEFAULT_REMOTE_MANAGEMENT_FLAG 0
-#define DEFAULT_DIAGS_LOG_FILENAME "diags.log"
-static char diags_log_filename[PATH_NAME_MAX] = DEFAULT_DIAGS_LOG_FILENAME;
+#define DIAGS_LOG_FILENAME "diags.log"
 
 static const long MAX_LOGIN = ink_login_name_max();
 
@@ -286,9 +285,9 @@ public:
       diags->set_std_output(StdStream::STDOUT, bind_stdout);
       diags->set_std_output(StdStream::STDERR, bind_stderr);
       if (diags->reseat_diagslog()) {
-        Note("Reseated %s", diags_log_filename);
+        Note("Reseated %s", DIAGS_LOG_FILENAME);
       } else {
-        Note("Could not reseat %s", diags_log_filename);
+        Note("Could not reseat %s", DIAGS_LOG_FILENAME);
       }
       // Reload any of the other moved log files (such as the ones in logging.yaml).
       Log::handle_log_rotation_request();
@@ -397,7 +396,7 @@ public:
     diags->config_roll_diagslog((RollingEnabledValues)diags_log_roll_enable, diags_log_roll_int, diags_log_roll_size);
 
     if (diags->should_roll_diagslog()) {
-      Note("Rolled %s", diags_log_filename);
+      Note("Rolled %s", DIAGS_LOG_FILENAME);
     }
     return EVENT_CONT;
   }
@@ -1778,7 +1777,7 @@ main(int /* argc ATS_UNUSED */, const char **argv)
   // re-start it again, TS will crash.
   // This is also needed for log rotation - setting up the file can cause privilege
   // related errors and if diagsConfig isn't get up yet that will crash on a NULL pointer.
-  diagsConfig = new DiagsConfig("Server", DEFAULT_DIAGS_LOG_FILENAME, error_tags, action_tags, false);
+  diagsConfig = new DiagsConfig("Server", DIAGS_LOG_FILENAME, error_tags, action_tags, false);
   diags->set_std_output(StdStream::STDOUT, bind_stdout);
   diags->set_std_output(StdStream::STDERR, bind_stderr);
   if (is_debug_tag_set("diags")) {
@@ -1871,12 +1870,8 @@ main(int /* argc ATS_UNUSED */, const char **argv)
   main_thread->set_specific();
 
   // Re-initialize diagsConfig based on records.config configuration
-  REC_ReadConfigString(diags_log_filename, "proxy.config.diags.logfile.filename", sizeof(diags_log_filename));
-  if (strnlen(diags_log_filename, sizeof(diags_log_filename)) == 0) {
-    strncpy(diags_log_filename, DEFAULT_DIAGS_LOG_FILENAME, sizeof(diags_log_filename));
-  }
   DiagsConfig *old_log = diagsConfig;
-  diagsConfig          = new DiagsConfig("Server", diags_log_filename, error_tags, action_tags, true);
+  diagsConfig          = new DiagsConfig("Server", DIAGS_LOG_FILENAME, error_tags, action_tags, true);
   RecSetDiags(diags);
   diags->set_std_output(StdStream::STDOUT, bind_stdout);
   diags->set_std_output(StdStream::STDERR, bind_stderr);

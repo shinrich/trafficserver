@@ -25,19 +25,11 @@ def make_id(s):
     return s.replace(".", "_").replace('-', '_')
 
 
-# A mapping from log type to the log name. 'stdout' and 'stderr' are handled
-# specially and are used to indicate the stdout and stderr streams,
-# respectively.
-default_log_data = {
-    'diags': 'diags.log',
-    'error': 'error.log',
-    'manager': 'manager.log'
-}
+# this forms is for the global process define
 
 
 def MakeATSProcess(obj, name, command='traffic_server', select_ports=True,
-                   enable_tls=False, enable_cache=True, enable_quic=False,
-                   log_data=default_log_data):
+                   enable_tls=False, enable_cache=True, enable_quic=False):
     #####################################
     # common locations
 
@@ -192,38 +184,23 @@ def MakeATSProcess(obj, name, command='traffic_server', select_ports=True,
     tmpname = os.path.join(log_dir, fname)
     p.Disk.File(tmpname, id=make_id(fname))
     # error.log
-    fname = log_data['error']
-    if fname == 'stdout':
-        p.Disk.error_log = p.Streams.stdout
-    elif fname == 'stderr':
-        p.Disk.error_log = p.Streams.stderr
-    else:
-        tmpname = os.path.join(log_dir, fname)
-        p.Disk.File(tmpname, id='error_log', exists=False)
+    fname = "error.log"
+    tmpname = os.path.join(log_dir, fname)
+    p.Disk.File(tmpname, id=make_id(fname), exists=False)
     # diags.log
-    fname = log_data['diags']
-    if fname == 'stdout':
-        p.Disk.diags_log = p.Streams.stdout
-    elif fname == 'stderr':
-        p.Disk.diags_log = p.Streams.stderr
-    else:
-        tmpname = os.path.join(log_dir, fname)
-        p.Disk.File(tmpname, id='diags_log')
+    fname = "diags.log"
+    tmpname = os.path.join(log_dir, fname)
+    p.Disk.File(tmpname, id=make_id(fname))
     # add this test back once we have network namespaces working again
     p.Disk.diags_log.Content = Testers.ExcludesExpression(
-        "ERROR:", f"Diags log file {fname} should not contain errors")
+        "ERROR:", "diags.log should not contain errors")
     p.Disk.diags_log.Content += Testers.ExcludesExpression(
-        "FATAL:", f"Diags log file {fname} should not contain errors")
+        "FATAL:", "diags.log should not contain errors")
 
     if command == "traffic_manager":
-        fname = log_data['manager']
-        if fname == 'stdout':
-            p.Disk.manager_log = p.Streams.stdout
-        elif fname == 'stderr':
-            p.Disk.manager_log = p.Streams.stderr
-        else:
-            tmpname = os.path.join(log_dir, fname)
-            p.Disk.File(tmpname, id='manager_log')
+        fname = "manager.log"
+        tmpname = os.path.join(log_dir, fname)
+        p.Disk.File(tmpname, id=make_id(fname))
 
     # config files
     def MakeConfigFile(self, fname):
