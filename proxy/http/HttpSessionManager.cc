@@ -211,9 +211,9 @@ ServerSessionPool::releaseSession(PoolableSession *ss)
   // Transfer control of the write side as well
   ss->do_io_write(this, 0, nullptr);
 
-  // we probably don't need the active timeout set, but will leave it for now
   ss->set_inactivity_timeout(ss->get_netvc()->get_inactivity_timeout());
-  ss->set_active_timeout(ss->get_netvc()->get_active_timeout());
+  ss->cancel_active_timeout();
+
   // put it in the pools.
   this->addSession(ss);
 
@@ -270,7 +270,6 @@ ServerSessionPool::eventHandler(int event, void *data)
                 "resetting timeout to maintain minimum number of connections",
                 s->connection_id(), HttpDebugNames::get_event_name(event));
           s->get_netvc()->set_inactivity_timeout(s->get_netvc()->get_inactivity_timeout());
-          s->get_netvc()->set_active_timeout(s->get_netvc()->get_active_timeout());
           found = true;
           break;
         }
