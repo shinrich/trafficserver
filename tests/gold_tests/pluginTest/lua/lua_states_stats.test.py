@@ -29,7 +29,7 @@ Test.ContinueOnFail = True
 # Define default ATS
 server = Test.MakeOriginServer("server")
 
-ts = Test.MakeATSProcess("ts", command="traffic_manager", select_ports=True)
+ts = Test.MakeATSProcess("ts", command="traffic_server", select_ports=True)
 
 Test.testName = "Lua states and stats"
 
@@ -55,6 +55,9 @@ ts.Disk.records_config.update({
     'proxy.config.diags.debug.tags': 'ts_lua',
     'proxy.config.plugin.lua.max_states': 4,
 })
+
+# Set TS_RUNROOT, traffic_ctl needs it to find the socket.
+ts.SetRunRootEnv()
 
 curl_and_args = 'curl -s -D /dev/stdout -o /dev/stderr -x localhost:{} '.format(ts.Variables.port)
 

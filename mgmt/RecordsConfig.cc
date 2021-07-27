@@ -1519,6 +1519,9 @@ static const RecordElement RecordsConfig[] =
 
   // Temporary control to add back old remap plugin execution behavior
   {RECT_CONFIG, "proxy.config.http.remap.old_behavior", RECD_INT, "0", RECU_RESTART_TS, RR_NULL, RECC_NULL, "[0-1]", RECA_NULL},
+  // JSONRPC 2.0 config file
+  {RECT_CONFIG, "proxy.config.jsonrpc.filename", RECD_STRING, ts::filename::JSONRPC, RECU_RESTART_TS, RR_NULL, RECC_NULL, nullptr, RECA_NULL}
+
 };
 // clang-format on
 
