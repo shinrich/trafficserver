@@ -7492,9 +7492,9 @@ TSHostLookup(TSCont contp, const char *hostname, size_t namelen)
   // Its handler can create the required sockaddr context on the stack and then forward
   // the event to the plugin continuation. The sockaddr cannot be placed in the HostDB
   // record because that is a shared object.
-  auto bouncer          = INKContAllocator.alloc();
-  bouncer->m_event_func = &TSHostLookupTrampoline;
-  bouncer->mdata        = contp;
+  INKContInternal *bouncer = INKContAllocator.alloc();
+  bouncer->init(&TSHostLookupTrampoline, reinterpret_cast<TSMutex>(reinterpret_cast<INKContInternal *>(contp)->mutex.get()));
+  bouncer->mdata = contp;
   return (TSAction)hostDBProcessor.getbyname_re(bouncer, hostname, namelen);
 }
 
