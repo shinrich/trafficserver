@@ -1053,9 +1053,8 @@ SSLNetVConnection::sslStartHandShake(int event, int &err)
         clientCTX    = nps->ctx;
         clientVerify = nps->verifyLevel;
       } else {
-        clientCTX = params->client_ctx;
-        // Keeping backwards compatability on the proxy.config.ssl.client.verify.server setting
-        clientVerify = params->clientVerify ? (params->clientVerify == 1 ? 2 : 1) : 0;
+        clientCTX    = params->client_ctx;
+        clientVerify = params->clientVerify;
       }
       if (!clientCTX) {
         SSLErrorVC(this, "failed to create SSL client session");
