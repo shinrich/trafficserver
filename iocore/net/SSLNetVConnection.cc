@@ -1040,8 +1040,8 @@ SSLNetVConnection::sslStartHandShake(int event, int &err)
       // Making the check here instead of later, so we only
       // do this setting immediately after we create the SSL object
       SNIConfig::scoped_config sniParam;
-      int8_t clientVerify = 0;
       cchar *serverKey    = this->options.sni_servername;
+      int8_t clientVerify = options.clientVerificationFlag;
       if (!serverKey) {
         ats_ip_ntop(this->get_remote_addr(), buff, INET6_ADDRSTRLEN);
         serverKey = buff;
@@ -1055,7 +1055,10 @@ SSLNetVConnection::sslStartHandShake(int event, int &err)
       } else {
         clientCTX    = params->client_ctx;
         clientVerify = params->clientVerify;
+        // Swap the valids to be consistent with the new SNI policy values
+        clientVerify = clientVerify == 1 ? 2 : 1;
       }
+      options.clientVerificationFlag = clientVerify;
       if (!clientCTX) {
         SSLErrorVC(this, "failed to create SSL client session");
         return EVENT_ERROR;
