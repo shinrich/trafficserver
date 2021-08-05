@@ -462,7 +462,6 @@ ts_lua_host_lookup_handler(TSCont contp, TSEvent event, void *edata)
 {
   ts_lua_async_item *ai;
   ts_lua_cont_info *ci;
-  struct sockaddr const *addr;
   char cip[128];
   lua_State *L;
   ts_lua_coroutine *crt;
