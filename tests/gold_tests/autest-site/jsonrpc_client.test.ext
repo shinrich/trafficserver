@@ -260,8 +260,8 @@ class JSONRPCResponseSchemaValidator(Tester, SchemaValidator):
         if testPassed:
             self.Result = tester.ResultType.Passed
             self.Reason = f"Returned value: {reason}"
-            host.WriteVerbose(
-                ["testers.JSONRPCResponseSchemaValidator", "testers"], f"tester.ResultType.to_color_string(self.Result) - ", self.Reason)
+            host.WriteVerbose(["testers.JSONRPCResponseSchemaValidator", "testers"],
+                              f"tester.ResultType.to_color_string(self.Result) - ", self.Reason)
         else:
             self.Result = tester.ResultType.Failed
             self.Reason = f"Returned value: {reason}"

@@ -180,12 +180,20 @@ add_testrun_for_jsonrpc_request("Test admin_server_stop_drain", request_file_nam
                                 context={'method': 'admin_server_stop_drain'})
 
 # admin_storage_get_device_status
-add_testrun_for_jsonrpc_request("Test admin_storage_get_device_status", request_file_name='json/admin_storage_x_device_status_req.json',
-                                context={'method': 'admin_storage_get_device_status', 'device': f'{storage_path}/cache.db'})
+add_testrun_for_jsonrpc_request(
+    "Test admin_storage_get_device_status",
+    request_file_name='json/admin_storage_x_device_status_req.json',
+    context={
+        'method': 'admin_storage_get_device_status',
+        'device': f'{storage_path}/cache.db'})
 
 # admin_storage_set_device_offline
-add_testrun_for_jsonrpc_request("Test admin_storage_set_device_offline", request_file_name='json/admin_storage_x_device_status_req.json',
-                                context={'method': 'admin_storage_set_device_offline', 'device': f'{storage_path}/cache.db'})
+add_testrun_for_jsonrpc_request(
+    "Test admin_storage_set_device_offline",
+    request_file_name='json/admin_storage_x_device_status_req.json',
+    context={
+        'method': 'admin_storage_set_device_offline',
+        'device': f'{storage_path}/cache.db'})
 
 # admin_plugin_send_basic_msg
 add_testrun_for_jsonrpc_request("Test admin_plugin_send_basic_msg", request_file_name='json/admin_plugin_send_basic_msg_req.json',
