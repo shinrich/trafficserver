@@ -326,8 +326,8 @@ FileManager::ConfigManager::ConfigManager(const char *fileName_, const char *con
   }
 
   // Copy the file name.
-  fileName   = ats_strdup(fileName_);
-  configName = ats_strdup(configName_);
+  fileName   = std::string{fileName_};
+  configName = std::string{configName_};
 
   ink_mutex_init(&fileAccessLock);
   // Check to make sure that our configuration file exists
@@ -341,11 +341,6 @@ FileManager::ConfigManager::ConfigManager(const char *fileName_, const char *con
   } else {
     fileLastModified = TS_ARCHIVE_STAT_MTIME(fileInfo);
   }
-}
-
-FileManager::ConfigManager::~ConfigManager()
-{
-  ats_free(fileName);
 }
 
 //

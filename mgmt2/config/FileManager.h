@@ -29,7 +29,7 @@
 #include "tscore/Errata.h"
 
 #include <unordered_map>
-#include <string_view>
+#include <string>
 #include <forward_list>
 #include <mutex>
 #include <functional>
@@ -49,7 +49,7 @@ public:
     // fileName_ should be rooted or a base file name.
     ConfigManager(const char *fileName_, const char *configName_, bool root_access_needed, bool isRequired_,
                   ConfigManager *parentConfig_);
-    ~ConfigManager();
+    ~ConfigManager() = default;
 
     // Manual take out of lock required
     void
@@ -71,13 +71,13 @@ public:
     const char *
     getFileName() const
     {
-      return fileName;
+      return fileName.c_str();
     }
 
     const char *
     getConfigName() const
     {
-      return configName;
+      return configName.c_str();
     }
 
     bool
@@ -114,8 +114,8 @@ public:
     int statFile(struct stat *buf);
 
     ink_mutex fileAccessLock;
-    char *fileName;
-    char *configName;
+    std::string fileName;
+    std::string configName;
     bool root_access_needed;
     bool isRequired;
     ConfigManager *parentConfig;
