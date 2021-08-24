@@ -25,7 +25,7 @@ Test unsupported values for chunked_encoding
 Test.ContinueOnFail = True
 
 # Define default ATS
-ts = Test.MakeATSProcess("ts", select_ports=True, enable_tls=False)
+ts = Test.MakeATSProcess("ts1", select_ports=True, enable_tls=False)
 server = Test.MakeOriginServer("server")
 
 testName = ""
@@ -53,7 +53,7 @@ tr.Processes.Default.Command = 'curl -H "host: example.com" -H "transfer-encodin
     ts.Variables.port)
 tr.Processes.Default.ReturnCode = 0
 tr.Processes.Default.StartBefore(server)
-tr.Processes.Default.StartBefore(Test.Processes.ts)
+tr.Processes.Default.StartBefore(ts)
 tr.Processes.Default.Streams.All = Testers.ContainsExpression("501 Field not implemented", "Should fail")
 tr.Processes.Default.Streams.All = Testers.ExcludesExpression("200 OK", "Should not succeed")
 tr.StillRunningAfter = server
@@ -69,3 +69,50 @@ tr.Processes.Default.Streams.All = Testers.ContainsExpression("501 Field not imp
 tr.Processes.Default.Streams.All = Testers.ExcludesExpression("200 OK", "Should not succeed")
 tr.StillRunningAfter = server
 tr.StillRunningAfter = ts
+
+
+class MalformedChunkHeaderTest:
+    chunkedReplayFile = "replays/malformed_chunked_header.replay.yaml"
+
+    def __init__(self):
+        self.setupOriginServer()
+        self.setupTS()
+
+    def setupOriginServer(self):
+        self.server = Test.MakeVerifierServerProcess("verifier-server", self.chunkedReplayFile)
+
+    def setupTS(self):
+        self.ts = Test.MakeATSProcess("ts2", enable_tls=True, enable_cache=False)
+        self.ts.addDefaultSSLFiles()
+        self.ts.Disk.records_config.update({
+            "proxy.config.diags.debug.enabled": 1,
+            "proxy.config.diags.debug.tags": "http",
+            "proxy.config.ssl.server.cert.path": f'{self.ts.Variables.SSLDir}',
+            "proxy.config.ssl.server.private_key.path": f'{self.ts.Variables.SSLDir}',
+            "proxy.config.ssl.client.verify.server.policy": 'PERMISSIVE',
+        })
+        self.ts.Disk.ssl_multicert_config.AddLine(
+            'dest_ip=* ssl_cert_name=server.pem ssl_key_name=server.key'
+        )
+        self.ts.Disk.remap_config.AddLine(
+            f"map / http://127.0.0.1:{self.server.Variables.http_port}/",
+        )
+
+    def runChunkedTraffic(self):
+        tr = Test.AddTestRun()
+        tr.AddVerifierClientProcess(
+            "client",
+            self.chunkedReplayFile,
+            http_ports=[self.ts.Variables.port],
+            https_ports=[self.ts.Variables.ssl_port],
+            other_args='--thread-limit 1')
+        tr.Processes.Default.StartBefore(self.server)
+        tr.Processes.Default.StartBefore(self.ts)
+        tr.StillRunningAfter = self.server
+        tr.StillRunningAfter = self.ts
+
+    def run(self):
+        self.runChunkedTraffic()
+
+
+MalformedChunkHeaderTest().run()
