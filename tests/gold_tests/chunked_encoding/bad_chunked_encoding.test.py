@@ -71,15 +71,15 @@ tr.StillRunningAfter = server
 tr.StillRunningAfter = ts
 
 
-class MalformedChunkHeaderTest:
-    chunkedReplayFile = "replays/malformed_chunked_header.replay.yaml"
+class HTTP10Test:
+    chunkedReplayFile = "replays/chunked_in_http_1_0.replay.yaml"
 
     def __init__(self):
         self.setupOriginServer()
         self.setupTS()
 
     def setupOriginServer(self):
-        self.server = Test.MakeVerifierServerProcess("verifier-server", self.chunkedReplayFile)
+        self.server = Test.MakeVerifierServerProcess("verifier-server1", self.chunkedReplayFile)
 
     def setupTS(self):
         self.ts = Test.MakeATSProcess("ts2", enable_tls=True, enable_cache=False)
@@ -101,7 +101,7 @@ class MalformedChunkHeaderTest:
     def runChunkedTraffic(self):
         tr = Test.AddTestRun()
         tr.AddVerifierClientProcess(
-            "client",
+            "client1",
             self.chunkedReplayFile,
             http_ports=[self.ts.Variables.port],
             https_ports=[self.ts.Variables.ssl_port],
@@ -110,6 +110,88 @@ class MalformedChunkHeaderTest:
         tr.Processes.Default.StartBefore(self.ts)
         tr.StillRunningAfter = self.server
         tr.StillRunningAfter = self.ts
+
+    def run(self):
+        self.runChunkedTraffic()
+
+
+HTTP10Test().run()
+
+
+class MalformedChunkHeaderTest:
+    chunkedReplayFile = "replays/malformed_chunked_header.replay.yaml"
+
+    def __init__(self):
+        self.setupOriginServer()
+        self.setupTS()
+
+    def setupOriginServer(self):
+        self.server = Test.MakeVerifierServerProcess("verifier-server2", self.chunkedReplayFile)
+
+        # The server's responses will fail the first two transactions
+        # because ATS will close the connection due to the malformed
+        # chunk headers.
+        self.server.Streams.stdout += Testers.ContainsExpression(
+            "Header write for key 1 failed",
+            "Verify that writing the first response failed.")
+        self.server.Streams.stdout += Testers.ContainsExpression(
+            "Header write for key 2 failed",
+            "Verify that writing the second response failed.")
+
+        # ATS should close the connection before any body gets through.
+        # "abc" is the body sent for each of these chunked cases.
+        self.server.Streams.stdout += Testers.ExcludesExpression(
+            "abc",
+            "Verify that the body never got through.")
+
+    def setupTS(self):
+        self.ts = Test.MakeATSProcess("ts3", enable_tls=True, enable_cache=False)
+        self.ts.addDefaultSSLFiles()
+        self.ts.Disk.records_config.update({
+            "proxy.config.diags.debug.enabled": 1,
+            "proxy.config.diags.debug.tags": "http",
+            "proxy.config.ssl.server.cert.path": f'{self.ts.Variables.SSLDir}',
+            "proxy.config.ssl.server.private_key.path": f'{self.ts.Variables.SSLDir}',
+            "proxy.config.ssl.client.verify.server.policy": 'PERMISSIVE',
+        })
+        self.ts.Disk.ssl_multicert_config.AddLine(
+            'dest_ip=* ssl_cert_name=server.pem ssl_key_name=server.key'
+        )
+        self.ts.Disk.remap_config.AddLine(
+            f"map / http://127.0.0.1:{self.server.Variables.http_port}/",
+        )
+        self.ts.Streams.stderr += Testers.ContainsExpression(
+            "user agent post chunk decoding error",
+            "Verify that ATS detected a problem parsing a chunk.")
+
+    def runChunkedTraffic(self):
+        tr = Test.AddTestRun()
+        tr.AddVerifierClientProcess(
+            "client2",
+            self.chunkedReplayFile,
+            http_ports=[self.ts.Variables.port],
+            https_ports=[self.ts.Variables.ssl_port],
+            other_args='--thread-limit 1')
+        tr.Processes.Default.StartBefore(self.server)
+        tr.Processes.Default.StartBefore(self.ts)
+        tr.StillRunningAfter = self.server
+        tr.StillRunningAfter = self.ts
+
+        # The aborted connections will result in errors and a non-zero return
+        # code from the verifier client.
+        tr.Processes.Default.ReturnCode = 1
+        tr.Processes.Default.Streams.stdout += Testers.ContainsExpression(
+            "Failed HTTP/1 transaction with key=3",
+            "Verify that ATS closed the third transaction.")
+        tr.Processes.Default.Streams.stdout += Testers.ContainsExpression(
+            "Failed HTTP/1 transaction with key=4",
+            "Verify that ATS closed the fourth transaction.")
+
+        # ATS should close the connection before any body gets through.
+        # "abc" is the body sent for each of these chunked cases.
+        tr.Processes.Default.Streams.stdout += Testers.ExcludesExpression(
+            "abc",
+            "Verify that the body never got through.")
 
     def run(self):
         self.runChunkedTraffic()

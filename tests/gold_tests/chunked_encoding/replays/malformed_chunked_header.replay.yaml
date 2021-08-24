@@ -21,28 +21,89 @@ sessions:
 - transactions:
   - client-request:
       method: "POST"
-      # HTTP/1.0 does not support Transfer-Encoding. ATS should therefore
-      # reject it with a 4xx response.
-      version: "1.0"
-      url: /unexpected/chunk/header
+      version: "1.1"
+      url: /malformed/chunk/header
       headers:
         fields:
         - [ Host, example.com ]
         - [ Transfer-Encoding, chunked ]
-        - [ uuid, 51 ]
+        - [ uuid, 1 ]
       content:
-        size: 32
+        transfer: plain
+        encoding: uri
+        # Chunk header sizes are in hex, so a size of `z` is malformed.
+        data: z%0D%0Aabc%0D%0A0%0D%0A%0D%0A
 
-    # This request should not make it to the server, but if it does reply with
-    # a 200 response so that we detect the non-4xx response we expect.
+    # The connection will be dropped and this response will not go out.
+    server-response:
+      status: 200
+
+- transactions:
+  - client-request:
+      method: "POST"
+      version: "1.1"
+      url: /large/chunk/size/header
+      headers:
+        fields:
+        - [ Host, example.com ]
+        - [ Transfer-Encoding, chunked ]
+        - [ uuid, 2 ]
+      content:
+        transfer: plain
+        encoding: uri
+        # Super large chunk header, larger than will fit in an int.
+        data: 111111113%0D%0Aabc%0D%0A0%0D%0A%0D%0A
+
+    # The connection will be dropped and this response will not go out.
+    server-response:
+      status: 200
+
+  #
+  # Now repeat the above two malformed chunk header tests, but on the server
+  # side.
+  #
+- transactions:
+  - client-request:
+      method: "GET"
+      version: "1.1"
+      url: /response/malformed/chunk/size
+      headers:
+        fields:
+        - [ Host, example.com ]
+        - [ uuid, 3 ]
+
+    # The connection will be dropped and this response will not go out.
     server-response:
       status: 200
       reason: OK
       headers:
         fields:
-        - [ Content-Length, 16 ]
-        - [ X-Response, "Unexpected origin response." ]
+        - [ Transfer-Encoding, chunked ]
+      content:
+        transfer: plain
+        encoding: uri
+        # Chunk header sizes are in hex, so a size of `z` is malformed.
+        data: z%0D%0Aabc%0D%0A0%0D%0A%0D%0A
 
-    proxy-response:
-      status: 406
-      reason: "Transcoding Not Available"
+- transactions:
+  - client-request:
+      method: "GET"
+      version: "1.1"
+      url: /response/large/chunk/size
+      headers:
+        fields:
+        - [ Host, example.com ]
+        - [ uuid, 4 ]
+
+    # The connection will be dropped and this response will not go out.
+    server-response:
+      status: 200
+      reason: OK
+      headers:
+        fields:
+        - [ Transfer-Encoding, chunked ]
+      content:
+        transfer: plain
+        encoding: uri
+        # Super large chunk header, larger than will fit in an int.
+        data: 111111113%0D%0Aabc%0D%0A0%0D%0A%0D%0A
