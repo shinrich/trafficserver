@@ -26,6 +26,7 @@
 #include <cstring>
 #include <strings.h>
 #include <cinttypes>
+#include <limits>
 #include <string>
 #include <string_view>
 
