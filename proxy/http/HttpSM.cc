@@ -2362,9 +2362,9 @@ HttpSM::state_hostdb_lookup(int event, void *data)
     pending_action = nullptr;
     process_srv_info(static_cast<HostDBRecord *>(data));
 
-    char const *host_name = t_state.dns_info.record->is_srv() ? t_state.dns_info.record->name() : t_state.dns_info.lookup_name;
+    char const *host_name = t_state.dns_info.is_srv() ? t_state.dns_info.record->name() : t_state.dns_info.lookup_name;
     HostDBProcessor::Options opt;
-    opt.port  = t_state.dns_info.record->is_srv() ? t_state.dns_info.srv_port : t_state.server_info.dst_addr.host_order_port();
+    opt.port  = t_state.dns_info.is_srv() ? t_state.dns_info.srv_port : t_state.server_info.dst_addr.host_order_port();
     opt.flags = (t_state.cache_info.directives.does_client_permit_dns_storing) ? HostDBProcessor::HOSTDB_DO_NOT_FORCE_DNS :
                                                                                  HostDBProcessor::HOSTDB_FORCE_DNS_RELOAD;
     opt.timeout        = (t_state.api_txn_dns_timeout_value != -1) ? t_state.api_txn_dns_timeout_value : 0;

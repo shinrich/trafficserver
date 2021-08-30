@@ -618,6 +618,8 @@ struct ResolveInfo {
 
   /// Select / resolve to the next RR entry for the record.
   bool select_next_rr();
+
+  bool is_srv() const;
 };
 
 /** The Host Database access interface. */
@@ -832,6 +834,11 @@ ResolveInfo::set_upstream_port(in_port_t port)
   srv_port = port;
 }
 
+inline bool
+ResolveInfo::is_srv() const
+{
+  return record && record->is_srv();
+}
 // ---
 
 void run_HostDBTest();
