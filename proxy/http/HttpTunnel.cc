@@ -984,7 +984,11 @@ HttpTunnel::producer_run(HttpTunnelProducer *p)
         }
       }
       // Start the writes now that we know we will consume all the initial data
-      c->write_vio = c->vc->do_io_write(this, c_write, c->buffer_reader);
+      if (c->vc == nullptr) {
+        consumer_handler(VC_EVENT_ERROR, c);
+      } else {
+        c->write_vio = c->vc->do_io_write(this, c_write, c->buffer_reader);
+      }
       ink_assert(c_write > 0);
       if (c->write_vio == nullptr) {
         consumer_handler(VC_EVENT_ERROR, c);
