@@ -8303,3 +8303,9 @@ PostDataBuffers::~PostDataBuffers()
 {
   this->clear();
 }
+
+HTTPVersion
+HttpSM::get_server_version(HTTPHdr &hdr) const
+{
+  return this->server_txn->get_version(hdr);
+}
