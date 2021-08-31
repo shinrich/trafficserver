@@ -46,7 +46,6 @@ ts.Disk.records_config.update({
     'proxy.config.ssl.server.cert.path': '{0}'.format(ts.Variables.SSLDir),
     'proxy.config.ssl.server.private_key.path': '{0}'.format(ts.Variables.SSLDir),
     'proxy.config.diags.debug.enabled': 0,
-    # 'proxy.config.http2.initial_window_size_in': 2*16384, # Make a ludacrisly small window
     'proxy.config.diags.debug.tags': 'http',
 })
 
@@ -72,8 +71,8 @@ test_run.Processes.Default.Streams.All = Testers.ContainsExpression("HTTP/1.1 42
 test_run.StillRunningAfter = ts
 test_run.Processes.Default.ReturnCode = 0
 
-test_run = Test.AddTestRun("http2 Post with large body, small window and early return")
-test_run.Processes.Default.Command = '(nc -o output2 --sh-exec \'printf \"HTTP/1.1 420 Be Calm\r\nContent-Length: 0\r\n\r\n\"; sleep 1\' -l 127.0.0.1 {} & ) && curl -v -o /dev/null --http2 -d @big_post_body -k https://127.0.0.1:{}/post-http2'.format(
+test_run = Test.AddTestRun("http2 Post with large body and early return")
+test_run.Processes.Default.Command = '(nc -o output2 --sh-exec \'printf \"HTTP/1.1 420 Be Calm\r\nContent-Length: 0\r\n\r\n\"; sleep 2\' -l 127.0.0.1 {} & ) && curl -v -o /dev/null --http2 -d @big_post_body -k https://127.0.0.1:{}/post-http2'.format(
     Test.Variables.upstream_port, ts.Variables.ssl_port)
 test_run.Processes.Default.Streams.All = Testers.ContainsExpression("HTTP/2 420", "Receive the early response")
 test_run.StillRunningAfter = ts
