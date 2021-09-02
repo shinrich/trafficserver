@@ -284,15 +284,15 @@ public:
   void write_outbound_proxy_protocol();
 
   ProxyTransaction *
-  get_server_txn()
-  {
-    return server_txn;
-  }
-
-  ProxyTransaction *
   get_ua_txn()
   {
     return ua_txn;
+  }
+
+  ProxyTransaction *
+  get_server_txn()
+  {
+    return server_txn;
   }
 
   // Called by transact.  Updates are fire and forget

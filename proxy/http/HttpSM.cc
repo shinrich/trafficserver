@@ -1153,7 +1153,6 @@ HttpSM::state_watch_for_client_abort(int event, void *data)
       } else {
         ua_txn->do_io_close();
         vc_table.cleanup_entry(ua_entry);
-        ink_release_assert(vc_table.find_entry(ua_txn) == nullptr);
         ua_entry = nullptr;
         tunnel.kill_tunnel();
         terminate_sm = true; // Just die already, the requester is gone
@@ -2279,11 +2278,6 @@ HttpSM::state_read_server_response_header(int event, void *data)
 
     SMDebug("http_seq", "Done parsing server response header");
 
-    // ink_release_assert(t_state.hdr_info.server_response.status_get() != 408);
-    if (t_state.hdr_info.server_response.status_get() == 408) {
-      SMDebug("http_seq", "Origin sent 408");
-    }
-
     // Now that we know that we have all of the origin server
     // response headers, we can reset the client inactivity
     // timeout.
@@ -3082,11 +3076,11 @@ HttpSM::tunnel_handler_post(int event, void *data)
     return 0;
   }
 
-  int p_handler_state = p->handler_state;
   ink_assert(event == HTTP_TUNNEL_EVENT_DONE);
   ink_assert(data == &tunnel);
   // The tunnel calls this when it is done
 
+  int p_handler_state = p->handler_state;
   if (is_waiting_for_full_body && !this->is_postbuf_valid()) {
     p_handler_state = HTTP_SM_POST_SERVER_FAIL;
   }
@@ -6624,7 +6618,7 @@ HttpSM::write_outbound_proxy_protocol()
 void
 HttpSM::attach_server_session()
 {
-  hsm_release_assert(this->server_entry == nullptr);
+  hsm_release_assert(server_entry == nullptr);
   // In the h1 only origin version, the transact_count was updated after making this assignment.
   // The SSN-TXN-COUNT option in header rewrite relies on this fact, so we decrement here so the
   // plugin API interface is consistent as we move to more protocols to origin
