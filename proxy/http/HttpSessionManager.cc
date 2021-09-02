@@ -512,15 +512,6 @@ ServerSessionPool::removeSession(PoolableSession *to_remove)
 }
 
 void
-ServerSessionPool::testSession(PoolableSession *ss)
-{
-  auto fqdn_iter = m_fqdn_pool.find(ss);
-  ink_release_assert(fqdn_iter == m_fqdn_pool.end());
-  auto ip_iter = m_ip_pool.find(ss);
-  ink_release_assert(ip_iter == m_ip_pool.end());
-}
-
-void
 ServerSessionPool::addSession(PoolableSession *ss)
 {
   EThread *ethread = this_ethread();
