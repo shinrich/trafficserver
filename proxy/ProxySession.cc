@@ -306,3 +306,15 @@ ProxySession::support_sni() const
 {
   return _vc ? _vc->support_sni() : false;
 }
+
+bool
+ProxySession::is_outbound_transparent() const 
+{
+  return accept_options->f_outbound_transparent;
+}
+
+bool 
+ProxySession::is_transparent_passthrough_allowed() const
+{
+  return accept_options->f_transparent_passthrough;
+}

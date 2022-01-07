@@ -137,7 +137,7 @@ private:
 inline bool
 ProxyTransaction::is_transparent_passthrough_allowed()
 {
-  return upstream_outbound_options.f_transparent_passthrough;
+  return _proxy_ssn->is_transparent_passthrough_allowed();
 }
 inline bool
 ProxyTransaction::is_chunked_encoding_supported() const
