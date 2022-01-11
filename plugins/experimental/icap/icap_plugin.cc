@@ -83,7 +83,7 @@ struct TransformData {
 
   std::string icap_header;
   std::string http_header;
-  std::string chunk_length_str;
+  std::string prev_chunk_length_str;
   int64_t icap_reply_content_length = 0;
 
   int64_t http_body_chunk_length         = -1;
@@ -319,6 +319,65 @@ handle_icap_http_header(TransformData *data)
   TSHandleMLocRelease(bufp, TS_NULL_MLOC, hdr_loc);
 }
 
+static int64_t
+process_chunk_size(std::string &prev_chunk_str, std::string_view chunk, int64_t &num_read)
+{
+  num_read = 0;
+  size_t offset = 0;
+  size_t prev_length = prev_chunk_str.length();
+  size_t prev_offset = 0;
+  size_t chunk_size = 0;
+
+  // Read hexidecimal numbers
+  int last_char = 0;
+  do {
+    TSDebug(PLUGIN_NAME, "Offset %d prev_offset %d prev_len %d chunk_len %d", offset, prev_offset, prev_length, chunk.length());
+    if (offset < prev_length) {
+      last_char = prev_chunk_str[offset];
+      prev_offset++;
+      offset++;
+    } else if ((offset-prev_offset) < chunk.length()) {
+      last_char = chunk[offset - prev_offset];
+      offset++;
+    } else {
+      num_read = offset;
+      return -1;
+    }
+    TSDebug(PLUGIN_NAME, "Char is %c ishex %d %d", last_char, isxdigit(last_char), isxdigit(toupper(last_char)));
+    if (last_char == '\r') {
+      break;
+    }
+    else if (!isxdigit(last_char)) {
+      // Malformed
+      num_read = offset;
+      return -1;
+    }
+    TSDebug(PLUGIN_NAME, "chunk_size is %d char is %c ishex %d", chunk_size, last_char, isxdigit(last_char));
+    int last_digit_val = 0;
+    if (last_char >= '0' && last_char <= '9') {
+      last_digit_val = last_char - '0';
+    } else if (last_char >= 'A' && last_char <= 'F') {
+      last_digit_val = last_char - 'A' + 10;
+    } else if (last_char >= 'a' && last_char <= 'f') {
+      last_digit_val = last_char - 'a' + 10;
+    }
+    chunk_size = chunk_size * 16 + last_digit_val;
+    TSDebug(PLUGIN_NAME, "chunk_size is %d char is %c ishex %d", chunk_size, last_char, isxdigit(last_char));
+  } while (true);
+
+  // Look for \n
+  if (offset < prev_length && prev_chunk_str[offset] == '\n') {
+    prev_offset++;
+    offset++;
+  } else if ((offset-prev_offset) < chunk.length() && chunk[offset-prev_offset] == '\n') {
+    offset++;
+  } else {
+    num_read = offset;
+    return -1;
+  }
+  num_read = offset;
+  return chunk_size;
+}
 /*
  * handle_read_http_body
  * Description: This function handles reading http body from icap server, as
@@ -331,78 +390,72 @@ handle_read_http_body(TSCont contp, TransformData *data)
 {
   int64_t avail = TSIOBufferReaderAvail(data->icap_resp_reader);
 
-  TSDebug(PLUGIN_NAME, "Read %d bytes chunk leng %d", avail, data->http_body_chunk_length);
+  TSDebug(PLUGIN_NAME, "Read %d bytes chunk length %d", avail, data->http_body_chunk_length);
 
   if (avail > 0) {
-    /* Read the chunk length if one is not available */
-    if (data->http_body_chunk_length <= 0) {
-      int64_t data_len;
-      const char *buf;
-      int64_t consumed    = data->chunk_length_str.size();
-      TSIOBufferBlock blk = TSIOBufferReaderStart(data->icap_resp_reader);
+    int64_t data_len;
+    const char *buf;
+    TSIOBufferBlock blk = TSIOBufferReaderStart(data->icap_resp_reader);
 
-      while (blk != nullptr) {
-        buf               = TSIOBufferBlockReadStart(blk, data->icap_resp_reader, &data_len);
-        std::string chunk = std::string(buf, data_len);
-        /* keep the read string in body_length in case complete data haven't arrived */
-        data->chunk_length_str += chunk;
+    while (blk != nullptr) {
+      buf               = TSIOBufferBlockReadStart(blk, data->icap_resp_reader, &data_len);
+      std::string_view chunk(buf, data_len);
 
-	TSDebug(PLUGIN_NAME, "Chunk_length %s", data->chunk_length_str.c_str());
+      TSDebug(PLUGIN_NAME, "Read chunk %.*s", data_len, buf);
 
-        /* TODO replace this regex with more direct (and cheaper) parsing */
-        /* Look for hex string indicating chunk length */
-        std::smatch sm;
-        std::regex e("(\r\n)([[:xdigit:]]+)(\r\n)");
-        regex_search(data->chunk_length_str, sm, e);
-        /* A match means we have finished reading the length */
-        if (sm.size()) {
-          int64_t pos          = sm.position(0);
-          int64_t token_length = sm[0].length();
-
-          data->http_body_chunk_length = std::stoi(sm[2].str().c_str(), nullptr, 16);
-	  if (data->http_body_chunk_length == 0) {
-            TSDebug(PLUGIN_NAME, "Wrote %d body bytes", data->http_body_total_length_written);
-            TSVIONBytesSet(data->output_vio, data->http_body_total_length_written);
-            TSIOBufferReaderConsume(data->icap_resp_reader, pos + token_length - consumed);
+      /* Read the chunk length if one is not available */
+      if (data->http_body_chunk_length <= 0) {
+	int64_t num_read = 0;
+	data->http_body_chunk_length = process_chunk_size(data->prev_chunk_length_str, chunk, num_read);
+	if (data->http_body_chunk_length < 0) {
+          if (num_read < (data->prev_chunk_length_str.length() + chunk.length())) {
+	    // Malformed, we will never recover
+	    TSDebug(PLUGIN_NAME, "Malformed %s %*.s", data->prev_chunk_length_str.c_str(), chunk.length(), chunk.data());
             return 0;
+	  }
+	  // Save back what we read so far and wait for the next read 
+	  data->prev_chunk_length_str += chunk;
+	  continue;
+	}
+	if (num_read >= data->prev_chunk_length_str.length()) {
+	  int64_t chunk_num_read = num_read - data->prev_chunk_length_str.length();
+	  data->prev_chunk_length_str.clear();
+	  if (num_read > 0) {
+            chunk.remove_prefix(chunk_num_read);
           }
-
-          data->http_body_total_length_written += data->http_body_chunk_length;
-	  TSDebug(PLUGIN_NAME, "Consume %d size bytes", pos + token_length - consumed);
-          TSIOBufferReaderConsume(data->icap_resp_reader, pos + token_length - consumed);
-          break;
+	} else {
+	  data->prev_chunk_length_str.erase(0, num_read);
+	  data->prev_chunk_length_str += chunk;
+          chunk = data->prev_chunk_length_str; 
         }
-
-	TSDebug(PLUGIN_NAME, "Consume %d data bytes", data_len);
-        TSIOBufferReaderConsume(data->icap_resp_reader, data_len);
-        consumed += data_len;
-        blk = TSIOBufferBlockNext(blk);
+	// Consume the size bytes
+        TSDebug(PLUGIN_NAME, "Consume %d size bytes", num_read);
+        TSIOBufferReaderConsume(data->icap_resp_reader, num_read);
       }
-      if (blk == nullptr) {
+      TSDebug(PLUGIN_NAME, "Chunk %.*s", chunk.length(), chunk.data());
+
+      if (data->http_body_chunk_length == 0) {
+        TSDebug(PLUGIN_NAME, "Wrote %d body bytes", data->http_body_total_length_written);
+        TSVIONBytesSet(data->output_vio, data->http_body_total_length_written);
         return 0;
       }
+
+      // Process chunk data
+      data->http_body_total_length_written += data->http_body_chunk_length;
+      avail   = TSIOBufferReaderAvail(data->icap_resp_reader);
+      int64_t towrite = data->http_body_chunk_length < avail ? data->http_body_chunk_length : avail;
+
+      data->http_body_chunk_length -= towrite;
+      int64_t num_wrote = TSIOBufferCopy(TSVIOBufferGet(data->output_vio), data->icap_resp_reader, towrite, 0);
+
+      TSDebug(PLUGIN_NAME, "Pass along %d or %d body bytes. Wrote %d bytes", avail, towrite, num_wrote);
+
+      TSDebug(PLUGIN_NAME, "Consume %d pass along bytes", towrite);
+      TSIOBufferReaderConsume(data->icap_resp_reader, towrite);
+
+      blk = TSIOBufferBlockNext(blk);
     }
-
-    /* Write the chunk to downstream */
-    int64_t towrite;
-
-
-    avail   = TSIOBufferReaderAvail(data->icap_resp_reader);
-    towrite = data->http_body_chunk_length < avail ? data->http_body_chunk_length : avail;
-
-
-    data->http_body_chunk_length -= towrite;
-    int64_t num_wrote = TSIOBufferCopy(TSVIOBufferGet(data->output_vio), data->icap_resp_reader, towrite, 0);
-
-    TSDebug(PLUGIN_NAME, "Pass along %d or %d body bytes. Wrote %d bytes", avail, towrite, num_wrote);
-
-    TSDebug(PLUGIN_NAME, "Consume %d pass along bytes", towrite);
-    TSIOBufferReaderConsume(data->icap_resp_reader, towrite);
-
-    if (data->http_body_chunk_length <= 0) {
-      data->chunk_length_str.clear();
-      return 0;
-    }
+    return 0;
   } else {
     /* If no more data is to be read for now. Check for eos to determine whether data is incomplete. */
     if (data->eos_detected) {
@@ -906,13 +959,12 @@ transform_read_http_header_event(TSCont contp, TransformData *data, TSEvent even
       std::string chunk   = std::string(buf, read_ndone);
 
       data->http_header += chunk;
-      // TSDebug(PLUGIN_NAME, "Headers: \n%s", icap_header.c_str());
       int64_t pos          = data->http_header.find("\r\n\r\n");
-      int64_t token_length = std::string("\r\n").size();
+      TSDebug(PLUGIN_NAME, "Headers: %s pos=%d", data->http_header.c_str(), pos);
 
       if (pos != static_cast<int64_t>(std::string::npos)) {
-        data->http_header.resize(pos);
-        consume = pos + token_length - consumed;
+        data->http_header.resize(pos + 4);
+        consume = pos + 4 - consumed;
         TSIOBufferReaderConsume(reader, consume);
         handle_icap_http_header(data);
         return transform_read_http_body(contp, data);
