@@ -93,6 +93,10 @@ struct TransformData {
 
   std::string err_msg;
 
+  TSMBuffer bufp;
+  TSMLoc hdr_loc;
+  TSHttpParser parser;
+
   TransformData(TSHttpTxn txnp);
   ~TransformData();
 };
@@ -117,7 +121,11 @@ static int transform_send_error_msg(TSCont contp, TransformData *data);
 static int transform_bypass(TSCont contp, TransformData *data);
 static int transform_send_os_resp(TSCont contp, TransformData *data);
 
-TransformData::TransformData(TSHttpTxn txnp) : txn(txnp) {}
+TransformData::TransformData(TSHttpTxn txnp) : txn(txnp) 
+{
+  /* Create the new header using http header in icap response */
+  this->parser = TSHttpParserCreate();
+}
 
 TransformData::~TransformData()
 {
@@ -151,6 +159,7 @@ TransformData::~TransformData()
   if (pending_action) {
     TSActionCancel(pending_action);
   }
+  TSHttpParserDestroy(this->parser);
 }
 
 /*
@@ -283,40 +292,39 @@ handle_icap_headers(TSCont contp, TransformData *data)
  * Description: This is a good place to determine what to do next based on
  *              modified http headers from response of icap server.
  */
-static void
+static bool
 handle_icap_http_header(TransformData *data)
 {
   // TSDebug(PLUGIN_NAME, "Handling http header");
-  int64_t pos = data->http_header.find("\r\n");
-  std::string http_status_line =
-    pos != static_cast<int64_t>(std::string::npos) ? data->http_header.substr(0, pos) : data->http_header;
-  /* find content length from header if any */
-  std::smatch sm;
-  std::regex e("(Content-Length: )([[:digit:]]+)");
-  regex_search(data->http_header, sm, e);
-  if (sm.size()) {
-    data->icap_reply_content_length = std::stoll(sm[2].str().c_str(), nullptr, 10);
-  }
+ 
   /* Replace header with the returned header from icap server */
-  TSMBuffer bufp;
-  TSMLoc hdr_loc;
-  TSHttpParser parser;
   const char *raw_resp = data->http_header.c_str();
+  const char *raw_end = raw_resp + data->http_header.size();
 
-  if (TSHttpTxnTransformRespGet(data->txn, &bufp, &hdr_loc) != TS_SUCCESS) {
-    TSError("[%s] Couldn't retrieve transform response header", PLUGIN_NAME);
-    return;
+  if (data->bufp == nullptr) {
+    if (TSHttpTxnTransformRespGet(data->txn, &data->bufp, &data->hdr_loc) != TS_SUCCESS) {
+      TSError("[%s] Couldn't retrieve transform response header", PLUGIN_NAME);
+      return false;
+    }
+    /* Clear all headers from the transform response */
+    if (TSMimeHdrFieldsClear(data->bufp, data->hdr_loc) == TS_ERROR) {
+      TSError("[%s] Couldn't clear client response header", PLUGIN_NAME);
+      return false;
+    }
   }
-  /* Clear all headers from the transform response */
-  if (TSMimeHdrFieldsClear(bufp, hdr_loc) == TS_ERROR) {
-    TSError("[%s] Couldn't clear client response header", PLUGIN_NAME);
-    return;
-  }
-  /* Create the new header using http header in icap response */
-  parser = TSHttpParserCreate();
-  TSHttpHdrParseResp(parser, bufp, hdr_loc, &raw_resp, raw_resp + data->http_header.size());
 
-  TSHandleMLocRelease(bufp, TS_NULL_MLOC, hdr_loc);
+  TSParseResult result = TSHttpHdrParseResp(data->parser, data->bufp, data->hdr_loc, &raw_resp, raw_end);
+  data->http_header = {raw_resp, raw_end};
+  if (result == TS_PARSE_DONE) {
+    // Look for the content length field
+    TSMLoc content_length = TSMimeHdrFieldFind(data->bufp, data->hdr_loc, "Content-length", strlen("Content-length"));
+    if (content_length != TS_NULL_MLOC) {
+      data->icap_reply_content_length = TSMimeHdrFieldValueIntGet(data->bufp, data->hdr_loc, content_length, 0);
+      TSHandleMLocRelease(data->bufp, data->hdr_loc, content_length);
+    }
+    return true;
+  }
+  return false;
 }
 
 static int64_t
@@ -450,7 +458,6 @@ handle_read_http_body(TSCont contp, TransformData *data)
 
       TSDebug(PLUGIN_NAME, "Pass along %d or %d body bytes. Wrote %d bytes", avail, towrite, num_wrote);
 
-      TSDebug(PLUGIN_NAME, "Consume %d pass along bytes", towrite);
       TSIOBufferReaderConsume(data->icap_resp_reader, towrite);
 
       blk = TSIOBufferBlockNext(blk);
@@ -966,7 +973,8 @@ transform_read_http_header_event(TSCont contp, TransformData *data, TSEvent even
         data->http_header.resize(pos + 4);
         consume = pos + 4 - consumed;
         TSIOBufferReaderConsume(reader, consume);
-        handle_icap_http_header(data);
+      }
+      if (handle_icap_http_header(data)) { // Done with the header
         return transform_read_http_body(contp, data);
       }
 
