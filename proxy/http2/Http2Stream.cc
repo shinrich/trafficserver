@@ -51,6 +51,7 @@ Http2Stream::Http2Stream(ProxySession *session, Http2StreamId sid, ssize_t initi
   this->_thread      = this_ethread();
   this->_client_rwnd = initial_rwnd;
   this->_server_rwnd = Http2::initial_window_size;
+  this->upstream_outbound_options = *(session->accept_options);
 
   this->_reader = this->_request_buffer.alloc_reader();
 

@@ -59,7 +59,7 @@ struct TransformData {
   State state = State::BEGIN;
   const TSHttpTxn txn;
 
-  int64_t server_reply_content_length;
+  int64_t server_reply_content_length = 0;
 
   TSIOBuffer input_buf          = nullptr;
   TSIOBufferReader input_reader = nullptr;
@@ -331,6 +331,8 @@ handle_read_http_body(TSCont contp, TransformData *data)
 {
   int64_t avail = TSIOBufferReaderAvail(data->icap_resp_reader);
 
+  TSDebug(PLUGIN_NAME, "Read %d bytes chunk leng %d", avail, data->http_body_chunk_length);
+
   if (avail > 0) {
     /* Read the chunk length if one is not available */
     if (data->http_body_chunk_length <= 0) {
@@ -344,11 +346,9 @@ handle_read_http_body(TSCont contp, TransformData *data)
         std::string chunk = std::string(buf, data_len);
         /* keep the read string in body_length in case complete data haven't arrived */
         data->chunk_length_str += chunk;
-        /* Look for end of reply token */
-        if (data->chunk_length_str.find("\r\n0\r\n\r\n") != std::string::npos) {
-          TSVIONBytesSet(data->output_vio, data->http_body_total_length_written);
-          return 0;
-        }
+
+	TSDebug(PLUGIN_NAME, "Chunk_length %s", data->chunk_length_str.c_str());
+
         /* TODO replace this regex with more direct (and cheaper) parsing */
         /* Look for hex string indicating chunk length */
         std::smatch sm;
@@ -360,11 +360,20 @@ handle_read_http_body(TSCont contp, TransformData *data)
           int64_t token_length = sm[0].length();
 
           data->http_body_chunk_length = std::stoi(sm[2].str().c_str(), nullptr, 16);
+	  if (data->http_body_chunk_length == 0) {
+            TSDebug(PLUGIN_NAME, "Wrote %d body bytes", data->http_body_total_length_written);
+            TSVIONBytesSet(data->output_vio, data->http_body_total_length_written);
+            TSIOBufferReaderConsume(data->icap_resp_reader, pos + token_length - consumed);
+            return 0;
+          }
+
           data->http_body_total_length_written += data->http_body_chunk_length;
+	  TSDebug(PLUGIN_NAME, "Consume %d size bytes", pos + token_length - consumed);
           TSIOBufferReaderConsume(data->icap_resp_reader, pos + token_length - consumed);
           break;
         }
 
+	TSDebug(PLUGIN_NAME, "Consume %d data bytes", data_len);
         TSIOBufferReaderConsume(data->icap_resp_reader, data_len);
         consumed += data_len;
         blk = TSIOBufferBlockNext(blk);
@@ -377,10 +386,17 @@ handle_read_http_body(TSCont contp, TransformData *data)
     /* Write the chunk to downstream */
     int64_t towrite;
 
+
     avail   = TSIOBufferReaderAvail(data->icap_resp_reader);
     towrite = data->http_body_chunk_length < avail ? data->http_body_chunk_length : avail;
+
+
     data->http_body_chunk_length -= towrite;
-    TSIOBufferCopy(TSVIOBufferGet(data->output_vio), data->icap_resp_reader, towrite, 0);
+    int64_t num_wrote = TSIOBufferCopy(TSVIOBufferGet(data->output_vio), data->icap_resp_reader, towrite, 0);
+
+    TSDebug(PLUGIN_NAME, "Pass along %d or %d body bytes. Wrote %d bytes", avail, towrite, num_wrote);
+
+    TSDebug(PLUGIN_NAME, "Consume %d pass along bytes", towrite);
     TSIOBufferReaderConsume(data->icap_resp_reader, towrite);
 
     if (data->http_body_chunk_length <= 0) {
@@ -577,6 +593,8 @@ handle_write_body(TSCont contp, TransformData *data)
   TSVIO write_vio;
   int64_t towrite;
   char *end_of_request = (char *)"\r\n0; ieof\r\n\r\n";
+
+  TSDebug(PLUGIN_NAME, "Write body length %d", data->server_reply_content_length);
 
   write_vio = TSVConnWriteVIOGet(contp);
   /* check if the write VIO's buffer is non-NULL. */
