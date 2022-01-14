@@ -71,6 +71,7 @@ include experimental/geoip_acl/Makefile.inc
 include experimental/header_freq/Makefile.inc
 include experimental/hook-trace/Makefile.inc
 include experimental/icap/Makefile.inc
+include experimental/tee_decrypt/Makefile.inc
 include experimental/inliner/Makefile.inc
 
 if HAS_MAXMINDDB

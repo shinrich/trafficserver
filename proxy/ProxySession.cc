@@ -308,12 +308,12 @@ ProxySession::support_sni() const
 }
 
 bool
-ProxySession::is_outbound_transparent() const 
+ProxySession::is_outbound_transparent() const
 {
   return accept_options->f_outbound_transparent;
 }
 
-bool 
+bool
 ProxySession::is_transparent_passthrough_allowed() const
 {
   return accept_options->f_transparent_passthrough;
