@@ -94,10 +94,10 @@ TeeInfo::build_packet(char *buffer, int payload_size, bool forward)
 void
 GreInfo::init(const char *argv[], int argc)
 {
+  this->src_addr                   = inet_addr(argv[1]);
   this->clientaddr.sin_family      = AF_INET;
-  this->clientaddr.sin_addr.s_addr = inet_addr("127.0.0.2");
-  this->src_addr                   = inet_addr("127.0.0.2");
-  this->dst_addr                   = inet_addr("127.1.0.2");
+  this->clientaddr.sin_addr.s_addr = this->src_addr;
+  this->dst_addr                   = inet_addr(argv[2]);
 }
 
 int

@@ -41,12 +41,11 @@ public:
     this->req_output_buffer  = TSIOBufferCreate();
     this->resp_output_reader = TSIOBufferReaderAlloc(this->resp_output_buffer);
     this->req_output_reader  = TSIOBufferReaderAlloc(this->req_output_buffer);
-    sockaddr const *src_addr = TSHttpTxnIncomingAddrGet(txnp);
-    sockaddr const *dst_addr = TSHttpTxnOutgoingAddrGet(txnp);
-    this->tee_info           = new TeeInfo{src_addr, dst_addr};
+    this->txnp               = txnp;
   }
   ~MyData()
   {
+    TSDebug(PLUGIN_NAME, "Delete MyData");
     if (this->req_output_buffer) {
       TSIOBufferDestroy(this->req_output_buffer);
     }
@@ -63,28 +62,80 @@ public:
   TSIOBufferReader req_output_reader  = nullptr;
   TSIOBuffer resp_output_buffer       = nullptr;
   TSIOBufferReader resp_output_reader = nullptr;
-  TeeInfo *tee_info;
+  TSHttpTxn txnp;
+  TeeInfo *tee_info = nullptr;
 };
 
 class ContData
 {
 public:
   ContData(MyData *mydata) : data(mydata) {}
-  ~ContData()
-  {
-    if (forward && data) {
-      delete data;
-    }
-  }
+  ~ContData() { TSDebug(PLUGIN_NAME, "~ContData forward=%d", this->forward); }
   MyData *data = nullptr;
   bool forward = true;
 };
 
 static void
+send_request_header(TSHttpTxn txnp)
+{
+  MyData *data = static_cast<MyData *>(TSUserArgGet(txnp, data_arg_index));
+  TSMBuffer creq_buff;
+  TSMLoc creq_loc;
+  if (TS_SUCCESS != TSHttpTxnClientReqGet(txnp, &creq_buff, &creq_loc)) {
+    fprintf(stderr, "Failed to get client request");
+    return;
+  }
+  data->tee_info->send_header(creq_buff, creq_loc, true);
+  TSHandleMLocRelease(creq_buff, TS_NULL_MLOC, creq_loc);
+}
+
+static void
+send_response_header(TSHttpTxn txnp)
+{
+  MyData *data = static_cast<MyData *>(TSUserArgGet(txnp, data_arg_index));
+  TSMBuffer sresp_buff;
+  TSMLoc sresp_loc;
+  if (TS_SUCCESS != TSHttpTxnServerRespGet(txnp, &sresp_buff, &sresp_loc)) {
+    fprintf(stderr, "Failed to get server response");
+    return;
+  }
+  data->tee_info->send_header(sresp_buff, sresp_loc, false);
+  TSHandleMLocRelease(sresp_buff, TS_NULL_MLOC, sresp_loc);
+}
+
+static void
+populate_tee_info(MyData *data)
+{
+  if (data->tee_info == nullptr) {
+    // Deferred setting up the tee_info until we knew the destination address
+    sockaddr const *src_addr = TSHttpTxnIncomingAddrGet(data->txnp);
+    sockaddr const *dst_addr = TSHttpTxnOutgoingAddrGet(data->txnp);
+    data->tee_info           = new TeeInfo{src_addr, dst_addr};
+    // Go ahead and send the handshake and the request header
+    data->tee_info->send_handshake();
+    send_request_header(data->txnp);
+  }
+}
+
+static void
+check_txn_data(TSHttpTxn txnp)
+{
+  MyData *data = static_cast<MyData *>(TSUserArgGet(txnp, data_arg_index));
+  populate_tee_info(data);
+}
+
+ContData *
+get_cont_data(TSCont contp)
+{
+  ContData *conn_data = static_cast<ContData *>(TSContDataGet(contp));
+  populate_tee_info(conn_data->data);
+  return conn_data;
+}
+
+static void
 handle_transform(TSCont contp)
 {
   TSVConn output_conn;
-  TSIOBuffer buf_test;
   TSVIO input_vio;
   ContData *conn_data;
   int64_t towrite;
@@ -108,33 +159,17 @@ handle_transform(TSCont contp)
    * and initialize its internals.
    */
   TSVIO output_vio;
-  conn_data = (ContData *)TSContDataGet(contp);
+  conn_data = get_cont_data(contp);
   if (conn_data->forward) {
-    if (conn_data->data->req_output_vio == nullptr) {
+    if (conn_data->data->req_output_vio == nullptr && output_conn != nullptr) {
       conn_data->data->req_output_vio = TSVConnWrite(output_conn, contp, conn_data->data->req_output_reader, INT64_MAX);
     }
     output_vio = conn_data->data->req_output_vio;
   } else if (!conn_data->forward) {
-    if (conn_data->data->resp_output_vio == nullptr) {
+    if (conn_data->data->resp_output_vio == nullptr && output_conn != nullptr) {
       conn_data->data->resp_output_vio = TSVConnWrite(output_conn, contp, conn_data->data->resp_output_reader, INT64_MAX);
     }
     output_vio = conn_data->data->resp_output_vio;
-  }
-
-  /* We also check to see if the input VIO's buffer is non-NULL. A
-   * NULL buffer indicates that the write operation has been
-   * shutdown and that the upstream continuation does not want us to send any
-   * more WRITE_READY or WRITE_COMPLETE events. For this simplistic
-   * transformation that means we're done. In a more complex
-   * transformation we might have to finish writing the transformed
-   * data to our output connection.
-   */
-  buf_test = TSVIOBufferGet(input_vio);
-
-  if (!buf_test) {
-    TSVIONBytesSet(output_vio, TSVIONDoneGet(input_vio));
-    TSVIOReenable(output_vio);
-    return;
   }
 
   /* Determine how much data we have left to read. For this null
@@ -198,12 +233,18 @@ handle_transform(TSCont contp)
      * that it can consume the data we just gave it.
      */
     TSVIONBytesSet(output_vio, TSVIONDoneGet(input_vio));
-    TSVIOReenable(output_vio);
 
-    /* Call back the input VIO continuation to let it know that we
-     * have completed the write operation.
-     */
-    TSContCall(TSVIOContGet(input_vio), TS_EVENT_VCONN_WRITE_COMPLETE, input_vio);
+    if (TSVConnClosedGet(contp)) {
+      TSDebug(PLUGIN_NAME, "\tVConn is closed");
+      delete conn_data;
+      TSContDestroy(contp);
+    } else if (towrite > 0) {
+      /* Call back the input VIO continuation to let it know that we
+       * have completed the write operation.
+       */
+      TSVIOReenable(output_vio);
+      TSContCall(TSVIOContGet(input_vio), TS_EVENT_VCONN_WRITE_COMPLETE, input_vio);
+    }
   }
 }
 
@@ -213,7 +254,7 @@ null_transform(TSCont contp, TSEvent event, void *edata)
   /* Check to see if the transformation has been closed by a call to
    * TSVConnClose.
    */
-  TSDebug(PLUGIN_NAME, "Entering null_transform()");
+  TSDebug(PLUGIN_NAME, "Entering null_transform() event=%d", event);
 
   if (TSVConnClosedGet(contp)) {
     TSDebug(PLUGIN_NAME, "\tVConn is closed");
@@ -269,35 +310,7 @@ null_transform(TSCont contp, TSEvent event, void *edata)
 }
 
 static void
-send_request_header(TSHttpTxn txnp)
-{
-  MyData *data = static_cast<MyData *>(TSUserArgGet(txnp, data_arg_index));
-  TSMBuffer creq_buff;
-  TSMLoc creq_loc;
-  if (TS_SUCCESS != TSHttpTxnClientReqGet(txnp, &creq_buff, &creq_loc)) {
-    fprintf(stderr, "Failed to get client request");
-    return;
-  }
-  data->tee_info->send_header(creq_buff, creq_loc, true);
-  TSHandleMLocRelease(creq_buff, TS_NULL_MLOC, creq_loc);
-}
-
-static void
-send_response_header(TSHttpTxn txnp)
-{
-  MyData *data = static_cast<MyData *>(TSUserArgGet(txnp, data_arg_index));
-  TSMBuffer sresp_buff;
-  TSMLoc sresp_loc;
-  if (TS_SUCCESS != TSHttpTxnServerRespGet(txnp, &sresp_buff, &sresp_loc)) {
-    fprintf(stderr, "Failed to get server response");
-    return;
-  }
-  data->tee_info->send_header(sresp_buff, sresp_loc, false);
-  TSHandleMLocRelease(sresp_buff, TS_NULL_MLOC, sresp_loc);
-}
-
-static void
-transform_add(TSHttpTxn txnp)
+transform_add(TSHttpTxn txnp, TSCont orig_contp)
 {
   TSVConn connp, rev_connp;
 
@@ -308,12 +321,12 @@ transform_add(TSHttpTxn txnp)
   ContData *conn_data     = new ContData{data};
   ContData *rev_conn_data = new ContData{data};
   rev_conn_data->forward  = false;
-  conn_data->data->tee_info->send_handshake();
   TSContDataSet(connp, conn_data);
   TSContDataSet(rev_connp, rev_conn_data);
   TSUserArgSet(txnp, data_arg_index, data);
   TSHttpTxnHookAdd(txnp, TS_HTTP_RESPONSE_TRANSFORM_HOOK, rev_connp);
   TSHttpTxnHookAdd(txnp, TS_HTTP_REQUEST_TRANSFORM_HOOK, connp);
+  TSHttpTxnHookAdd(txnp, TS_HTTP_TXN_CLOSE_HOOK, orig_contp);
 }
 
 static int
@@ -323,17 +336,28 @@ transform_plugin(TSCont contp, TSEvent event, void *edata)
 
   TSDebug(PLUGIN_NAME, "Entering transform_plugin()");
   switch (event) {
-  case TS_EVENT_HTTP_SEND_REQUEST_HDR:
-    TSDebug(PLUGIN_NAME, "\tEvent is TS_EVENT_HTTP_SEND_REQUEST_HDR");
-    transform_add(txnp);
-    send_request_header(txnp);
+  case TS_EVENT_HTTP_TXN_CLOSE: {
+    // Clean things up.
+    TSHttpTxn txnp = static_cast<TSHttpTxn>(edata);
+    MyData *data   = static_cast<MyData *>(TSUserArgGet(txnp, data_arg_index));
+    if (data) {
+      delete data;
+    }
+    TSHttpTxnReenable(txnp, TS_EVENT_HTTP_CONTINUE);
+    return 0;
+  }
+  case TS_EVENT_HTTP_READ_REQUEST_HDR:
+    TSDebug(PLUGIN_NAME, "\tEvent is TS_EVENT_HTTP_READ_REQUEST_HDR");
+    transform_add(txnp, contp);
 
     TSHttpTxnReenable(txnp, TS_EVENT_HTTP_CONTINUE);
     return 0;
   case TS_EVENT_HTTP_READ_RESPONSE_HDR:
     TSDebug(PLUGIN_NAME, "\tEvent is TS_EVENT_HTTP_READ_RESPONSE_HDR");
+    check_txn_data(txnp);
     send_response_header(txnp);
     TSHttpTxnReenable(txnp, TS_EVENT_HTTP_CONTINUE);
+    return 0;
   default:
     TSDebug(PLUGIN_NAME, "\tOther Event %d", event);
     break;
@@ -355,8 +379,12 @@ TSPluginInit(int argc, const char *argv[])
     TSError("[%s] Plugin registration failed", PLUGIN_NAME);
 
   } else {
+    if (argc < 3) {
+      TSError("[%s] Plugin failed. Requires arguments <src_gre_address> and <dst_gre_address>", PLUGIN_NAME);
+      return;
+    }
     TSCont contp = TSContCreate(transform_plugin, NULL);
-    TSHttpHookAdd(TS_HTTP_SEND_REQUEST_HDR_HOOK, contp);
+    TSHttpHookAdd(TS_HTTP_READ_REQUEST_HDR_HOOK, contp);
     TSHttpHookAdd(TS_HTTP_READ_RESPONSE_HDR_HOOK, contp);
     TSUserArgIndexReserve(TS_USER_ARGS_TXN, "tee_data", "", &data_arg_index);
     gre_info.init(argv, argc); // Initialize some data structures
