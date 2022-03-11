@@ -205,6 +205,7 @@ handle_transform(TSCont contp)
        * completed.
        */
       TSVIONDoneSet(input_vio, TSVIONDoneGet(input_vio) + towrite);
+      TSVIONBytesSet(output_vio, TSVIONDoneGet(input_vio));
     }
   }
 
@@ -213,6 +214,7 @@ handle_transform(TSCont contp)
    */
   if (TSVIONTodoGet(input_vio) > 0) {
     if (towrite > 0) {
+      // TSVIONBytesSet(output_vio, towrite);
       /* If there is data left to read, then we reenable the output
        * connection by reenabling the output VIO. This will wake up
        * the output connection and allow it to consume data from the
@@ -334,9 +336,10 @@ transform_plugin(TSCont contp, TSEvent event, void *edata)
 {
   TSHttpTxn txnp = (TSHttpTxn)edata;
 
-  TSDebug(PLUGIN_NAME, "Entering transform_plugin()");
+  TSDebug(PLUGIN_NAME, "Entering transform_plugin() event=%d", event);
   switch (event) {
   case TS_EVENT_HTTP_TXN_CLOSE: {
+    TSDebug(PLUGIN_NAME, "\tEvent is TS_EVENT_HTTP_TXN_CLOSE");
     // Clean things up.
     TSHttpTxn txnp = static_cast<TSHttpTxn>(edata);
     MyData *data   = static_cast<MyData *>(TSUserArgGet(txnp, data_arg_index));
